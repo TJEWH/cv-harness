@@ -57,13 +57,15 @@ The folders describe ownership. Several modules still combine responsibilities, 
 - `app/cloudTypes.ts` contains application, opportunity-review, and CV-snapshot contracts. Other features and document modules still import those contracts.
 - `features/applications/applicationCv.ts` combines application CV persistence with copy/difference helpers. `features/refinement/applicationRefinement.ts` combines protocol validation, request/proposal operations, prompt construction, and cloud persistence. Both remain at their feature root until their responsibilities can be separated.
 - `documents/letter/motivationLetters.ts` combines template defaults, validation, local persistence, compatibility upgrades, and document revisions. `documents/letter/searchLetterContext.ts` imports meta-search contracts and content-key calculation to capture research interests for a letter.
-- `features/meta-search/data/useSearchTemplates.ts` combines defaults, compatibility conversion, validation, and the local repository. The search and letter repositories retain their own conflict-merge behavior.
+- `features/meta-search/data/useSearchTemplates.ts` combines defaults, compatibility conversion, validation, and the local repository. The search and letter repositories share the pure field merge in `shared/lib/mergeRecordChanges.ts`; each repository owns validation, conflict errors, metadata, revision and no-op rules, and writes.
 - `documents/cv/data/useStorage.ts` owns CV session storage and also exports a debounce helper used elsewhere. `documents/layout/webFonts.ts` includes browser font-loading behavior.
 - `features/opportunities/domain/opportunityContext.ts` imports presentation builders that refer back to its node types through type-only imports. The structural pass preserved those type relationships.
 
 CV Studio, application CVs, and letters share `documents/pdf/composables/useDocumentPdfPreview.ts` for render scheduling, stale-work cancellation, completed-page caching, input commit deferral, export coordination, and cleanup. Studio uses independent normal/privacy controllers with its existing timing and page-retention policies; it owns the shared export-error surface and renderer resource cleanup. Document source selection, signatures, render options, and visibility remain with each caller.
 
 Keep live-document rendering and existing-PDF parsing separate: `useDocumentPdfPreview` owns DOM rendering and export invalidation; `usePdfBlobPreview` owns PDF.js parsing and worker cleanup. Shared preview controls consume their results.
+
+`shared/lib/mergeRecordChanges.ts` applies a three-way field merge to the editor baseline, incoming editor value, and current saved value. It preserves concurrent changes in untouched fields and reports conflicting field names without mutating inputs or writing storage. Equality retains the repositories’ existing JSON serialization semantics.
 
 ## Editing and persistence contracts
 
