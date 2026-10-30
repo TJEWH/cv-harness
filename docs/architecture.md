@@ -47,6 +47,8 @@ Use explicit imports to the owning module. The current structure has no import-b
 
 ## Current cross-boundaries
 
+CV content editors share `features/cv-studio/components/CvSectionFrame.vue` for the section shell, collapse target, visibility, title editing, heading size, completion, and keep-together controls. `SectionList` supplies item editing; `FormBuilder` supplies custom body/sidebar fields. Privacy headings, version selectors, and section-specific actions use slots. The callers own editor state, IDs, focus restoration, and persistence; the frame only emits control actions.
+
 The folders describe ownership. Several modules still combine responsibilities, and existing imports cross those folders:
 
 - `app/App.vue` coordinates navigation, local CV persistence, and previews. `app/components/JobWorkspace.vue` coordinates both opportunities and applications. `app/composables/useJobWorkspace.ts` owns their shared account lifecycle, cancellation, and ordered cloud mutations. Keep that coordination intact when extracting repositories in a later pass.
