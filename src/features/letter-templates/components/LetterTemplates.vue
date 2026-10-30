@@ -12,9 +12,9 @@ import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
 import LetterFormattingControls from '../../../documents/letter/components/LetterFormattingControls.vue';
 import { useDesktopSidebar } from '../../../shared/ui/desktopSidebar';
-import { createSearchTemplateRepository, SEARCH_TEMPLATES_UPDATED_EVENT } from '../../meta-search/data/useSearchTemplates';
+import { SEARCH_TEMPLATES_UPDATED_EVENT } from '../../meta-search/data/useSearchTemplates';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { importCloudSearchTemplate, listCloudSearchTemplates } from '../../meta-search/data/searchTemplateCloud';
+import { useSharedSearchSource } from '../../meta-search/composables/useSharedSearchSource';
 
 const props = withDefaults(defineProps<{ userId: string; lang?: string; sidebarActive?: boolean; client?: SupabaseClient | null }>(), { sidebarActive: true });
 const desktopSidebar = useDesktopSidebar();
@@ -26,8 +26,12 @@ const defaultId = ref('');
 const defaultTemplateName = computed(() => templates.value.find(template => template.id === defaultId.value)?.name || '');
 const controlsId = useId();
 const form = ref<LetterTemplate | null>(null);
-const sharedResearchInterests = ref('');
-const sharedInterestsState = ref<'loading' | 'ready' | 'empty' | 'error'>('empty');
+const sharedSearchSource = useSharedSearchSource({
+  owner: () => props.userId,
+  client: () => props.client,
+  storage: () => localStorage,
+});
+const sharedInterestsState = sharedSearchSource.status;
 const message = ref('');
 const error = ref('');
 const validationError = ref('');
@@ -36,8 +40,6 @@ const isImporting = ref(false);
 const saveStatus = ref<'saved' | 'unsaved' | 'saving' | 'error'>('saved');
 let editingOwner = props.userId;
 let importGeneration = 0;
-let sharedInterestsGeneration = 0;
-let sharedInterestsRead: { owner: string; generation: number; promise: Promise<void> } | null = null;
 let disposed = false;
 let replacingForm = false;
 let dirty = false;
@@ -61,37 +63,9 @@ const announceSaved = debounce(() => {
 const applicantNamePlaceholder = '{{APPLICANT_NAME}}';
 const repository = () => createLetterRepository(localStorage, editingOwner);
 async function reloadSharedResearchInterests() {
-  const owner = editingOwner;
   if (form.value?.useMetaSearchInterests === false) return;
-  const localKey = `cv.search-templates.v1:${encodeURIComponent(owner || 'local')}`;
-  try {
-    if (localStorage.getItem(localKey) !== null) {
-      sharedInterestsGeneration++;
-      sharedResearchInterests.value = createSearchTemplateRepository(localStorage, owner).listTemplates()[0]?.researchInterests || '';
-      sharedInterestsState.value = sharedResearchInterests.value ? 'ready' : 'empty';
-      return;
-    }
-    if (!props.client || owner === 'local') { sharedResearchInterests.value = ''; sharedInterestsState.value = 'empty'; return; }
-    if (sharedInterestsRead?.owner === owner) return sharedInterestsRead.promise;
-    const client = props.client;
-    const token = ++sharedInterestsGeneration;
-    sharedResearchInterests.value = ''; sharedInterestsState.value = 'loading';
-    const current = () => !disposed && editingOwner === owner && token === sharedInterestsGeneration;
-    const promise: Promise<void> = (async () => {
-      try {
-        const rows = await listCloudSearchTemplates(client, owner);
-        if (!current()) return;
-        // A local commit made during this read wins over the older remote copy.
-        if (localStorage.getItem(localKey) !== null) { await reloadSharedResearchInterests(); return; }
-        const row = rows.find(item => item.meta_search?.version === 1) || rows[0];
-        sharedResearchInterests.value = row ? importCloudSearchTemplate(row).researchInterests : '';
-        sharedInterestsState.value = sharedResearchInterests.value ? 'ready' : 'empty';
-      } catch { if (current()) sharedInterestsState.value = 'error'; }
-      finally { if (sharedInterestsRead?.generation === token) sharedInterestsRead = null; }
-    })();
-    sharedInterestsRead = { owner, generation: token, promise };
-    await promise;
-  } catch { sharedInterestsState.value = 'error'; }
+  try { await sharedSearchSource.load({ refreshCloud: true }); }
+  catch { /* The shared source status supplies the existing preview retry toast. */ }
 }
 function updateResearchInterestSource() {
   if (flushSave() && form.value?.useMetaSearchInterests) void reloadSharedResearchInterests();
@@ -185,7 +159,6 @@ watch(form, () => {
   dirty = true; saveStatus.value = 'unsaved'; message.value = '';
 }, { deep: true, flush: 'sync' });
 watch(() => props.userId, (id) => {
-  sharedInterestsGeneration++; sharedInterestsRead = null; sharedResearchInterests.value = ''; sharedInterestsState.value = 'empty';
   importGeneration++; isImporting.value = false;
   const saved = flushSave();
   announceSaved.cancel();
@@ -196,7 +169,7 @@ watch(() => props.userId, (id) => {
 }, { immediate: true });
 watch(() => props.client, () => { void reloadSharedResearchInterests(); });
 onMounted(() => { window.addEventListener('pagehide', flushSave); window.addEventListener(SEARCH_TEMPLATES_UPDATED_EVENT, reloadSharedResearchInterests); window.addEventListener('focus', reloadSharedResearchInterests); });
-onBeforeUnmount(() => { disposed = true; sharedInterestsGeneration++; importGeneration++; flushSave(); announceSaved.cancel(); window.removeEventListener('pagehide', flushSave); window.removeEventListener(SEARCH_TEMPLATES_UPDATED_EVENT, reloadSharedResearchInterests); window.removeEventListener('focus', reloadSharedResearchInterests); });
+onBeforeUnmount(() => { disposed = true; importGeneration++; flushSave(); announceSaved.cancel(); window.removeEventListener('pagehide', flushSave); window.removeEventListener(SEARCH_TEMPLATES_UPDATED_EVENT, reloadSharedResearchInterests); window.removeEventListener('focus', reloadSharedResearchInterests); });
 function download() {
   if (!flushSave()) return;
   try {

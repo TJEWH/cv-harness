@@ -42,11 +42,9 @@ import { useDesktopSidebar } from '../../../shared/ui/desktopSidebar';
 import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
 import { copyPreparedText } from '../../../shared/lib/preparedClipboard';
-import type { SearchTemplate } from '../../meta-search/searchTypes';
-import { createSearchTemplateRepository } from '../../meta-search/data/useSearchTemplates';
-import { isSearchTemplateSaved } from '../../meta-search/domain/searchPrompts';
-import { importCloudSearchTemplate, listCloudSearchTemplates } from '../../meta-search/data/searchTemplateCloud';
 import { captureMetaSearchInterests, letterTemplateWithSearchProfile } from '../../../documents/letter/searchLetterContext';
+import { useSharedSearchSource } from '../../meta-search/composables/useSharedSearchSource';
+import { SEARCH_TEMPLATES_UPDATED_EVENT } from '../../meta-search/data/useSearchTemplates';
 
 const props = withDefaults(defineProps<{
   projectId?: string; active?: boolean; checklistSaving?: boolean;
@@ -73,8 +71,12 @@ const tab = ref<Stage>(applicationStage(props.application));
 const record = ref<ApplicationCvRecord | null>(null);
 const letter = ref<ApplicationLetter | null>(null);
 const templates = ref<LetterTemplate[]>([]);
-const searchTemplates = ref<SearchTemplate[]>([]);
-const loadingSharedInterests = ref(false);
+const sharedSearchSource = useSharedSearchSource({
+  owner: () => props.userId,
+  client: () => props.client,
+  storage: () => localStorage,
+});
+const { templates: searchTemplates, loading: loadingSharedInterests } = sharedSearchSource;
 const approvals = ref<RefinementApprovals>({ cv: null, letter: null });
 const variantName = ref('');
 const savedVariant = ref<{ id: string; name: string; revision: string; previousIds?: string[] } | null>(null);
@@ -209,7 +211,6 @@ const letterPreview = ref<InstanceType<typeof MotivationLetterPreview> | null>(n
 const documentReadiness = ref({ included: 0, missing: 0 });
 const repository = createRefinementRepository(props.client, () => props.userId);
 const letterRepository = createLetterRepository(localStorage, props.userId);
-const searchRepository = createSearchTemplateRepository(localStorage, props.userId);
 let disposed = false;
 let loadingCloud: Promise<void> | null = null;
 let localReadError = '';
@@ -217,8 +218,6 @@ let committingSelection = false;
 let refreshSnapshotsOnOpen = false;
 let createdLetterOnOpen = false;
 let initialLetterDraftEdited = false;
-let sharedSearchHydrated = false;
-let sharedSearchRead: Promise<void> | null = null;
 const explicitHistorySelections = new Set<string>();
 
 try {
@@ -761,33 +760,11 @@ watch(() => props.active, active => { if (active) void syncRefinement(true); });
 watch(tab, stage => { if (stage === 'refinement') refreshOnFocus(); });
 function reloadTemplates() { try { templates.value = letterRepository.listTemplates(); } catch (cause) { report(cause); } }
 function reloadSearchTemplates() {
-  try {
-    const raw = localStorage.getItem(`cv.search-templates.v1:${encodeURIComponent(props.userId || 'local')}`);
-    if (raw !== null) searchTemplates.value = searchRepository.listTemplates();
-    else if (!sharedSearchHydrated) searchTemplates.value = [];
-  } catch (cause) { report(cause); }
+  try { sharedSearchSource.reloadLocal(); }
+  catch (cause) { report(cause); }
 }
 async function ensureSharedInterestsLoaded(force = false) {
-  reloadSearchTemplates();
-  const localKey = `cv.search-templates.v1:${encodeURIComponent(props.userId || 'local')}`;
-  const localRaw = localStorage.getItem(localKey);
-  const local = searchTemplates.value[0];
-  // Local committed edits can be ahead of the server; never replace that draft.
-  if (!props.client || localRaw !== null && (!force || !local || !isSearchTemplateSaved(local)) || sharedSearchHydrated && !force) return;
-  if (!sharedSearchRead) {
-    const owner = props.userId;
-    const client = props.client;
-    loadingSharedInterests.value = true;
-    sharedSearchRead = (async () => {
-      const rows = await listCloudSearchTemplates(client, owner);
-      if (disposed || owner !== props.userId) return;
-      if (localStorage.getItem(localKey) !== localRaw) { reloadSearchTemplates(); return; }
-      const row = local?.cloud ? rows.find(item => item.id === local.cloud!.id) : rows.find(item => item.meta_search?.version === 1) || rows[0];
-      searchTemplates.value = row ? [importCloudSearchTemplate(row)] : [];
-      sharedSearchHydrated = true;
-    })().finally(() => { sharedSearchRead = null; if (!disposed) loadingSharedInterests.value = false; });
-  }
-  await sharedSearchRead;
+  await sharedSearchSource.load({ refreshCloud: force, refreshSavedLocal: force });
 }
 function markInitialLetterDraftInput() { initialLetterDraftEdited = true; }
 function captureInitialSharedInterests(allowWorkingDraft = false) {
@@ -806,10 +783,10 @@ onMounted(() => {
   window.addEventListener('focus', refreshOnFocus);
   window.addEventListener('cv-letter-templates-updated', reloadTemplates);
   reloadSearchTemplates();
-  window.addEventListener('cv-search-templates-updated', reloadSearchTemplates);
+  window.addEventListener(SEARCH_TEMPLATES_UPDATED_EVENT, reloadSearchTemplates);
   window.addEventListener('focus', reloadSearchTemplates);
 });
-onBeforeUnmount(() => { disposed = true; window.removeEventListener('focus', refreshOnFocus); window.removeEventListener('cv-letter-templates-updated', reloadTemplates); window.removeEventListener('cv-search-templates-updated', reloadSearchTemplates); window.removeEventListener('focus', reloadSearchTemplates); });
+onBeforeUnmount(() => { disposed = true; window.removeEventListener('focus', refreshOnFocus); window.removeEventListener('cv-letter-templates-updated', reloadTemplates); window.removeEventListener(SEARCH_TEMPLATES_UPDATED_EVENT, reloadSearchTemplates); window.removeEventListener('focus', reloadSearchTemplates); });
 
 async function publishCurrentCv() {
   if (!record.value) throw new Error(text('Select a CV template first.', 'Zuerst eine CV-Vorlage auswählen.'));

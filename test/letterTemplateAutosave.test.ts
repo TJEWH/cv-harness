@@ -8,6 +8,7 @@ import { createRenderer, h, nextTick, reactive, type Component } from 'vue';
 import { createLetterRepository, DEFAULT_LETTER_TEMPLATES, DEFAULT_REFINEMENT_SYSTEM_PROMPT } from '../src/documents/letter/motivationLetters';
 import type { LetterFormatting, LetterTemplate } from '../src/documents/letter/letterTypes';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { useSharedSearchSource } from '../src/features/meta-search/composables/useSharedSearchSource';
 import { createSearchTemplate, createSearchTemplateRepository } from '../src/features/meta-search/data/useSearchTemplates';
 import { useToasts, useToastWatch } from '../src/shared/ui/useToasts';
 import * as textareaCommit from '../src/shared/editing/textareaCommit';
@@ -26,7 +27,7 @@ interface Editor {
   form: LetterTemplate; selectedId: string; saveStatus: string; error: string; isImporting: boolean;
   select(id: string): void; create(): void; flushSave(): boolean;
   updateFormatting(value: LetterFormatting | undefined): void;
-  sharedResearchInterests: string; sharedInterestsState: string;
+  sharedSearchSource: ReturnType<typeof useSharedSearchSource>; sharedInterestsState: string;
   reloadSharedResearchInterests(): Promise<void>; updateResearchInterestSource(): void;
   importLibrary(event: Event): Promise<void>;
 }
@@ -338,7 +339,7 @@ test('the shared-interest preview reads the saved account source on a fresh devi
     return builder;
   } } as unknown as SupabaseClient;
   await settlePreview();
-  assert.equal(editor.sharedResearchInterests, 'Saved cloud acoustics; BCI');
+  assert.equal(editor.sharedSearchSource.templates.value[0]?.researchInterests || '', 'Saved cloud acoustics; BCI');
   assert.equal(editor.sharedInterestsState, 'ready');
   assert.deepEqual(queries, ['opportunity_search_templates']);
   assert.equal(data.has('cv.search-templates.v1:owner'), false);
@@ -358,13 +359,13 @@ test('late preview results cannot cross account changes or replace a committed l
   await settlePreview(); assert.equal(editor.sharedInterestsState, 'loading');
   props.userId = 'next-owner'; await settlePreview();
   finishes.get('owner')!({ data: [savedSharedSearch('owner', 'Old account interests')], error: null });
-  await settlePreview(); assert.equal(editor.sharedResearchInterests, '');
+  await settlePreview(); assert.equal(editor.sharedSearchSource.templates.value[0]?.researchInterests || '', '');
   const storage = { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => { data.set(key, value); } };
   const local = createSearchTemplate(); local.researchInterests = 'Newest committed local interests';
   createSearchTemplateRepository(storage, 'next-owner').saveTemplate(local);
   finishes.get('next-owner')!({ data: [savedSharedSearch('next-owner', 'Older cloud interests')], error: null });
   await settlePreview();
-  assert.equal(editor.sharedResearchInterests, 'Newest committed local interests');
+  assert.equal(editor.sharedSearchSource.templates.value[0]?.researchInterests || '', 'Newest committed local interests');
   assert.equal(editor.sharedInterestsState, 'ready');
 });
 

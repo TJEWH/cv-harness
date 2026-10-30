@@ -49,6 +49,8 @@ Use explicit imports to the owning module. The current structure has no import-b
 
 CV content editors share `features/cv-studio/components/CvSectionFrame.vue` for the section shell, collapse target, visibility, title editing, heading size, completion, and keep-together controls. `SectionList` supplies item editing; `FormBuilder` supplies custom body/sidebar fields. Privacy headings, version selectors, and section-specific actions use slots. The callers own editor state, IDs, focus restoration, and persistence; the frame only emits control actions.
 
+`features/meta-search/composables/useSharedSearchSource.ts` owns the shared search-profile read policy, local/cloud precedence, cached hydration, and account-scoped stale-result protection. Letter templates request a fresh cloud preview when no local source exists; applications can explicitly refresh an acknowledged local source. Application actions still decide when to capture or replace the independent `letter.searchProfile` snapshot. Loading the shared source performs no storage or cloud writes.
+
 The folders describe ownership. Several modules still combine responsibilities, and existing imports cross those folders:
 
 - `app/App.vue` coordinates navigation, local CV persistence, and previews. `app/components/JobWorkspace.vue` coordinates both opportunities and applications. `app/composables/useJobWorkspace.ts` owns their shared account lifecycle, cancellation, and ordered cloud mutations. Keep that coordination intact when extracting repositories in a later pass.
