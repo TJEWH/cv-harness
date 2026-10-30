@@ -61,6 +61,8 @@ The folders describe ownership. Several modules still combine responsibilities, 
 - `documents/cv/data/useStorage.ts` owns CV session storage and also exports a debounce helper used elsewhere. `documents/layout/webFonts.ts` includes browser font-loading behavior.
 - `features/opportunities/domain/opportunityContext.ts` imports presentation builders that refer back to its node types through type-only imports. The structural pass preserved those type relationships.
 
+CV Studio, application CVs, and letters share `documents/pdf/composables/useDocumentPdfPreview.ts` for render scheduling, stale-work cancellation, completed-page caching, input commit deferral, export coordination, and cleanup. Studio uses independent normal/privacy controllers with its existing timing and page-retention policies; it owns the shared export-error surface and renderer resource cleanup. Document source selection, signatures, render options, and visibility remain with each caller.
+
 Keep live-document rendering and existing-PDF parsing separate: `useDocumentPdfPreview` owns DOM rendering and export invalidation; `usePdfBlobPreview` owns PDF.js parsing and worker cleanup. Shared preview controls consume their results.
 
 ## Editing and persistence contracts

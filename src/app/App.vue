@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { designNumber, resolveDesign } from '../documents/cv/defaults';
 import type { CvState, CvDesign, SavedConfiguration, SaveStatus } from '../documents/cv/types';
-import type { PreviewPage, RenderOptions } from '../documents/pdf/pdfTypes';
+import type { RenderOptions } from '../documents/pdf/pdfTypes';
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue';
 import { debounce, loadLocal, saveLocal } from '../documents/cv/data/useStorage';
 import { useCvDesign } from '../documents/cv/composables/useCvDesign';
 import { usePdfExport } from '../documents/pdf/composables/usePdfExport';
-import { usePreviewInputCommit } from '../documents/pdf/composables/usePreviewInputCommit';
+import { useDocumentPdfPreview } from '../documents/pdf/composables/useDocumentPdfPreview';
 import { commitPendingTextareas } from '../shared/editing/textareaCommit';
 import { CV_TEXTAREA_COMMIT } from '../documents/cv/composables/cvTextareaCommit';
-import { createPreviewRenderSlot } from '../documents/pdf/pdfRenderTask.ts';
 import FormBuilder from '../features/cv-studio/components/FormBuilder.vue';
 import CvPreview from '../documents/cv/components/CvPreview.vue';
 import InlineDocumentPreview from '../documents/pdf/components/InlineDocumentPreview.vue';
@@ -51,15 +50,7 @@ function syncMobileViewport() {
 }
 onMounted(() => mobileViewport.addEventListener('change', syncMobileViewport));
 onBeforeUnmount(() => mobileViewport.removeEventListener('change', syncMobileViewport));
-const previewPages = ref<PreviewPage[]>([]);
-const previewPage = ref(1);
-const isPreviewRendering = ref(true);
-const previewFailed = ref(false);
 const pdfRenderSource = ref<HTMLElement | null>(null);
-const anonymizedPreviewPages = ref<PreviewPage[]>([]);
-const anonymizedPreviewPage = ref(1);
-const isAnonymizedPreviewRendering = ref(false);
-const anonymizedPreviewFailed = ref(false);
 const anonymizedPdfRenderSource = ref<HTMLElement | null>(null);
 const fullPreviewVariant = ref('normal');
 const t = makeT(lang);
@@ -266,43 +257,18 @@ onMounted(async () => {
   }
 });
 
-const { exportToPdf, renderPreview, revokeDownloads } = usePdfExport();
-const inlineRenderSlot = createPreviewRenderSlot();
-const anonymizedRenderSlot = createPreviewRenderSlot();
-const exportRenderSlot = createPreviewRenderSlot();
-const anonymizedExportRenderSlot = createPreviewRenderSlot();
-const isExporting = ref(false);
-const isAnonymizedExporting = ref(false);
+const pdfRenderer = usePdfExport();
 const pdfExportError = ref('');
 useToastWatch(() => pdfExportError.value, { tone: 'error' });
-let previewRenderVersion = 0;
-let previewDirty = true;
-let anonymizedSourceVersion = 0;
-let anonymizedPreviewRenderVersion = 0;
-let renderedAnonymizedSourceVersion = -1;
 let isSliderPreviewUpdateDeferred = false;
-let sliderPreviewUpdatePending = false;
 let sliderSaveUpdatePending = false;
-let textPreviewUpdatePending = false;
-let privacyTextPreviewUpdatePending = false;
 let privacyDraftCommitPending = false;
-const previewInputCommit = usePreviewInputCommit(() => {
-  if (textPreviewUpdatePending) requestPdfPreview();
-  if (privacyTextPreviewUpdatePending) {
-    privacyTextPreviewUpdatePending = false;
-    if (isPrivacyStudioPreview.value || fullPreviewVariant.value === 'anonymized') requestAnonymizedPdfPreview();
-  }
-});
 async function commitPrivacyPreview() {
-  // Privacy compares and stores its local draft first. Wait for the source
-  // watchers before releasing a refresh deferred by the still-focused input.
+  // Privacy stores its local draft before releasing a still-focused preview.
   privacyDraftCommitPending = true;
   await nextTick();
   privacyDraftCommitPending = false;
-  if (privacyTextPreviewUpdatePending) {
-    privacyTextPreviewUpdatePending = false;
-    if (isPrivacyStudioPreview.value || fullPreviewVariant.value === 'anonymized') requestAnonymizedPdfPreview();
-  }
+  privacyPdfPreview.commit();
 }
 
 // Mark edits immediately, including an edit followed by navigation or pagehide
@@ -345,152 +311,6 @@ function getAnonymizedPdfSourceElement() {
 
 const anonymizedState = computed(() => createAnonymizedState(state));
 
-async function refreshPdfPreview(version: number) {
-  if (version !== previewRenderVersion || !normalPreviewVisible.value) return;
-  const signal = inlineRenderSlot.start();
-  try {
-    await nextTick();
-    if (version !== previewRenderVersion) return;
-
-    const cvElement = getPdfSourceElement();
-    if (!cvElement) throw new Error('CV preview element not found');
-    const { pages } = await renderPreview(cvElement, getPdfRenderOptions({ signal }));
-    if (version !== previewRenderVersion) return;
-
-    previewPages.value = pages;
-    previewDirty = false;
-    previewPage.value = Math.min(Math.max(previewPage.value, 1), Math.max(pages.length, 1));
-  } catch (error) {
-    if (!signal.aborted && version === previewRenderVersion) {
-      console.error('PDF preview failed:', error);
-      previewPages.value = [];
-      previewFailed.value = true;
-    }
-  } finally {
-    if (version === previewRenderVersion) isPreviewRendering.value = false;
-  }
-}
-
-const schedulePdfPreview = debounce((version: number) => refreshPdfPreview(version), 100);
-
-function invalidatePdfPreview() {
-  inlineRenderSlot.cancel();
-  schedulePdfPreview.cancel();
-  return ++previewRenderVersion;
-}
-
-function requestPdfPreview() {
-  textPreviewUpdatePending = false;
-  const version = invalidatePdfPreview();
-  previewDirty = true;
-  previewFailed.value = false;
-  isPreviewRendering.value = normalPreviewVisible.value;
-  if (normalPreviewVisible.value) schedulePdfPreview(version);
-}
-
-async function refreshAnonymizedPdfPreview(renderVersion: number, sourceVersion: number) {
-  if (renderVersion !== anonymizedPreviewRenderVersion || sourceVersion !== anonymizedSourceVersion || !privacyPreviewVisible.value) return;
-  const signal = anonymizedRenderSlot.start();
-  try {
-    await nextTick();
-    if (renderVersion !== anonymizedPreviewRenderVersion || sourceVersion !== anonymizedSourceVersion) return;
-
-    const cvElement = getAnonymizedPdfSourceElement();
-    if (!cvElement) throw new Error('Anonymized CV preview element not found');
-    const { pages } = await renderPreview(cvElement, getPdfRenderOptions({ signal }));
-    if (renderVersion !== anonymizedPreviewRenderVersion || sourceVersion !== anonymizedSourceVersion) return;
-
-    anonymizedPreviewPages.value = pages;
-    anonymizedPreviewPage.value = Math.min(Math.max(anonymizedPreviewPage.value, 1), Math.max(pages.length, 1));
-    renderedAnonymizedSourceVersion = sourceVersion;
-  } catch (error) {
-    if (!signal.aborted && renderVersion === anonymizedPreviewRenderVersion && sourceVersion === anonymizedSourceVersion) {
-      console.error('Anonymized PDF preview failed:', error);
-      anonymizedPreviewPages.value = [];
-      anonymizedPreviewFailed.value = true;
-    }
-  } finally {
-    if (renderVersion === anonymizedPreviewRenderVersion) isAnonymizedPreviewRendering.value = false;
-  }
-}
-
-const scheduleAnonymizedPdfPreview = debounce((renderVersion: number, sourceVersion: number) => (
-  refreshAnonymizedPdfPreview(renderVersion, sourceVersion)
-), 500);
-
-function requestAnonymizedPdfPreview() {
-  privacyTextPreviewUpdatePending = false;
-  if (!privacyPreviewVisible.value) return;
-  if (renderedAnonymizedSourceVersion === anonymizedSourceVersion && anonymizedPreviewPages.value.length) return;
-  anonymizedRenderSlot.cancel();
-  const renderVersion = ++anonymizedPreviewRenderVersion;
-  anonymizedPreviewFailed.value = false;
-  isAnonymizedPreviewRendering.value = true;
-  scheduleAnonymizedPdfPreview(renderVersion, anonymizedSourceVersion);
-}
-
-function invalidateAnonymizedPdfPreview({ defer = false, preservePages = false } = {}) {
-  anonymizedRenderSlot.cancel();
-  scheduleAnonymizedPdfPreview.cancel();
-  anonymizedPreviewRenderVersion += 1;
-  isAnonymizedPreviewRendering.value = false;
-  anonymizedPreviewFailed.value = false;
-  anonymizedSourceVersion += 1;
-  if (!preservePages) {
-    anonymizedPreviewPages.value = [];
-    anonymizedPreviewPage.value = 1;
-  }
-  renderedAnonymizedSourceVersion = -1;
-  if (!defer && (isPrivacyStudioPreview.value || fullPreviewVariant.value === 'anonymized')) requestAnonymizedPdfPreview();
-}
-
-watch(isPrivacyStudioPreview, (active) => { if (active) requestAnonymizedPdfPreview(); }, { immediate: true });
-watch(normalPreviewVisible, (visible) => {
-  if (visible) {
-    if (previewDirty) requestPdfPreview();
-  } else {
-    invalidatePdfPreview();
-    isPreviewRendering.value = false;
-  }
-}, { flush: 'post' });
-watch(privacyPreviewVisible, (visible) => {
-  if (visible) requestAnonymizedPdfPreview();
-  else {
-    anonymizedRenderSlot.cancel();
-    scheduleAnonymizedPdfPreview.cancel();
-    anonymizedPreviewRenderVersion++;
-    isAnonymizedPreviewRendering.value = false;
-  }
-}, { flush: 'post' });
-
-function handleVersionDeleted() {
-  saveDebounced.cancel();
-  isSliderPreviewUpdateDeferred = false;
-  sliderSaveUpdatePending = false;
-  sliderPreviewUpdatePending = false;
-  textPreviewUpdatePending = false;
-  privacyTextPreviewUpdatePending = false;
-  previewInputCommit.reset();
-  invalidatePdfPreview();
-  invalidateAnonymizedPdfPreview({ defer: true });
-  exportRenderSlot.cancel();
-  anonymizedExportRenderSlot.cancel();
-  revokeDownloads();
-  previewPages.value = [];
-  previewPage.value = 1;
-  pdfExportError.value = '';
-  previewMode.value = false;
-  activeBuilderGroup.value = 'versions';
-}
-
-onBeforeUnmount(() => {
-  invalidatePdfPreview();
-  invalidateAnonymizedPdfPreview({ defer: true });
-  exportRenderSlot.cancel();
-  anonymizedExportRenderSlot.cancel();
-  revokeDownloads();
-});
-
 const previewDesign = computed(() => Object.keys(state.design || {}).reduce((design, key) => {
   if (key !== 'favoriteControls') Reflect.set(design, key, Reflect.get(state.design, key));
   return design;
@@ -521,6 +341,71 @@ const anonymizedPreviewState = computed(() => ({
   anonymization: state.anonymization,
 }));
 
+// Studio keeps two independent completed previews while sharing cancellation,
+// scheduling, deferred input commits, and export lifecycle with document editors.
+const normalPdfPreview = useDocumentPdfPreview({
+  source: async () => {
+    await nextTick();
+    const element = getPdfSourceElement();
+    if (!element) throw new Error('CV preview element not found');
+    return element;
+  },
+  options: getPdfRenderOptions,
+  signature: () => previewState.value,
+  active: () => normalPreviewVisible.value,
+  renderer: pdfRenderer,
+  delayMs: 100,
+  watchFlush: 'post',
+  deferUpdate: () => isSliderPreviewUpdateDeferred,
+  retainPagesOnUpdate: true,
+  retainPagesOnHide: true,
+  cancelExportsOnSourceChange: false,
+});
+const privacyPdfPreview = useDocumentPdfPreview({
+  source: async () => {
+    await nextTick();
+    const element = getAnonymizedPdfSourceElement();
+    if (!element) throw new Error('Anonymized CV preview element not found');
+    return element;
+  },
+  options: getPdfRenderOptions,
+  signature: () => anonymizedPreviewState.value,
+  active: () => privacyPreviewVisible.value,
+  renderer: pdfRenderer,
+  delayMs: 500,
+  watchFlush: 'post',
+  deferUpdate: () => isSliderPreviewUpdateDeferred || privacyDraftCommitPending,
+  retainPagesOnHide: true,
+  resetPageOnUpdate: true,
+  cacheEmptyPages: false,
+  cancelExportsOnSourceChange: false,
+});
+const { pages: previewPages, page: previewPage, busy: isPreviewRendering, downloading: isExporting } = normalPdfPreview;
+const { pages: anonymizedPreviewPages, page: anonymizedPreviewPage,
+  busy: isAnonymizedPreviewRendering, downloading: isAnonymizedExporting } = privacyPdfPreview;
+const previewFailed = computed(() => !!normalPdfPreview.previewError.value);
+const anonymizedPreviewFailed = computed(() => !!privacyPdfPreview.previewError.value);
+// A preview retry never clears an export failure. Either export starts a new
+// shared error cycle, while failures from both independent downloads are shown.
+for (const preview of [normalPdfPreview, privacyPdfPreview]) {
+  watch(preview.downloadError, error => { if (error) pdfExportError.value = error; }, { flush: 'sync' });
+}
+function requestPdfPreview() { normalPdfPreview.request(); }
+function requestAnonymizedPdfPreview() { privacyPdfPreview.request(false); }
+
+function handleVersionDeleted() {
+  saveDebounced.cancel();
+  isSliderPreviewUpdateDeferred = false;
+  sliderSaveUpdatePending = false;
+  normalPdfPreview.reset();
+  privacyPdfPreview.reset();
+  pdfRenderer.revokeDownloads();
+  pdfExportError.value = '';
+  previewMode.value = false;
+  activeBuilderGroup.value = 'versions';
+}
+onBeforeUnmount(() => pdfRenderer.revokeDownloads());
+
 function isRangeInput(element: EventTarget | null) {
   return element instanceof Element && element.matches('input[type="range"]');
 }
@@ -531,16 +416,11 @@ function onPreviewSliderPointerDown(event: PointerEvent) {
 
 function commitDeferredSliderPreview() {
   if (!isSliderPreviewUpdateDeferred) return;
-  const shouldRefreshPreview = sliderPreviewUpdatePending;
   const shouldSave = sliderSaveUpdatePending;
   isSliderPreviewUpdateDeferred = false;
-  sliderPreviewUpdatePending = false;
   sliderSaveUpdatePending = false;
-
-  if (shouldRefreshPreview) {
-    requestPdfPreview();
-    if (isPrivacyStudioPreview.value || fullPreviewVariant.value === 'anonymized') requestAnonymizedPdfPreview();
-  }
+  normalPdfPreview.commit();
+  privacyPdfPreview.commit();
   if (shouldSave) scheduleStateSave();
 }
 
@@ -572,69 +452,17 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', commitDeferredSliderPreview);
 });
 
-watch(previewState, () => {
-  if (isSliderPreviewUpdateDeferred) {
-    sliderPreviewUpdatePending = true;
-    invalidatePdfPreview();
-    isPreviewRendering.value = false;
-    return;
-  }
-  if (previewInputCommit.defer()) {
-    textPreviewUpdatePending = true;
-    invalidatePdfPreview();
-    isPreviewRendering.value = false;
-    return;
-  }
-  requestPdfPreview();
-}, { deep: true, flush: 'post' });
-
-watch(anonymizedPreviewState, () => {
-  if (isSliderPreviewUpdateDeferred) {
-    sliderPreviewUpdatePending = true;
-    invalidateAnonymizedPdfPreview({ defer: true, preservePages: true });
-    return;
-  }
-  if (privacyDraftCommitPending || previewInputCommit.defer()) {
-    privacyTextPreviewUpdatePending = true;
-    invalidateAnonymizedPdfPreview({ defer: true, preservePages: true });
-    return;
-  }
-  invalidateAnonymizedPdfPreview();
-}, { deep: true, flush: 'post' });
-
 async function handleExportPdf() {
   if (isExporting.value) return;
-  const signal = exportRenderSlot.start();
-  isExporting.value = true;
   pdfExportError.value = '';
-  try {
-    await nextTick();
-    const cvElement = getPdfSourceElement();
-    if (!cvElement) throw new Error('CV preview element not found');
-    const filename = `${(state.contact?.name || 'CV').replace(/\s+/g, '_')}_CV`;
-    await exportToPdf(cvElement, filename, getPdfRenderOptions({ signal }));
-  } catch (error) {
-    if (!signal.aborted) pdfExportError.value = error instanceof Error ? error.message : String(error);
-  } finally {
-    isExporting.value = false;
-  }
+  const filename = `${(state.contact?.name || 'CV').replace(/\s+/g, '_')}_CV`;
+  await normalPdfPreview.download(filename);
 }
 
 async function handleAnonymizedExportPdf() {
   if (isAnonymizedExporting.value) return;
-  const signal = anonymizedExportRenderSlot.start();
-  isAnonymizedExporting.value = true;
   pdfExportError.value = '';
-  try {
-    await nextTick();
-    const cvElement = getAnonymizedPdfSourceElement();
-    if (!cvElement) throw new Error('Anonymized CV preview element not found');
-    await exportToPdf(cvElement, 'anonymized-cv', getPdfRenderOptions({ signal }));
-  } catch (error) {
-    if (!signal.aborted) pdfExportError.value = error instanceof Error ? error.message : String(error);
-  } finally {
-    isAnonymizedExporting.value = false;
-  }
+  await privacyPdfPreview.download('anonymized-cv');
 }
 
 const isAnonymizedFullPreview = computed(() => fullPreviewVariant.value === 'anonymized');
@@ -643,7 +471,6 @@ const fullPreviewMode = computed({
   set: (mode: string) => {
     fullPreviewView.value = mode === 'html' ? 'html' : 'pdf';
     fullPreviewVariant.value = mode === 'anonymized' ? 'anonymized' : 'normal';
-    if (mode === 'anonymized') requestAnonymizedPdfPreview();
   },
 });
 const isActiveFullPreviewExporting = computed(() => isAnonymizedFullPreview.value ? isAnonymizedExporting.value : isExporting.value);
@@ -699,7 +526,6 @@ function openFullPreview() {
   if (formBuilder.value?.flushSectionSaves() === false) return;
   fullPreviewMode.value = isPrivacyStudioPreview.value ? 'anonymized' : 'normal';
   previewMode.value = true;
-  if (isAnonymizedFullPreview.value) requestAnonymizedPdfPreview();
 }
 
 function selectBuilderGroup(group: string) {
