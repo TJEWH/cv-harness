@@ -14,6 +14,7 @@ import DesktopSidebarPortal from '../../../shared/ui/DesktopSidebarPortal.vue';
 import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import SectionHeading from '../../../shared/ui/SectionHeading.vue';
 import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
+import { flushEditorSessionSync } from '../../../shared/editing/editorSession';
 import { useDesktopSidebar } from '../../../shared/ui/desktopSidebar';
 
 const props = withDefaults(defineProps<{ userId: string; lang?: string; client?: SupabaseClient | null; active?: boolean; sidebarActive?: boolean; storage?: LocalDocumentStorage }>(), { active: true, sidebarActive: true, client: null });
@@ -39,11 +40,13 @@ const cloudFailed = ref(false);
 const busy = ref(false);
 const error = ref('');
 const notice = ref('');
+const draftRetry = shallowRef<(() => boolean) | null>(null);
+let draftFailure = '';
 useToastWatch(() => notice.value, { tone: 'success' });
 useToastWatch(() => props.active && loading.value ? text('Loading attachments…', 'Anhänge werden geladen…') : '', { passive: true });
 useToastWatch(() => error.value, () => ({
   tone: 'error',
-  ...((loadFailed.value || cloudFailed.value) ? { action: { label: text('Retry', 'Erneut versuchen'), run: load } } : {}),
+  ...(draftRetry.value && error.value === draftFailure ? { action: { label: text('Retry', 'Erneut versuchen'), run: draftRetry.value } } : (loadFailed.value || cloudFailed.value) ? { action: { label: text('Retry', 'Erneut versuchen'), run: scopedLoadRetry() } } : {}),
 }));
 const editingId = ref('');
 const formVisible = ref(false);
@@ -65,11 +68,44 @@ const previewPdfOpen = computed(() => props.active && previewDocument.value?.mim
 const { pages: previewPages, loading: previewLoading, error: previewError, retry: retryPreview } = usePdfBlobPreview(
   () => previewPdfOpen.value ? previewDocument.value!.blob : null,
 );
-useToastWatch(() => previewError.value, () => ({ tone: 'error', action: { label: text('Retry preview', 'Vorschau erneut versuchen'), run: retryPreview } }));
+useToastWatch(() => previewError.value, () => ({ tone: 'error', action: { label: text('Retry preview', 'Vorschau erneut versuchen'), run: scopedPreviewRetry() } }));
 let previewGeneration = 0;
 let generation = 0;
 let disposed = false;
 let draftOwner = props.userId;
+let editorGeneration = 0;
+let replacingDraft = false;
+type FailedDraft = { id: string; name: string; description: string; file: File | null; collapsed: boolean; error: string };
+// Recovery stays in this component and retains at most one blocked editor per owner.
+const failedDrafts = new Map<string, FailedDraft>();
+function snapshotDraft(): FailedDraft { return { id: editingId.value, name: name.value, description: description.value, file: file.value, collapsed: formCollapsed.value, error: draftFailure }; }
+function retainFailedDraft() { if (formVisible.value && dirty.value) failedDrafts.set(draftOwner, snapshotDraft()); }
+function scopedLoadRetry() {
+  const owner = props.userId; const id = editingId.value; const token = editorGeneration;
+  return () => !disposed && props.userId === owner && draftOwner === owner && editingId.value === id && token === editorGeneration ? load() : false;
+}
+function scopedPreviewRetry() {
+  const owner = props.userId; const id = previewDocument.value?.id; const token = previewGeneration;
+  return () => !disposed && props.userId === owner && previewDocument.value?.id === id && token === previewGeneration ? retryPreview() : false;
+}
+function retryDraft() {
+  const owner = draftOwner; const id = editingId.value; const token = editorGeneration;
+  return () => !disposed && props.userId === owner && draftOwner === owner && editingId.value === id && token === editorGeneration ? flush() : false;
+}
+function restoreFailedDraft() {
+  const retained = failedDrafts.get(draftOwner);
+  if (!retained) return;
+  replacingDraft = true;
+  editingId.value = retained.id; name.value = retained.name; description.value = retained.description;
+  file.value = retained.file; formVisible.value = true; formCollapsed.value = retained.collapsed; dirty.value = true;
+  replacingDraft = false;
+  draftFailure = retained.error; draftRetry.value = retryDraft(); error.value = retained.error;
+  const owner = draftOwner; const token = editorGeneration;
+  void nextTick(() => {
+    if (disposed || draftOwner !== owner || props.userId !== owner || token !== editorGeneration || !fileInput.value || file.value !== retained.file || !retained.file || typeof DataTransfer === 'undefined') return;
+    const transfer = new DataTransfer(); transfer.items.add(retained.file); fileInput.value.files = transfer.files;
+  });
+}
 const repository = () => new LocalDocumentRepository(props.userId, props.storage);
 const cloudRepository = () => { const owner = props.userId; return props.client && owner ? createAttachmentMetadataRepository(props.client, () => owner) : null; };
 const current = (token: number) => token === generation && !disposed;
@@ -83,15 +119,30 @@ function clearPreview() {
 }
 function changed() { emit('changed'); window.dispatchEvent(new Event('cv-local-documents-updated')); }
 const draftKey = (id = editingId.value, owner = draftOwner) => `cv-attachment-draft:v1:${encodeURIComponent(owner)}:${encodeURIComponent(id || 'new')}`;
-function persistDraft() {
-  if (!formVisible.value || !dirty.value || typeof localStorage === 'undefined') return true;
-  try { localStorage.setItem(draftKey(), JSON.stringify({ name: name.value, description: description.value })); return true; }
-  catch (reason) { error.value = message(reason); return false; }
+function persistDraft(): boolean {
+  if (!formVisible.value || !dirty.value) return true;
+  try {
+    if (typeof localStorage === 'undefined' || !localStorage) throw new Error(text('Private draft storage is unavailable. Please retry before leaving.', 'Der private Entwurfsspeicher ist nicht verfügbar. Vor dem Verlassen erneut versuchen.'));
+    localStorage.setItem(draftKey(), JSON.stringify({ name: name.value, description: description.value }));
+    const retained = failedDrafts.get(draftOwner);
+    if (retained?.id === editingId.value && retained.name === name.value && retained.description === description.value && retained.file === file.value) failedDrafts.delete(draftOwner);
+    if (error.value === draftFailure) error.value = '';
+    draftFailure = ''; draftRetry.value = null;
+    return true;
+  } catch (reason) {
+    draftFailure = message(reason); draftRetry.value = retryDraft(); error.value = draftFailure; retainFailedDraft(); return false;
+  }
 }
+function flushDraft(): boolean {
+  const owner = draftOwner; const id = editingId.value; const token = editorGeneration;
+  return flushEditorSessionSync({ steps: [persistDraft], current: () => owner === draftOwner && id === editingId.value && token === editorGeneration, settled: () => !busy.value });
+}
+function flush(): boolean { return !disposed && draftOwner === props.userId && flushDraft(); }
+defineExpose({ flush });
 function commitDescription() { dirty.value = true; persistDraft(); }
 function restoreDraft() {
-  if (typeof localStorage === 'undefined') return;
   try {
+    if (typeof localStorage === 'undefined') return;
     const raw = localStorage.getItem(draftKey());
     if (!raw) return;
     const saved: unknown = JSON.parse(raw);
@@ -102,14 +153,16 @@ function restoreDraft() {
   } catch (reason) { error.value = message(reason); }
 }
 function clearDraft(key = draftKey()) {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.removeItem(key); } catch (reason) { error.value = message(reason); }
+  try { if (typeof localStorage !== 'undefined') localStorage.removeItem(key); } catch (reason) { error.value = message(reason); }
 }
 function focusNewAttachment() { void nextTick(() => { if (props.active) newAttachmentButton.value?.focus({ preventScroll: true }); }); }
-function cancelEdit() { clearDraft(); resetForm(); focusNewAttachment(); }
+function cancelEdit() { clearDraft(); if (failedDrafts.get(draftOwner)?.id === editingId.value) failedDrafts.delete(draftOwner); resetForm(); error.value = ''; focusNewAttachment(); }
 function resetForm() {
+  replacingDraft = true;
+  draftRetry.value = null; draftFailure = '';
   editingId.value = ''; formVisible.value = false; formCollapsed.value = false; name.value = ''; description.value = ''; file.value = null; dirty.value = false;
   if (fileInput.value) fileInput.value.value = '';
+  replacingDraft = false;
 }
 function focusAttachmentForm() {
   void nextTick(() => {
@@ -120,17 +173,18 @@ function focusAttachmentForm() {
   });
 }
 function toggleForm() {
-  commitPendingTextareas(); if (!persistDraft()) return;
+  if (!flush()) return;
   formCollapsed.value = !formCollapsed.value;
 }
 function edit(entry?: Entry) {
   if (busy.value) return;
-  commitPendingTextareas(); if (!persistDraft()) return;
+  if (!flush()) return;
   if (formVisible.value && editingId.value === (entry?.id || '')) {
     formCollapsed.value = false;
     focusAttachmentForm();
     return;
   }
+  editorGeneration++;
   editingId.value = entry?.id || ''; name.value = entry?.description?.trim() ? entry.name : ''; description.value = entry?.description || '';
   file.value = null; dirty.value = false; formVisible.value = true; formCollapsed.value = false; error.value = ''; notice.value = '';
   restoreDraft();
@@ -163,20 +217,26 @@ async function load() {
     name.value = editingEntry.value.description?.trim() ? editingEntry.value.name : ''; description.value = editingEntry.value.description || '';
   }
 }
+watch(() => [name.value, description.value, file.value, formCollapsed.value], () => {
+  if (!replacingDraft && failedDrafts.get(draftOwner)?.id === editingId.value) retainFailedDraft();
+}, { flush: 'sync' });
 watch(() => [props.userId, props.client], () => {
-  commitPendingTextareas(); persistDraft(); draftOwner = props.userId;
-  generation++; busy.value = false; localDocuments.value = []; sharedDocuments.value = []; resetForm(); clearPreview(); notice.value = '';
-  void load();
+  if (!flushDraft()) retainFailedDraft();
+  draftOwner = props.userId; editorGeneration++;
+  generation++; busy.value = false; localDocuments.value = []; sharedDocuments.value = []; resetForm(); clearPreview(); notice.value = ''; error.value = '';
+  void load(); restoreFailedDraft();
 }, { immediate: true });
-watch(() => props.active, (active) => { if (active) void load(); else { commitPendingTextareas(); persistDraft(); clearPreview(); } });
+watch(() => props.active, (active) => { if (active) void load(); else { flushDraft(); clearPreview(); } });
 function refreshIfActive() { if (props.active && !busy.value) void load(); }
 onMounted(() => { window.addEventListener('focus', refreshIfActive); window.addEventListener('cv-local-documents-updated', refreshIfActive); });
-onBeforeUnmount(() => { commitPendingTextareas(); persistDraft(); disposed = true; generation++; clearPreview(); window.removeEventListener('focus', refreshIfActive); window.removeEventListener('cv-local-documents-updated', refreshIfActive); });
+onBeforeUnmount(() => { flushDraft(); disposed = true; generation++; clearPreview(); window.removeEventListener('focus', refreshIfActive); window.removeEventListener('cv-local-documents-updated', refreshIfActive); });
 async function save() {
-  commitPendingTextareas(); persistDraft();
+  if (!commitPendingTextareas()) return;
+  persistDraft();
   if (busy.value || loading.value || loadFailed.value) return;
   const token = generation; const repo = repository(); const cloud = cloudRepository();
   const savedDraftKey = draftKey();
+  const savedDraft = snapshotDraft();
   const nextName = name.value.trim(); const nextDescription = description.value.trim(); const nextFile = file.value;
   if (!nextName || !nextDescription) { error.value = text('Enter a name and description yourself before saving.', 'Vor dem Speichern einen Namen und eine Beschreibung selbst eingeben.'); return; }
   if (!editingId.value && !nextFile) { error.value = text('Choose a local PDF or image for this attachment.', 'Ein lokales PDF oder Bild für diesen Anhang auswählen.'); return; }
@@ -191,7 +251,9 @@ async function save() {
       id = saved.id; localSaved = true;
       if (!current(token)) return;
       // Retain the generated ID if cloud syncing fails, so retrying cannot duplicate a file.
+      const retained = failedDrafts.get(draftOwner)?.id === editingId.value;
       editingId.value = id; file.value = null; if (fileInput.value) fileInput.value.value = '';
+      if (retained) retainFailedDraft();
       localDocuments.value = [saved, ...localDocuments.value.filter((entry) => entry.id !== id)];
     } else if (local) {
       const saved = await repo.updateDocumentMetadata(id, nextName, nextDescription); localSaved = true;
@@ -205,7 +267,10 @@ async function save() {
       cloudSaved = true;
       sharedDocuments.value = [saved, ...sharedDocuments.value.filter((entry) => entry.id !== id)]; cloudFailed.value = false;
     } else if (!localSaved) throw new Error(text('The local file is unavailable. Attach it before saving offline.', 'Die lokale Datei fehlt. Zum Offline-Speichern zuerst hinzufügen.'));
-    clearDraft(savedDraftKey); clearDraft(); dirty.value = false; resetForm(); focusNewAttachment();
+    clearDraft(savedDraftKey); clearDraft();
+    const retained = failedDrafts.get(draftOwner);
+    if (retained?.id === editingId.value && retained.name === savedDraft.name && retained.description === savedDraft.description && (!retained.file || retained.file === savedDraft.file)) failedDrafts.delete(draftOwner);
+    dirty.value = false; resetForm(); focusNewAttachment();
     notice.value = cloud ? text('Saved. Only your name and description were shared; the file stays on this device.', 'Gespeichert. Nur der eingegebene Name und die Beschreibung wurden geteilt; die Datei bleibt auf diesem Gerät.') : text('Attachment saved in this local profile. To use it in an account, sign in and add the file, name and description to that account’s library.', 'Anhang in diesem lokalen Profil gespeichert. Zur Verwendung in einem Konto anmelden und Datei, Name und Beschreibung zu dessen Bibliothek hinzufügen.');
   } catch (reason) {
     if (current(token)) error.value = (localSaved ? text('The file and your metadata are saved locally. Cloud sync failed; save again to retry. ', 'Datei und Metadaten sind lokal gespeichert. Cloud-Synchronisierung fehlgeschlagen; zum Wiederholen erneut speichern. ') : '') + message(reason);
@@ -308,14 +373,14 @@ async function importBackup(event: Event) {
           <p v-if="entry.description" class="attachment-description">{{ entry.description }}</p>
         </li>
       </ul>
-      <form v-if="formVisible" ref="attachmentForm" class="attachment-form editor-subsection" :class="{ collapsed: formCollapsed }" @submit.prevent="save">
+      <form v-if="formVisible" :key="userId" ref="attachmentForm" class="attachment-form editor-subsection" :class="{ collapsed: formCollapsed }" @submit.prevent="save">
         <div class="section-head" @click="toggleForm">
           <SectionHeading :title="editingId ? text('Edit attachment', 'Anhang bearbeiten') : text('New attachment', 'Neuer Anhang')" :collapsed="formCollapsed" :controls="formContentId" @activate="toggleForm" />
         </div>
         <div v-show="!formCollapsed" :id="formContentId" class="attachment-form__body" :inert="formCollapsed">
         <label>{{ text('Attachment name', 'Name des Anhangs') }}<input v-model="name" maxlength="200" required :disabled="busy" @input="dirty = true" /></label>
         <div class="attachment-description-field"><div class="hint-label-row"><label :for="`${formContentId}-description`">{{ text('Description', 'Beschreibung') }}</label><InfoHint :lang="lang" :label="text('Description', 'Beschreibung')" :text="text('Write the context you want to share, without copying private details you want to keep local.', 'Den gewünschten Kontext eingeben und private Angaben weglassen, die lokal bleiben sollen.')" /></div><AutosaveTextarea :id="`${formContentId}-description`" v-model="description" @commit="commitDescription" maxlength="4000" rows="4" required :disabled="busy" @input="dirty = true" /></div>
-        <div class="attachment-file-field"><div class="hint-label-row"><label :for="`${formContentId}-file`">{{ editingEntry?.local ? text('Replace local file (optional)', 'Lokale Datei ersetzen (optional)') : text('Local PDF or image', 'Lokales PDF oder Bild') }}</label><InfoHint :lang="lang" :label="editingEntry?.local ? text('Replace local file (optional)', 'Lokale Datei ersetzen (optional)') : text('Local PDF or image', 'Lokales PDF oder Bild')" :text="text('PDF, PNG or JPEG, up to 50 MB. Choosing a file never fills the name or description.', 'PDF, PNG oder JPEG, bis 50 MB. Die Dateiauswahl füllt Name und Beschreibung nicht aus.') + (editingEntry && !editingEntry.local && !file ? ' ' + text('This attachment has no file on this device. Add the original file to use it in a PDF package.', 'Für diesen Anhang fehlt die Datei auf diesem Gerät. Zum Verwenden in einer PDF-Zusammenstellung die Originaldatei hinzufügen.') : '')" /></div><input :id="`${formContentId}-file`" ref="fileInput" type="file" accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg" :required="!editingId" :disabled="busy" @change="chooseFile" /></div>
+        <div class="attachment-file-field"><div class="hint-label-row"><label :for="`${formContentId}-file`">{{ editingEntry?.local ? text('Replace local file (optional)', 'Lokale Datei ersetzen (optional)') : text('Local PDF or image', 'Lokales PDF oder Bild') }}</label><InfoHint :lang="lang" :label="editingEntry?.local ? text('Replace local file (optional)', 'Lokale Datei ersetzen (optional)') : text('Local PDF or image', 'Lokales PDF oder Bild')" :text="text('PDF, PNG or JPEG, up to 50 MB. Choosing a file never fills the name or description.', 'PDF, PNG oder JPEG, bis 50 MB. Die Dateiauswahl füllt Name und Beschreibung nicht aus.') + (editingEntry && !editingEntry.local && !file ? ' ' + text('This attachment has no file on this device. Add the original file to use it in a PDF package.', 'Für diesen Anhang fehlt die Datei auf diesem Gerät. Zum Verwenden in einer PDF-Zusammenstellung die Originaldatei hinzufügen.') : '')" /></div><input :id="`${formContentId}-file`" ref="fileInput" type="file" accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg" :required="!editingId && !file" :disabled="busy" @change="chooseFile" /></div>
         <div class="actions"><button class="primary" type="submit" :disabled="busy || loading || loadFailed">{{ busy ? text('Saving…', 'Speichern…') : text('Save attachment', 'Anhang speichern') }}</button><button type="button" :disabled="busy" @click="cancelEdit">{{ text('Cancel', 'Abbrechen') }}</button></div>
         </div>
       </form>

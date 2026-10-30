@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
 import type { OpportunityDispositionPatch, OpportunityReview, OpportunityTechnicalIssue } from '../../../app/cloudTypes';
 import { OPPORTUNITY_TECHNICAL_ISSUES } from '../../../app/cloudTypes';
 import { normalizeOpportunityDispositionPatch } from '../domain/opportunityDisposition';
 import { useApplicationNotesAutosave } from '../../../shared/editing/useApplicationNotesAutosave';
 import { useSaveStateToast } from '../../../shared/ui/useToasts';
-import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
+import { flushEditorSession } from '../../../shared/editing/editorSession';
 import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import InfoHint from '../../../shared/ui/InfoHint.vue';
 
@@ -23,6 +23,8 @@ const archivedDraft = ref(false), archivedDirty = ref(false);
 const categoryDraft = ref<OpportunityTechnicalIssue | ''>(''), categoryDirty = ref(false);
 const actionError = ref(''), pendingCount = ref(0);
 let generation = 0, queue: Promise<unknown> = Promise.resolve();
+let editorDisposed = false;
+onBeforeUnmount(() => { editorDisposed = true; generation++; });
 const failedPatches = new Map<string, FooterPatch>();
 const failureMessage = () => text('The opportunity status was not saved. Your draft is kept. Retry before leaving.', 'Der Stellenstatus wurde nicht gespeichert. Dein Entwurf bleibt erhalten. Versuche es vor dem Verlassen erneut.');
 watch(scope, () => {
@@ -112,12 +114,17 @@ useSaveStateToast(() => actionError.value || noteError.value ? 'error' : pending
   },
   retry: { label: () => text('Retry save', 'Speichern erneut versuchen'), run: retry },
 });
-async function flush(): Promise<boolean> {
-  commitPendingTextareas();
-  const ownerGeneration = generation;
-  await queue;
-  if (ownerGeneration !== generation || failedPatches.size || archivedDirty.value || categoryDirty.value) return false;
-  return await flushNote() && ownerGeneration === generation;
+function flush(): Promise<boolean> {
+  const ownerGeneration = generation, pending = queue;
+  const settled = () => !failedPatches.size && !archivedDirty.value && !categoryDirty.value && pendingCount.value === 0;
+  return flushEditorSession({
+    current: () => !editorDisposed && ownerGeneration === generation,
+    steps: [async () => {
+      await pending;
+      return !failedPatches.size && !archivedDirty.value && !categoryDirty.value;
+    }, flushNote],
+    settled,
+  });
 }
 defineExpose({ flush });
 </script>

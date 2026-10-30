@@ -1,6 +1,7 @@
+import { mergeRecordChanges } from '../../../shared/lib/mergeRecordChanges';
 import type { SearchTemplate } from '../searchTypes';
 
-interface StorageAdapter { getItem(key: string): string | null; setItem(key: string, value: string): void }
+export interface StorageAdapter { getItem(key: string): string | null; setItem(key: string, value: string): void }
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const isObject = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 export const SEARCH_TEMPLATE_TEXT_MAX_LENGTH = 12000;
@@ -109,9 +110,13 @@ export function mergeMetaSearches(templates: SearchTemplate[]): SearchTemplate {
   return readSearchTemplate(primary);
 }
 
+export function searchTemplateStorageKey(userId: string) {
+  return `cv.search-templates.v1:${encodeURIComponent(userId || 'local')}`;
+}
+
 /** Synchronous commit-driven storage; failures leave the caller's editor intact. */
 export function createSearchTemplateRepository(storage: StorageAdapter, userId: string) {
-  const key = `cv.search-templates.v1:${encodeURIComponent(userId || 'local')}`;
+  const key = searchTemplateStorageKey(userId);
   function listTemplates(): SearchTemplate[] {
     const raw = storage.getItem(key);
     if (!raw) return clone(DEFAULT_SEARCH_TEMPLATES);
@@ -139,15 +144,9 @@ export function createSearchTemplateRepository(storage: StorageAdapter, userId: 
       if (baseline) {
         const original = readSearchTemplate(baseline);
         if (original.id !== template.id || !previous) throw new Error('This meta search is no longer saved. Your edits remain in the editor.');
-        const merged: Record<string, unknown> = { ...previous };
-        for (const field of Object.keys({ ...original, ...template }) as (keyof SearchTemplate)[]) {
-          if (['id', 'revision', 'updatedAt'].includes(field)) continue;
-          const before = JSON.stringify(original[field]); const incoming = JSON.stringify(template[field]); const current = JSON.stringify(previous[field]);
-          if (before === incoming) continue;
-          if (current !== before && current !== incoming) throw new Error('This meta search changed in another tab. Your edits remain here; copy them before reloading.');
-          merged[field] = template[field];
-        }
-        template = readSearchTemplate(merged);
+        const { value, conflicts } = mergeRecordChanges(original, template, previous, ['id', 'revision', 'updatedAt']);
+        if (conflicts.length) throw new Error('This meta search changed in another tab. Your edits remain here; copy them before reloading.');
+        template = readSearchTemplate(value);
       }
       if (previous && JSON.stringify({ ...template, revision: previous.revision, updatedAt: previous.updatedAt }) === JSON.stringify(previous)) return clone(previous);
       const saved = { ...template, revision: previous ? previous.revision + 1 : 1, updatedAt: new Date().toISOString() };

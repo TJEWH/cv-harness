@@ -6,6 +6,7 @@ import { CONTACT_FIELDS } from '../../../documents/cv/types';
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, useId, watch } from 'vue';
 import Draggable from 'vuedraggable';
 import SectionList from './SectionList.vue';
+import CvSectionFrame from './CvSectionFrame.vue';
 import SectionHeading from '../../../shared/ui/SectionHeading.vue';
 import PrivacySectionHeading from '../../../documents/privacy/components/PrivacySectionHeading.vue';
 import ContactFields from './ContactFields.vue';
@@ -18,7 +19,7 @@ import ConfirmDeletionDialog from '../../../shared/ui/ConfirmDeletionDialog.vue'
 import SectionVersionSelect from './SectionVersionSelect.vue';
 import CopyCvSection from './CopyCvSection.vue';
 import { useSectionVersions } from '../composables/useSectionVersions.ts';
-import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
+import { flushEditorSessionSync } from '../../../shared/editing/editorSession';
 import { CV_TEXTAREA_COMMIT } from '../../../documents/cv/composables/cvTextareaCommit';
 import { makeT } from '../../../i18n/dict.ts';
 import { createContentId, moveSectionInOrder, normalizeContentState } from '../../../documents/layout/contentLayout.ts';
@@ -70,13 +71,23 @@ provide(CV_TEXTAREA_COMMIT, () => {
   sectionVersions.flush();
   commitParentTextarea();
 });
+let sectionSessionEpoch = 0;
+let sectionSessionDisposed = false;
+watch(() => props.selectedId, () => { sectionSessionEpoch++; }, { flush: 'sync' });
+onBeforeUnmount(() => { sectionSessionDisposed = true; sectionSessionEpoch++; });
 function flushSectionSaves() {
-  commitPendingTextareas();
-  return sectionVersions.flush();
+  const epoch = sectionSessionEpoch;
+  return flushEditorSessionSync({
+    current: () => !sectionSessionDisposed && epoch === sectionSessionEpoch,
+    steps: [() => sectionVersions.flush()],
+  });
 }
 function resetSectionVersions() {
-  commitPendingTextareas();
-  return sectionVersions.reset();
+  const epoch = sectionSessionEpoch;
+  return flushEditorSessionSync({
+    current: () => !sectionSessionDisposed && epoch === sectionSessionEpoch,
+    steps: [() => sectionVersions.reset()],
+  });
 }
 const versionMode = sectionVersions.enabled;
 const showConfig = computed(() => configMode.value && !versionMode.value && !reorderMode.value);
@@ -114,7 +125,7 @@ const selectSectionVersion = (key: string, id: string) => {
   pendingDeletion.value = null;
   sectionVersions.select(key, id);
 };
-defineExpose({ flushSectionSaves, resetSectionVersions });
+defineExpose({ flush: flushSectionSaves, flushSectionSaves, resetSectionVersions });
 const collapsed = reactive<Record<string, boolean>>({
   about: true,
   education: true,
@@ -134,12 +145,6 @@ const builtInNames = computed<Record<string, string>>(() => ({
   languages: t('languagesTitle'),
   hobbies: t('hobbiesTitle'),
 }));
-const headerSizeOptions = computed(() => [
-  { label: 'H2', value: 'h2' },
-  { label: 'H3', value: 'h3' },
-  { label: 'H4', value: 'h4' },
-  { label: t('noTitle'), value: 'null' },
-]);
 const levelTypeOptions = computed(() => [
   { label: t('noLevel'), value: null },
   { label: t('experienceLevel'), value: 'experience' },
@@ -209,10 +214,6 @@ const toggleCollapsed = (key: string) => {
   if (reorderMode.value) return;
   if (Object.hasOwn(collapsed, key)) collapsed[key] = !collapsed[key];
   else customCollapsed[key] = !isCollapsed(key);
-};
-const isHeaderControl = (target: EventTarget | null) => target instanceof Element && target.closest('button, input, select, textarea, a, [contenteditable="true"], .p-select');
-const onHeaderClick = (key: string, event: MouseEvent) => {
-  if (!isHeaderControl(event.target)) toggleCollapsed(key);
 };
 
 const startEditSectionName = (key: string) => {
@@ -286,6 +287,28 @@ const editableTitleProps = (key: string) => ({
   isEditingTitle: editingSection.id === key,
   editingTitleValue: editingSection.value,
   titlePlaceholder: getDefaultName(key),
+});
+const sectionFrameProps = (key: string, area: ContentArea) => ({
+  contentId: sectionContentId(key), lang: langRef.value, title: getSectionDisplayName(key),
+  disabled: isHidden(key), completed: isComplete(key), collapsed: isCollapsed(key),
+  visibilityLocked: visibilityLocked(key),
+  visibilityLabel: `${t(isHidden(key) ? 'show' : 'hide')}: ${getSectionDisplayName(key)}`,
+  modes: { config: showConfig.value, reorder: reorderMode.value, versions: versionMode.value, todos: todosMode.value },
+  titleEditor: { editable: showConfig.value, editing: editingSection.id === key, value: editingSection.value,
+    placeholder: key === 'about' ? getDefaultName(key) : undefined },
+  headerSize: key === 'about' ? state.value.sectionHeaderSizes[key] ?? DEFAULT_SECTION_HEADER_SIZE : state.value.sectionHeaderSizes[key],
+  keepTogether: area === 'body' ? isKeptTogether(key) : undefined,
+});
+const sectionFrameEvents = (key: string) => ({
+  'toggle-section': () => toggleDisabled(key),
+  'toggle-collapse': () => toggleCollapsed(key),
+  'toggle-complete': () => toggleComplete(key),
+  'toggle-keep-together': () => toggleKeepTogether(key),
+  'start-edit-title': () => startEditSectionName(key),
+  'finish-edit-title': (restoreFocus: boolean) => finishEditSectionName(key, restoreFocus),
+  'cancel-edit-title': (restoreFocus: boolean) => cancelEditSectionName(restoreFocus),
+  'update-editing-value': (value: string) => { editingSection.value = value; },
+  'header-size-change': (value: string) => { state.value.sectionHeaderSizes[key] = value; },
 });
 watch(() => editingSection.id, (key) => {
   if (!key) return;
@@ -487,25 +510,11 @@ const hobbiesSchema = computed<ItemField[]>(() => [{ label: t('hobby'), key: 'na
           <template #item="{ element: { key, section } }: { element: BodyRow }">
             <div class="content-section-card" :data-section-key="key">
               <button v-if="reorderMode" class="section-drag-handle" type="button" :aria-label="`${t('moveSection')}: ${getSectionDisplayName(key)}`" :title="t('moveSection')" @click.stop @keydown.up.prevent.stop="moveSection('bodyOrder', key, -1, $event)" @keydown.down.prevent.stop="moveSection('bodyOrder', key, 1, $event)"><font-awesome-icon :icon="['fas', 'grip-vertical']" aria-hidden="true" /></button>
-            <section v-if="key === 'about'" class="section-group content-section" :class="{ disabled: isHidden(key), completed: todosMode && isComplete(key), collapsed: isCollapsed(key) }">
-              <div class="section-head" @click="onHeaderClick(key, $event)">
-                <button class="mini visibility-toggle" :class="isHidden(key) ? 'btn--success' : 'btn--danger'" type="button" :aria-label="`${isHidden(key) ? t('show') : t('hide')}: ${getSectionDisplayName(key)}`" :title="isHidden(key) ? t('show') : t('hide')" :disabled="visibilityLocked(key)" @click.stop="toggleDisabled(key)"><font-awesome-icon :icon="['fas', isHidden(key) ? 'eye-slash' : 'eye']" /></button>
-                <PrivacySectionHeading v-if="privacyMode" :owner="props.state.sectionNames" :field="key" :placeholder="builtInNames[key]" :title="getSectionDisplayName(key)" :lang="langRef" :collapsed="isCollapsed(key)" :controls="sectionContentId(key)" @toggle-collapse="toggleCollapsed(key)" />
-                <SectionHeading v-else-if="editingSection.id !== key" :title="getSectionDisplayName(key)" :collapsed="isCollapsed(key)" :controls="sectionContentId(key)" :editing="showConfig" :edit-label="t('renameSection')" :disabled="reorderMode" @activate="showConfig ? startEditSectionName(key) : toggleCollapsed(key)" @toggle-collapse="toggleCollapsed(key)" />
-                <InputText v-else v-model="editingSection.value" class="section-name-input" :aria-label="t('renameSection')" :placeholder="getDefaultName(key)" @click.stop @blur="finishEditSectionName(key)" @keyup.enter="finishEditSectionName(key, true)" @keyup.esc="cancelEditSectionName(true)" />
-                <SectionVersionSelect v-if="versionMode" v-bind="versionSelectProps(key)" @update:model-value="selectSectionVersion(key, $event)" />
-                <div v-else class="section-head__actions">
-                  <button v-if="showConfig" class="section-header-control section-break-toggle" :class="{ 'section-break-toggle--active': isKeptTogether(key) }" type="button" :aria-pressed="isKeptTogether(key)" :aria-label="isKeptTogether(key) ? t('allowPageBreaks') : t('preventPageBreaks')" :title="isKeptTogether(key) ? t('allowPageBreaks') : t('preventPageBreaks')" @click.stop="toggleKeepTogether(key)"><font-awesome-icon :icon="['fas', isKeptTogether(key) ? 'lock' : 'lock-open']" /></button>
-                  <Select v-if="showConfig" :model-value="state.sectionHeaderSizes[key] ?? DEFAULT_SECTION_HEADER_SIZE" :options="headerSizeOptions" option-label="label" option-value="value" class="header-size-select" :aria-label="t('headingSize')" @update:model-value="state.sectionHeaderSizes[key] = $event" />
-                  <label v-if="todosMode" class="section-complete-toggle" :title="t('markComplete')" @click.stop><input type="checkbox" :checked="isComplete(key)" :aria-label="t('markComplete')" @change="toggleComplete(key)" /></label>
-                </div>
-              </div>
-              <div :id="sectionContentId(key)" class="section-content" :inert="isCollapsed(key)">
-                <div class="section-content__inner">
-                  <PrivacyField :owner="state.about" field="text" v-slot="{ disabled }"><div class="markdown-field about-editor"><div class="hint-label-row"><label :for="`${editorId}-about-text`">{{ t('aboutTextLabel') }}</label><InfoHint :id="`${editorId}-about-text-help`" :lang="langRef" :label="t('aboutTextLabel')" :text="t('markdownTextareaHelp')" /></div><MarkdownTextarea :id="`${editorId}-about-text`" :disabled="disabled" v-model="state.about.text" :aria-label="t('aboutTextLabel')" placeholder="Me in a nutshell..." :aria-describedby="`${editorId}-about-text-help`" :rows="4" /></div></PrivacyField>
-                </div>
-              </div>
-            </section>
+            <CvSectionFrame v-if="key === 'about'" class="content-section" v-bind="sectionFrameProps(key, 'body')" v-on="sectionFrameEvents(key)">
+              <template v-if="privacyMode" #heading><PrivacySectionHeading :owner="props.state.sectionNames" :field="key" :placeholder="builtInNames[key]" :title="getSectionDisplayName(key)" :lang="langRef" :collapsed="isCollapsed(key)" :controls="sectionContentId(key)" @toggle-collapse="toggleCollapsed(key)" /></template>
+              <template #section-version><SectionVersionSelect v-bind="versionSelectProps(key)" @update:model-value="selectSectionVersion(key, $event)" /></template>
+              <PrivacyField :owner="state.about" field="text" v-slot="{ disabled }"><div class="markdown-field about-editor"><div class="hint-label-row"><label :for="`${editorId}-about-text`">{{ t('aboutTextLabel') }}</label><InfoHint :id="`${editorId}-about-text-help`" :lang="langRef" :label="t('aboutTextLabel')" :text="t('markdownTextareaHelp')" /></div><MarkdownTextarea :id="`${editorId}-about-text`" :disabled="disabled" v-model="state.about.text" :aria-label="t('aboutTextLabel')" placeholder="Me in a nutshell..." :aria-describedby="`${editorId}-about-text-help`" :rows="4" /></div></PrivacyField>
+            </CvSectionFrame>
 
             <SectionList
               v-else-if="key === 'education'"
@@ -523,41 +532,29 @@ const hobbiesSchema = computed<ItemField[]>(() => [{ label: t('hobby'), key: 'na
               :title="getSectionDisplayName(key)" :lang="langRef" section-key="jobs" v-model="state.experience.jobs" :schema="jobsSchema" :add-label="privacyMode ? '' : t('addItem')" :disabled="isHidden(key)" :completed="isComplete(key)" :is-collapsed="isCollapsed(key)" :show-keep-together="true" :keep-together="isKeptTogether(key)" v-bind="editableTitleProps(key)"
               :header-size="state.sectionHeaderSizes[key] ?? DEFAULT_SECTION_HEADER_SIZE" @toggle-section="toggleDisabled(key)" @toggle-complete="toggleComplete(key)" @toggle-keep-together="toggleKeepTogether(key)" @toggle-collapse="toggleCollapsed(key)" @start-edit-title="startEditSectionName(key)" @finish-edit-title="finishEditSectionName(key)" @cancel-edit-title="cancelEditSectionName()" @update-editing-value="editingSection.value = $event" @header-size-change="state.sectionHeaderSizes[key] = $event"
             ><template #heading="{ controls }" v-if="privacyMode"><PrivacySectionHeading :owner="props.state.sectionNames" :field="key" :placeholder="builtInNames[key]" :title="getSectionDisplayName(key)" :lang="langRef" :collapsed="isCollapsed(key)" :controls="controls" @toggle-collapse="toggleCollapsed(key)" /></template><template #section-version><SectionVersionSelect v-bind="versionSelectProps(key)" @update:model-value="selectSectionVersion(key, $event)" /></template></SectionList>
-            <section v-else-if="section" class="section-group content-section" :class="{ disabled: isHidden(key), completed: todosMode && isComplete(key), collapsed: isCollapsed(key) }">
-              <div class="section-head" @click="onHeaderClick(key, $event)">
-                <button class="mini visibility-toggle" :class="isHidden(key) ? 'btn--success' : 'btn--danger'" type="button" :aria-label="`${isHidden(key) ? t('show') : t('hide')}: ${getSectionDisplayName(key)}`" :title="isHidden(key) ? t('show') : t('hide')" :disabled="visibilityLocked(key)" @click.stop="toggleDisabled(key)"><font-awesome-icon :icon="['fas', isHidden(key) ? 'eye-slash' : 'eye']" /></button>
-                <PrivacySectionHeading v-if="privacyMode" :owner="section" field="name"  :title="getSectionDisplayName(key)" :lang="langRef" :collapsed="isCollapsed(key)" :controls="sectionContentId(key)" @toggle-collapse="toggleCollapsed(key)" />
-                <SectionHeading v-else-if="editingSection.id !== key" :title="getSectionDisplayName(key)" :collapsed="isCollapsed(key)" :controls="sectionContentId(key)" :editing="showConfig" :edit-label="t('renameSection')" :disabled="reorderMode" @activate="showConfig ? startEditSectionName(key) : toggleCollapsed(key)" @toggle-collapse="toggleCollapsed(key)" />
-                <InputText v-else v-model="editingSection.value" class="section-name-input" :aria-label="t('renameSection')" @click.stop @blur="finishEditSectionName(key)" @keyup.enter="finishEditSectionName(key, true)" @keyup.esc="cancelEditSectionName(true)" />
-                <SectionVersionSelect v-if="versionMode" v-bind="versionSelectProps(key)" @update:model-value="selectSectionVersion(key, $event)" />
-                <div v-else class="section-head__actions">
-                  <button v-if="showConfig" class="section-header-control section-header-control--danger" type="button" :aria-label="t('remove')" :title="t('remove')" @click.stop="requestSectionDeletion(section, 'body')"><font-awesome-icon :icon="['fas', 'trash']" /></button>
-                  <button v-if="showConfig" class="section-header-control section-fields-control" type="button" :aria-label="t('fields')" :title="t('fields')" @click.stop="openFieldConfig(section)"><font-awesome-icon :icon="['fas', 'sliders']" aria-hidden="true" /><span>{{ t('fields') }}</span></button>
-                  <button v-if="showConfig" class="section-header-control section-break-toggle" :class="{ 'section-break-toggle--active': isKeptTogether(key) }" type="button" :aria-pressed="isKeptTogether(key)" :aria-label="isKeptTogether(key) ? t('allowPageBreaks') : t('preventPageBreaks')" :title="isKeptTogether(key) ? t('allowPageBreaks') : t('preventPageBreaks')" @click.stop="toggleKeepTogether(key)"><font-awesome-icon :icon="['fas', isKeptTogether(key) ? 'lock' : 'lock-open']" /></button>
-                  <Select v-if="showConfig" v-model="state.sectionHeaderSizes[key]" :options="headerSizeOptions" option-label="label" option-value="value" class="header-size-select" :aria-label="t('headingSize')" />
-                  <label v-if="todosMode" class="section-complete-toggle" :title="t('markComplete')" @click.stop><input type="checkbox" :checked="isComplete(key)" :aria-label="t('markComplete')" @change="toggleComplete(key)" /></label>
-                </div>
-              </div>
-              <div :id="sectionContentId(key)" class="section-content" :inert="isCollapsed(key)">
-                <div class="section-content__inner">
-                  <PrivacyField :owner="section" field="text" v-if="usesCustomBodyTextarea(section)" v-slot="{ disabled }"><div class="markdown-field about-editor"><div class="hint-label-row"><label :for="`${editorId}-${section.id}-text`">{{ t('textarea') }}</label><InfoHint :id="`${editorId}-${section.id}-text-help`" :lang="langRef" :label="t('textarea')" :text="t('markdownTextareaHelp')" /></div><MarkdownTextarea :id="`${editorId}-${section.id}-text`" :disabled="disabled" v-model="section.text" :aria-label="t('textarea')" :aria-describedby="`${editorId}-${section.id}-text-help`" :rows="6" /></div></PrivacyField>
-                  <template v-else>
-                    <SectionItems v-model="section.entries" :lang="langRef" :reorder-mode="reorderMode">
-                      <template #default="{ item: entry, index }">
-                        <div class="item-row__actions"><button class="mini visibility-toggle" :class="entry.hidden ? 'btn--success' : 'btn--danger'" type="button" :aria-label="entry.hidden ? t('show') : t('hide')" :title="entry.hidden ? t('show') : t('hide')" :disabled="visibilityLocked(entry.id)" @click="toggleItemHidden(entry)"><font-awesome-icon :icon="['fas', entry.hidden ? 'eye-slash' : 'eye']" /></button><button v-if="showConfig" class="mini btn--danger" type="button" :aria-label="t('remove')" :title="t('remove')" @click="requestBodyEntryDeletion(section, index)"><font-awesome-icon :icon="['fas', 'trash']" /></button></div>
-                        <div class="item-row__content">
-                          <div v-if="enabledCustomBodyEntryFields(section).length" class="custom-body-entry__fields" :style="{ '--custom-body-field-count': enabledCustomBodyEntryFields(section).length }">
-                            <PrivacyField :owner="entry" :field="field.key" v-for="field in enabledCustomBodyEntryFields(section)" :key="field.key" v-slot="{ disabled }"><label>{{ field.label }}<InputText :disabled="disabled" v-if="field.type === 'text'" v-model="entry[field.key]" :placeholder="field.placeholder" fluid /><Select :disabled="disabled" v-else-if="field.type === 'select'" v-model="entry[field.key]" :options="field.options" option-label="label" option-value="value" :aria-label="field.label" fluid /></label></PrivacyField>
-                          </div>
-                          <PrivacyField :owner="entry" field="desc" v-if="isCustomBodyFieldEnabled(section, 'desc')" v-slot="{ disabled }"><div class="markdown-field"><div class="hint-label-row"><label :for="`${editorId}-${section.id}-${entry.id}-desc`">{{ t('desc') }}</label><InfoHint :id="`${editorId}-${section.id}-${entry.id}-desc-help`" :lang="langRef" :label="t('desc')" :text="t('markdownTextareaHelp')" /></div><MarkdownTextarea :id="`${editorId}-${section.id}-${entry.id}-desc`" :disabled="disabled" v-model="entry.desc" :aria-label="t('desc')" :placeholder="customBodyFieldOptions.find((field) => field.key === 'desc')?.placeholder" :aria-describedby="`${editorId}-${section.id}-${entry.id}-desc-help`" /></div></PrivacyField>
-                        </div>
-                      </template>
-                    </SectionItems>
-                    <button v-if="!privacyMode && !reorderMode" type="button" class="add-item-row" @click="addBodyEntry(section)"><font-awesome-icon :icon="['fas', 'plus']" aria-hidden="true" />{{ t('addItem') }}</button>
+            <CvSectionFrame v-else-if="section" class="content-section" v-bind="sectionFrameProps(key, 'body')" v-on="sectionFrameEvents(key)">
+              <template v-if="privacyMode" #heading><PrivacySectionHeading :owner="section" field="name"  :title="getSectionDisplayName(key)" :lang="langRef" :collapsed="isCollapsed(key)" :controls="sectionContentId(key)" @toggle-collapse="toggleCollapsed(key)" /></template>
+              <template #section-version><SectionVersionSelect v-bind="versionSelectProps(key)" @update:model-value="selectSectionVersion(key, $event)" /></template>
+              <template v-if="showConfig" #actions>
+                <button class="section-header-control section-header-control--danger" type="button" :aria-label="t('remove')" :title="t('remove')" @click.stop="requestSectionDeletion(section, 'body')"><font-awesome-icon :icon="['fas', 'trash']" /></button>
+                <button class="section-header-control section-fields-control" type="button" :aria-label="t('fields')" :title="t('fields')" @click.stop="openFieldConfig(section)"><font-awesome-icon :icon="['fas', 'sliders']" aria-hidden="true" /><span>{{ t('fields') }}</span></button>
+              </template>
+              <PrivacyField :owner="section" field="text" v-if="usesCustomBodyTextarea(section)" v-slot="{ disabled }"><div class="markdown-field about-editor"><div class="hint-label-row"><label :for="`${editorId}-${section.id}-text`">{{ t('textarea') }}</label><InfoHint :id="`${editorId}-${section.id}-text-help`" :lang="langRef" :label="t('textarea')" :text="t('markdownTextareaHelp')" /></div><MarkdownTextarea :id="`${editorId}-${section.id}-text`" :disabled="disabled" v-model="section.text" :aria-label="t('textarea')" :aria-describedby="`${editorId}-${section.id}-text-help`" :rows="6" /></div></PrivacyField>
+              <template v-else>
+                <SectionItems v-model="section.entries" :lang="langRef" :reorder-mode="reorderMode">
+                  <template #default="{ item: entry, index }">
+                    <div class="item-row__actions"><button class="mini visibility-toggle" :class="entry.hidden ? 'btn--success' : 'btn--danger'" type="button" :aria-label="entry.hidden ? t('show') : t('hide')" :title="entry.hidden ? t('show') : t('hide')" :disabled="visibilityLocked(entry.id)" @click="toggleItemHidden(entry)"><font-awesome-icon :icon="['fas', entry.hidden ? 'eye-slash' : 'eye']" /></button><button v-if="showConfig" class="mini btn--danger" type="button" :aria-label="t('remove')" :title="t('remove')" @click="requestBodyEntryDeletion(section, index)"><font-awesome-icon :icon="['fas', 'trash']" /></button></div>
+                    <div class="item-row__content">
+                      <div v-if="enabledCustomBodyEntryFields(section).length" class="custom-body-entry__fields" :style="{ '--custom-body-field-count': enabledCustomBodyEntryFields(section).length }">
+                        <PrivacyField :owner="entry" :field="field.key" v-for="field in enabledCustomBodyEntryFields(section)" :key="field.key" v-slot="{ disabled }"><label>{{ field.label }}<InputText :disabled="disabled" v-if="field.type === 'text'" v-model="entry[field.key]" :placeholder="field.placeholder" fluid /><Select :disabled="disabled" v-else-if="field.type === 'select'" v-model="entry[field.key]" :options="field.options" option-label="label" option-value="value" :aria-label="field.label" fluid /></label></PrivacyField>
+                      </div>
+                      <PrivacyField :owner="entry" field="desc" v-if="isCustomBodyFieldEnabled(section, 'desc')" v-slot="{ disabled }"><div class="markdown-field"><div class="hint-label-row"><label :for="`${editorId}-${section.id}-${entry.id}-desc`">{{ t('desc') }}</label><InfoHint :id="`${editorId}-${section.id}-${entry.id}-desc-help`" :lang="langRef" :label="t('desc')" :text="t('markdownTextareaHelp')" /></div><MarkdownTextarea :id="`${editorId}-${section.id}-${entry.id}-desc`" :disabled="disabled" v-model="entry.desc" :aria-label="t('desc')" :placeholder="customBodyFieldOptions.find((field) => field.key === 'desc')?.placeholder" :aria-describedby="`${editorId}-${section.id}-${entry.id}-desc-help`" /></div></PrivacyField>
+                    </div>
                   </template>
-                </div>
-              </div>
-            </section>
+                </SectionItems>
+                <button v-if="!privacyMode && !reorderMode" type="button" class="add-item-row" @click="addBodyEntry(section)"><font-awesome-icon :icon="['fas', 'plus']" aria-hidden="true" />{{ t('addItem') }}</button>
+              </template>
+            </CvSectionFrame>
             </div>
           </template>
           <template #footer>
@@ -600,35 +597,24 @@ const hobbiesSchema = computed<ItemField[]>(() => [{ label: t('hobby'), key: 'na
               :title="getSectionDisplayName(key)" :lang="langRef" section-key="hobbies" v-model="state.hobbies" :schema="hobbiesSchema" :add-label="privacyMode ? '' : t('addItem')" :disabled="isHidden(key)" :completed="isComplete(key)" :is-collapsed="isCollapsed(key)" v-bind="editableTitleProps(key)"
               :header-size="state.sectionHeaderSizes[key] ?? DEFAULT_SECTION_HEADER_SIZE" @toggle-section="toggleDisabled(key)" @toggle-complete="toggleComplete(key)" @toggle-collapse="toggleCollapsed(key)" @start-edit-title="startEditSectionName(key)" @finish-edit-title="finishEditSectionName(key)" @cancel-edit-title="cancelEditSectionName()" @update-editing-value="editingSection.value = $event" @header-size-change="state.sectionHeaderSizes[key] = $event"
             ><template #heading="{ controls }" v-if="privacyMode"><PrivacySectionHeading :owner="props.state.sectionNames" :field="key" :placeholder="builtInNames[key]" :title="getSectionDisplayName(key)" :lang="langRef" :collapsed="isCollapsed(key)" :controls="controls" @toggle-collapse="toggleCollapsed(key)" /></template><template #section-version><SectionVersionSelect v-bind="versionSelectProps(key)" @update:model-value="selectSectionVersion(key, $event)" /></template></SectionList>
-            <section v-else-if="section" class="section-group content-section" :class="{ disabled: isHidden(key), completed: todosMode && isComplete(key), collapsed: isCollapsed(key) }">
-              <div class="section-head" @click="onHeaderClick(key, $event)">
-                <button class="mini visibility-toggle" :class="isHidden(key) ? 'btn--success' : 'btn--danger'" type="button" :aria-label="`${isHidden(key) ? t('show') : t('hide')}: ${getSectionDisplayName(key)}`" :title="isHidden(key) ? t('show') : t('hide')" :disabled="visibilityLocked(key)" @click.stop="toggleDisabled(key)"><font-awesome-icon :icon="['fas', isHidden(key) ? 'eye-slash' : 'eye']" /></button>
-                <PrivacySectionHeading v-if="privacyMode" :owner="section" field="name"  :title="getSectionDisplayName(key)" :lang="langRef" :collapsed="isCollapsed(key)" :controls="sectionContentId(key)" @toggle-collapse="toggleCollapsed(key)" />
-                <SectionHeading v-else-if="editingSection.id !== key" :title="getSectionDisplayName(key)" :collapsed="isCollapsed(key)" :controls="sectionContentId(key)" :editing="showConfig" :edit-label="t('renameSection')" :disabled="reorderMode" @activate="showConfig ? startEditSectionName(key) : toggleCollapsed(key)" @toggle-collapse="toggleCollapsed(key)" />
-                <InputText v-else v-model="editingSection.value" class="section-name-input" :aria-label="t('renameSection')" @click.stop @blur="finishEditSectionName(key)" @keyup.enter="finishEditSectionName(key, true)" @keyup.esc="cancelEditSectionName(true)" />
-                <SectionVersionSelect v-if="versionMode" v-bind="versionSelectProps(key)" @update:model-value="selectSectionVersion(key, $event)" />
-                <div v-else class="section-head__actions">
-                  <button v-if="showConfig" class="section-header-control section-header-control--danger" type="button" :aria-label="t('remove')" :title="t('remove')" @click.stop="requestSectionDeletion(section, 'sidebar')"><font-awesome-icon :icon="['fas', 'trash']" /></button>
-                  <Select v-if="showConfig" v-model="section.levelType" class="section-level-select" :options="levelTypeOptions" option-label="label" option-value="value" :aria-label="t('levelType')" :title="t('levelType')" />
-                  <Select v-if="showConfig" v-model="state.sectionHeaderSizes[key]" :options="headerSizeOptions" option-label="label" option-value="value" class="header-size-select" :aria-label="t('headingSize')" />
-                  <label v-if="todosMode" class="section-complete-toggle" :title="t('markComplete')" @click.stop><input type="checkbox" :checked="isComplete(key)" :aria-label="t('markComplete')" @change="toggleComplete(key)" /></label>
-                </div>
-              </div>
-              <div :id="sectionContentId(key)" class="section-content" :inert="isCollapsed(key)">
-                <div class="section-content__inner">
-                  <SectionItems v-model="section.items" :lang="langRef" :reorder-mode="reorderMode">
-                    <template #default="{ item, index }">
-                      <div class="item-row__actions"><button class="mini visibility-toggle" :class="item.hidden ? 'btn--success' : 'btn--danger'" type="button" :aria-label="item.hidden ? t('show') : t('hide')" :title="item.hidden ? t('show') : t('hide')" :disabled="visibilityLocked(item.id)" @click="toggleItemHidden(item)"><font-awesome-icon :icon="['fas', item.hidden ? 'eye-slash' : 'eye']" /></button><button v-if="showConfig" class="mini btn--danger" type="button" :aria-label="t('remove')" :title="t('remove')" @click="requestSidebarItemDeletion(section, index)"><font-awesome-icon :icon="['fas', 'trash']" /></button></div>
-                      <div class="item-row__content sidebar-skill-row__content">
-                        <PrivacyField :owner="item" field="name" v-slot="{ disabled }"><label>{{ t('skillName') }}<InputText :disabled="disabled" v-model="item.name" :placeholder="t('skillPlaceholder')" fluid /></label></PrivacyField>
-                        <PrivacyField :owner="item" field="levelValue" v-if="section.levelType" v-slot="{ disabled }"><label>{{ t('levelValue') }}<InputNumber :disabled="disabled" :model-value="item.levelValue" @update:model-value="item.levelValue = $event ?? 0" :min="section.levelType === 'experience' ? 1 : 0" :max="section.levelType === 'experience' ? 10 : 99" :use-grouping="false" fluid /></label></PrivacyField>
-                      </div>
-                    </template>
-                  </SectionItems>
-                  <button v-if="!privacyMode && !reorderMode" type="button" class="add-item-row" @click="addSidebarItem(section)"><font-awesome-icon :icon="['fas', 'plus']" aria-hidden="true" />{{ t('addItem') }}</button>
-                </div>
-              </div>
-            </section>
+            <CvSectionFrame v-else-if="section" class="content-section" v-bind="sectionFrameProps(key, 'sidebar')" v-on="sectionFrameEvents(key)">
+              <template v-if="privacyMode" #heading><PrivacySectionHeading :owner="section" field="name"  :title="getSectionDisplayName(key)" :lang="langRef" :collapsed="isCollapsed(key)" :controls="sectionContentId(key)" @toggle-collapse="toggleCollapsed(key)" /></template>
+              <template #section-version><SectionVersionSelect v-bind="versionSelectProps(key)" @update:model-value="selectSectionVersion(key, $event)" /></template>
+              <template v-if="showConfig" #actions>
+                <button class="section-header-control section-header-control--danger" type="button" :aria-label="t('remove')" :title="t('remove')" @click.stop="requestSectionDeletion(section, 'sidebar')"><font-awesome-icon :icon="['fas', 'trash']" /></button>
+                <Select v-model="section.levelType" class="section-level-select" :options="levelTypeOptions" option-label="label" option-value="value" :aria-label="t('levelType')" :title="t('levelType')" />
+              </template>
+              <SectionItems v-model="section.items" :lang="langRef" :reorder-mode="reorderMode">
+                <template #default="{ item, index }">
+                  <div class="item-row__actions"><button class="mini visibility-toggle" :class="item.hidden ? 'btn--success' : 'btn--danger'" type="button" :aria-label="item.hidden ? t('show') : t('hide')" :title="item.hidden ? t('show') : t('hide')" :disabled="visibilityLocked(item.id)" @click="toggleItemHidden(item)"><font-awesome-icon :icon="['fas', item.hidden ? 'eye-slash' : 'eye']" /></button><button v-if="showConfig" class="mini btn--danger" type="button" :aria-label="t('remove')" :title="t('remove')" @click="requestSidebarItemDeletion(section, index)"><font-awesome-icon :icon="['fas', 'trash']" /></button></div>
+                  <div class="item-row__content sidebar-skill-row__content">
+                    <PrivacyField :owner="item" field="name" v-slot="{ disabled }"><label>{{ t('skillName') }}<InputText :disabled="disabled" v-model="item.name" :placeholder="t('skillPlaceholder')" fluid /></label></PrivacyField>
+                    <PrivacyField :owner="item" field="levelValue" v-if="section.levelType" v-slot="{ disabled }"><label>{{ t('levelValue') }}<InputNumber :disabled="disabled" :model-value="item.levelValue" @update:model-value="item.levelValue = $event ?? 0" :min="section.levelType === 'experience' ? 1 : 0" :max="section.levelType === 'experience' ? 10 : 99" :use-grouping="false" fluid /></label></PrivacyField>
+                  </div>
+                </template>
+              </SectionItems>
+              <button v-if="!privacyMode && !reorderMode" type="button" class="add-item-row" @click="addSidebarItem(section)"><font-awesome-icon :icon="['fas', 'plus']" aria-hidden="true" />{{ t('addItem') }}</button>
+            </CvSectionFrame>
             </div>
           </template>
           <template #footer>

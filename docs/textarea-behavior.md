@@ -26,6 +26,12 @@ Plain `v-model` is reserved for a draft whose setter and watchers do not persist
 
 Call `commitPendingTextareas()` from `src/shared/editing/textareaCommit.ts` before reading a save/export snapshot or replacing an editor's model. It publishes dirty drafts synchronously and guards nested flushes. Then flush the owning persistence layer; await asynchronous saves before navigating. The component also commits on outside pointer interaction before another control changes the editor. A normal drag within the textarea never commits.
 
+Owners use `shared/editing/editorSession.ts` to coordinate an exposed `flush(): boolean | Promise<boolean>`; local stores use the synchronous counterpart. The helper publishes drafts and requires explicit success from each ordered persistence step. Capture the owner/record lifecycle and child instances in its `current` guard. Keep save queues and recovery in the persistence owner.
+
+`commitPendingTextareas()` returns `false` while a registered textarea is composing. A blocked publication must keep the editor open; composition end clears readiness without saving. The session also records the native draft revision after publication. New typing during an awaited save prevents later steps from capturing that newer draft and prevents the exit. Model acknowledgements and draft publication do not count as native edits.
+
+When an external account change must replace an editor, publish the old owner’s drafts before resetting its models and key the native editor subtree by owner. A composing field must be removed without publishing into the incoming owner’s model; initialize that incoming editor independently of the old field’s blocked flush.
+
 `MarkdownTextarea` applies this behavior to CV content and signals the owning CV/section/privacy persistence layer to flush. Keep PDF preview refreshes separate from storage writes; Shift+Enter must not refresh a deferred preview.
 
 Description fields for attachments or approved privacy context can save private drafts on commit. Existing explicit actions still approve disclosure, upload a file, or publish metadata. Read-only textareas use the same selection behavior and have no persistence callback.

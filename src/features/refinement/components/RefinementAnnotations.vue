@@ -6,6 +6,7 @@ import { QUESTION_GROUPS, questionPresentation, type AnnotationView, type Questi
 import InfoHint from '../../../shared/ui/InfoHint.vue';
 import { useToasts } from '../../../shared/ui/useToasts';
 import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
+import { flushEditorSession } from '../../../shared/editing/editorSession';
 
 type Item = AnnotationView & { target: string; referenceChanged: boolean; included: boolean };
 const props = defineProps<{
@@ -48,11 +49,13 @@ type Commit = { key: string; item: Item; status: AnnotationStatus; response: str
 const queue: Commit[] = [];
 let activeCommit: Commit | null = null;
 let disposed = false;
+let editorSessionEpoch = 0;
+watch(() => props.items.map(key).join('\0'), () => { editorSessionEpoch++; }, { flush: 'sync' });
 watch(() => props.disabled || props.busy, blocked => {
   if (!blocked) void drain();
 });
 onBeforeUnmount(() => {
-  disposed = true;
+  disposed = true; editorSessionEpoch++;
   for (const commit of queue.splice(0)) commit.resolve(false);
   for (const id of [...conflictToasts.values(), ...saveToasts.values()]) dismiss(id);
 });
@@ -136,10 +139,13 @@ async function drain() {
     void drain();
   }
 }
-async function flush(): Promise<boolean> {
-  commitPendingTextareas();
-  const results = await Promise.all(props.items.map(item => save(item)));
-  return results.every(Boolean) && props.items.every(item => !dirty(item) && !drafts[key(item)]!.failed);
+function flush(): Promise<boolean> {
+  const epoch = editorSessionEpoch, items = [...props.items];
+  return flushEditorSession({
+    current: () => !disposed && epoch === editorSessionEpoch,
+    steps: [async () => (await Promise.all(items.map(item => save(item)))).every(saved => saved === true)],
+    settled: () => items.every(item => !dirty(item) && !drafts[key(item)]!.failed),
+  });
 }
 defineExpose({ flush });
 function failureMessage(item: Item) {

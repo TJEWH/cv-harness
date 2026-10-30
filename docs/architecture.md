@@ -20,7 +20,7 @@ Organize source by the workflow or document capability it belongs to. The first 
 | `src/documents/layout/` | Content ordering, timeline layout, and font loading shared by document rendering. |
 | `src/documents/pdf/` | Layout capture, vector rendering, PDF.js integration, preview controllers, and preview surfaces. |
 | `src/shared/ui/` | Shared controls, toasts, sidebar portals, and responsive action placement. |
-| `src/shared/editing/` | Textarea commit coordination and recoverable per-record text drafts. |
+| `src/shared/editing/` | Editor publication/flush coordination, textarea drafts, and recoverable per-record text drafts. |
 | `src/shared/lib/` | Markdown text, safe URL, and clipboard helpers. |
 | `src/platform/` | Supabase client/configuration, authentication, and paginated transport helpers. |
 | `src/i18n/` | The shared translation dictionary. |
@@ -47,21 +47,33 @@ Use explicit imports to the owning module. The current structure has no import-b
 
 ## Current cross-boundaries
 
+CV content editors share `features/cv-studio/components/CvSectionFrame.vue` for the section shell, collapse target, visibility, title editing, heading size, completion, and keep-together controls. `SectionList` supplies item editing; `FormBuilder` supplies custom body/sidebar fields. Privacy headings, version selectors, and section-specific actions use slots. The callers own editor state, IDs, focus restoration, and persistence; the frame only emits control actions.
+
+`features/meta-search/composables/useSharedSearchSource.ts` owns the shared search-profile read policy, local/cloud precedence, cached hydration, and account-scoped stale-result protection. Letter templates request a fresh cloud preview when no local source exists; applications can explicitly refresh an acknowledged local source. Application actions still decide when to capture or replace the independent `letter.searchProfile` snapshot. Loading the shared source performs no storage or cloud writes.
+
 The folders describe ownership. Several modules still combine responsibilities, and existing imports cross those folders:
 
 - `app/App.vue` coordinates navigation, local CV persistence, and previews. `app/components/JobWorkspace.vue` coordinates both opportunities and applications. `app/composables/useJobWorkspace.ts` owns their shared account lifecycle, cancellation, and ordered cloud mutations. Keep that coordination intact when extracting repositories in a later pass.
 - `app/cloudTypes.ts` contains application, opportunity-review, and CV-snapshot contracts. Other features and document modules still import those contracts.
 - `features/applications/applicationCv.ts` combines application CV persistence with copy/difference helpers. `features/refinement/applicationRefinement.ts` combines protocol validation, request/proposal operations, prompt construction, and cloud persistence. Both remain at their feature root until their responsibilities can be separated.
 - `documents/letter/motivationLetters.ts` combines template defaults, validation, local persistence, compatibility upgrades, and document revisions. `documents/letter/searchLetterContext.ts` imports meta-search contracts and content-key calculation to capture research interests for a letter.
-- `features/meta-search/data/useSearchTemplates.ts` combines defaults, compatibility conversion, validation, and the local repository. The search and letter repositories retain their own conflict-merge behavior.
+- `features/meta-search/data/useSearchTemplates.ts` combines defaults, compatibility conversion, validation, and the local repository. The search and letter repositories share the pure field merge in `shared/lib/mergeRecordChanges.ts`; each repository owns validation, conflict errors, metadata, revision and no-op rules, and writes.
 - `documents/cv/data/useStorage.ts` owns CV session storage and also exports a debounce helper used elsewhere. `documents/layout/webFonts.ts` includes browser font-loading behavior.
 - `features/opportunities/domain/opportunityContext.ts` imports presentation builders that refer back to its node types through type-only imports. The structural pass preserved those type relationships.
 
+CV Studio, application CVs, and letters share `documents/pdf/composables/useDocumentPdfPreview.ts` for render scheduling, stale-work cancellation, completed-page caching, input commit deferral, export coordination, and cleanup. Studio uses independent normal/privacy controllers with its existing timing and page-retention policies; it owns the shared export-error surface and renderer resource cleanup. Document source selection, signatures, render options, and visibility remain with each caller.
+
 Keep live-document rendering and existing-PDF parsing separate: `useDocumentPdfPreview` owns DOM rendering and export invalidation; `usePdfBlobPreview` owns PDF.js parsing and worker cleanup. Shared preview controls consume their results.
+
+`shared/lib/mergeRecordChanges.ts` applies a three-way field merge to the editor baseline, incoming editor value, and current saved value. It preserves concurrent changes in untouched fields and reports conflicting field names without mutating inputs or writing storage. Equality retains the repositories’ existing JSON serialization semantics.
 
 ## Editing and persistence contracts
 
 Follow the [textarea behavior](textarea-behavior.md). Use `shared/ui/AutosaveTextarea.vue` or the CV-specific `documents/cv/components/MarkdownTextarea.vue`, keep typing in a local draft, and commit on blur or Enter. Publish pending textareas through `shared/editing/textareaCommit.ts`, then await the relevant persistence flush before navigation or replacing an editor. A text commit must keep disclosure, upload, and workflow submission as separate actions.
+
+`shared/editing/editorSession.ts` defines the runtime `flush()` contract and its synchronous counterpart for local stores. A session publishes textarea drafts, drains ordered persistence steps, and returns an explicit safe-to-leave result. Owners capture their account/record lifecycle and child editors; the coordinator checks that scope, composition readiness, and the native draft revision before and after each step. New typing during an asynchronous save stays unpublished and prevents navigation. Existing method names remain compatibility aliases.
+
+CV Studio, job/application workspaces, search templates, CV sections, refinement annotations, and opportunity feedback/status controls use that coordination while retaining their own queues, snapshots, validation, recovery, and retries. Letter templates expose local-save flush; attachments expose private text-recovery flush only. A successful attachment flush does not save a file, share metadata, or approve disclosure. Failed local library drafts remain scoped to their account; forced account changes retain an in-memory recovery snapshot for that owner to revisit. Native library editor instances are keyed by account so an unfinished composition cannot cross into the incoming owner’s draft.
 
 `shared/editing/useApplicationNotesAutosave.ts` supports application notes and opportunity text drafts. Keep its account/record scoping, queued snapshots, recovery, and retries when reusing it.
 

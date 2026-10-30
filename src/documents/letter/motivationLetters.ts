@@ -1,3 +1,4 @@
+import { mergeRecordChanges } from '../../shared/lib/mergeRecordChanges';
 import type { Application } from '../../app/cloudTypes';
 import type { Contact, CvState } from '../cv/types';
 import type { ApplicationLetter, LetterContent, LetterContextVersion, LetterFormatting, LetterRevision, LetterTemplate } from './letterTypes';
@@ -181,19 +182,11 @@ export function createLetterRepository(storage: StorageAdapter, userId: string) 
         if (!previous) throw new Error('This template is no longer saved. Your edits are still in the editor.');
         // An editor can outlive writes from another tab. Apply only its actual
         // changes, so an untouched blank field cannot erase newer saved context.
-        const merged: Record<string, unknown> = { ...previous };
-        for (const key of Object.keys({ ...original, ...template }) as (keyof LetterTemplate)[]) {
-          if (key === 'id' || key === 'revision' || key === 'updatedAt') continue;
-          const before = JSON.stringify(original[key]);
-          const incoming = JSON.stringify(template[key]);
-          const current = JSON.stringify(previous[key]);
-          if (incoming === before) continue;
-          if (current !== before && current !== incoming) {
-            throw new Error('This template has conflicting changes in another tab. Your edits are still here. Copy them before reloading to review the latest saved version.');
-          }
-          merged[key] = template[key];
+        const { value, conflicts } = mergeRecordChanges(original, template, previous, ['id', 'revision', 'updatedAt']);
+        if (conflicts.length) {
+          throw new Error('This template has conflicting changes in another tab. Your edits are still here. Copy them before reloading to review the latest saved version.');
         }
-        template = readLetterTemplate(merged);
+        template = readLetterTemplate(value);
       }
       const saved = { ...template, revision: previous ? previous.revision + 1 : 1, updatedAt: now() };
       storage.setItem(templatesKey, JSON.stringify([...templates.filter((item) => item.id !== saved.id), saved]));

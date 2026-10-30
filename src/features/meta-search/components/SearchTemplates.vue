@@ -10,6 +10,7 @@ import { buildReplaceSearchPrompt, buildSearchSystemPrompt, buildSearchUserPromp
 import { listCloudSearchTemplates, importCloudSearchTemplate, saveSearchTemplate } from '../data/searchTemplateCloud';
 import { loadAdaptiveSearchRunnerState, requestAdaptiveSearchRunner, type AdaptiveSearchRunnerState } from '../domain/adaptiveSearchTask';
 import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
+import { flushEditorSession } from '../../../shared/editing/editorSession';
 import { copyPreparedText } from '../../../shared/lib/preparedClipboard';
 import { clearSearchDraft, recoverSearchDraft, retainSearchDraft } from '../data/searchTemplateRecovery';
 import { useDesktopSidebar } from '../../../shared/ui/desktopSidebar';
@@ -68,6 +69,8 @@ let dirty = false;
 let replacing = false;
 let disposed = false;
 let ownerGeneration = 0;
+let editorSessionEpoch = 0;
+watch([() => props.userId, () => props.client, () => props.sidebarActive], () => { editorSessionEpoch++; }, { flush: 'sync' });
 let typingVersion = 0;
 let modelVersion = 0;
 let committedTypingVersion = 0;
@@ -187,14 +190,22 @@ function flushSave(): Promise<boolean> {
   if (loadingCloud.value && !dirty) return ready.then(() => commitSnapshot(), () => false);
   return commitSnapshot();
 }
-async function flushTextareas() {
-  const token = ownerGeneration;
-  const result = await flushSave();
-  if (!result || disposed || token !== ownerGeneration || typingVersion !== committedTypingVersion) return false;
-  if (adaptiveDashboard.value && !await adaptiveDashboard.value.flush()) return false;
-  return !disposed && token === ownerGeneration && typingVersion === committedTypingVersion;
+function flushTextareas() {
+  const epoch = editorSessionEpoch, token = ownerGeneration;
+  let dashboard = adaptiveDashboard.value;
+  return flushEditorSession({
+    current: () => !disposed && epoch === editorSessionEpoch && token === ownerGeneration && (!dashboard || dashboard === adaptiveDashboard.value),
+    steps: [flushSave, () => {
+      // The first acknowledgement can mount this editor. Capture it only after
+      // the session has checked for newer drafts, then keep its identity fixed.
+      dashboard ??= adaptiveDashboard.value;
+      return dashboard ? dashboard.flush() : true;
+    }],
+    settled: () => typingVersion === committedTypingVersion,
+  });
 }
-defineExpose({ flushSave, flushTextareas });
+const flush = flushTextareas;
+defineExpose({ flush, flushSave, flushTextareas });
 watch(form, () => {
   if (replacing || !form.value) return;
   modelVersion++;

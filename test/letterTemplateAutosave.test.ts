@@ -8,25 +8,27 @@ import { createRenderer, h, nextTick, reactive, type Component } from 'vue';
 import { createLetterRepository, DEFAULT_LETTER_TEMPLATES, DEFAULT_REFINEMENT_SYSTEM_PROMPT } from '../src/documents/letter/motivationLetters';
 import type { LetterFormatting, LetterTemplate } from '../src/documents/letter/letterTypes';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { useSharedSearchSource } from '../src/features/meta-search/composables/useSharedSearchSource';
 import { createSearchTemplate, createSearchTemplateRepository } from '../src/features/meta-search/data/useSearchTemplates';
 import { useToasts, useToastWatch } from '../src/shared/ui/useToasts';
 import * as textareaCommit from '../src/shared/editing/textareaCommit';
+import * as editorSession from '../src/shared/editing/editorSession';
 
 const filename = new URL('../src/features/letter-templates/components/LetterTemplates.vue', import.meta.url);
 const compiled = compileScript(parse(readFileSync(filename, 'utf8')).descriptor, { id: 'letter-template-autosave' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exports: { default?: Component } = {};
 const requireComponent = createRequire(filename);
-new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} } : path.endsWith('/useToasts') ? { useToasts, useToastWatch } : path.endsWith('/textareaCommit') ? textareaCommit : requireComponent(path), exports);
+new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} } : path.endsWith('/useToasts') ? { useToasts, useToastWatch } : path.endsWith('/textareaCommit') ? textareaCommit : path.endsWith('/editorSession') ? editorSession : requireComponent(path), exports);
 const renderer = createRenderer<object, object>({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}),
   insert() {}, remove() {}, setText() {}, setElementText() {}, patchProp() {}, parentNode: () => null, nextSibling: () => null,
 });
 interface Editor {
   form: LetterTemplate; selectedId: string; saveStatus: string; error: string; isImporting: boolean;
-  select(id: string): void; create(): void; flushSave(): boolean;
+  select(id: string): void; create(): void; flushSave(): boolean; flush(): boolean;
   updateFormatting(value: LetterFormatting | undefined): void;
-  sharedResearchInterests: string; sharedInterestsState: string;
+  sharedSearchSource: ReturnType<typeof useSharedSearchSource>; sharedInterestsState: string;
   reloadSharedResearchInterests(): Promise<void>; updateResearchInterestSource(): void;
   importLibrary(event: Event): Promise<void>;
 }
@@ -51,7 +53,7 @@ function importFixture(t: TestContext, templates?: LetterTemplate[]) {
   const unmount = () => { if (mounted) { app.unmount(); mounted = false; } };
   t.after(() => { try { unmount(); useToasts().clear(); } finally { restoreGlobals.forEach(restore => restore()); } });
   const owner = createLetterRepository(storage, 'owner');
-  return { editor: (instance as { $: { setupState: Editor } }).$.setupState, props, owner, data, unmount };
+  return { exposed: instance as { flush(): boolean }, storage, editor: (instance as { $: { setupState: Editor } }).$.setupState, props, owner, data, unmount };
 }
 
 function pendingImport() {
@@ -338,7 +340,7 @@ test('the shared-interest preview reads the saved account source on a fresh devi
     return builder;
   } } as unknown as SupabaseClient;
   await settlePreview();
-  assert.equal(editor.sharedResearchInterests, 'Saved cloud acoustics; BCI');
+  assert.equal(editor.sharedSearchSource.templates.value[0]?.researchInterests || '', 'Saved cloud acoustics; BCI');
   assert.equal(editor.sharedInterestsState, 'ready');
   assert.deepEqual(queries, ['opportunity_search_templates']);
   assert.equal(data.has('cv.search-templates.v1:owner'), false);
@@ -358,13 +360,13 @@ test('late preview results cannot cross account changes or replace a committed l
   await settlePreview(); assert.equal(editor.sharedInterestsState, 'loading');
   props.userId = 'next-owner'; await settlePreview();
   finishes.get('owner')!({ data: [savedSharedSearch('owner', 'Old account interests')], error: null });
-  await settlePreview(); assert.equal(editor.sharedResearchInterests, '');
+  await settlePreview(); assert.equal(editor.sharedSearchSource.templates.value[0]?.researchInterests || '', '');
   const storage = { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => { data.set(key, value); } };
   const local = createSearchTemplate(); local.researchInterests = 'Newest committed local interests';
   createSearchTemplateRepository(storage, 'next-owner').saveTemplate(local);
   finishes.get('next-owner')!({ data: [savedSharedSearch('next-owner', 'Older cloud interests')], error: null });
   await settlePreview();
-  assert.equal(editor.sharedResearchInterests, 'Newest committed local interests');
+  assert.equal(editor.sharedSearchSource.templates.value[0]?.researchInterests || '', 'Newest committed local interests');
   assert.equal(editor.sharedInterestsState, 'ready');
 });
 
@@ -381,4 +383,131 @@ test('a failed preview read does not block saving the checkbox or custom interes
   assert.equal(editor.flushSave(), true);
   assert.equal(owner.defaultTemplate()?.researchInterests, 'My custom robotics interests');
   assert.equal(editor.saveStatus, 'saved');
+});
+
+test('the public letter flush publishes ready native drafts and blocks composition or invalid fields', t => {
+  const { editor, exposed, owner, data } = importFixture(t);
+  const before = new Map(data); const selected = editor.selectedId;
+  let ready = false; let publications = 0;
+  const unregister = textareaCommit.registerTextareaCommit(() => {
+    if (publications++) return;
+    editor.form.tone = 'Published only when the native draft is ready.';
+  }, () => ready);
+  t.after(unregister);
+
+  assert.equal(exposed.flush(), false);
+  editor.select('industry');
+  assert.equal(publications, 0); assert.equal(editor.selectedId, selected);
+  assert.deepEqual(data, before, 'composition cannot publish or persist an intermediate draft');
+  ready = true;
+  assert.equal(exposed.flush(), true);
+  assert.equal(owner.defaultTemplate()?.tone, 'Published only when the native draft is ready.');
+  editor.form.name = '';
+  const saved = owner.defaultTemplate();
+  assert.equal(exposed.flush(), false);
+  editor.select('industry');
+  assert.equal(editor.selectedId, selected); assert.equal(editor.form.name, '');
+  assert.deepEqual(owner.defaultTemplate(), saved, 'invalid committed fields remain a local draft');
+});
+
+test('failed letter saves recover only for their owner with selection, revision and merge baseline intact', async t => {
+  const { editor, exposed, owner, storage, props, data } = importFixture(t);
+  editor.select('industry');
+  const baseline = JSON.parse(JSON.stringify(editor.form)) as LetterTemplate; const selected = editor.selectedId;
+  let failOwner = true;
+  const originalSet = storage.setItem;
+  t.mock.method(storage, 'setItem', (key: string, value: string) => {
+    if (failOwner && key.startsWith('cv.letters.v1:owner:')) throw new Error('Owner storage full');
+    originalSet(key, value);
+  });
+  editor.form.name = 'Private owner template'; editor.form.tone = 'Private wording awaiting recovery.';
+  assert.equal(exposed.flush(), false);
+  const staleRetry = useToasts().toasts.value.at(-1)?.action?.run;
+  assert.ok(staleRetry);
+  editor.form.tone = 'Latest private wording after the failed attempt.';
+  props.userId = 'other'; await nextTick();
+  assert.notEqual(editor.form.name, 'Private owner template');
+  const otherBefore = new Map(data);
+  assert.equal(await staleRetry(), false); assert.deepEqual(data, otherBefore);
+  editor.form.name = 'Other account template'; assert.equal(exposed.flush(), true);
+
+  failOwner = false;
+  owner.saveTemplate({ ...baseline, researchInterests: 'A separate tab updated only this field.' });
+  failOwner = true;
+  props.userId = 'owner'; await nextTick();
+  assert.equal(editor.selectedId, selected); assert.equal(editor.form.revision, baseline.revision);
+  assert.equal(editor.form.name, 'Private owner template');
+  assert.equal(editor.form.tone, 'Latest private wording after the failed attempt.');
+  assert.equal(editor.saveStatus, 'error');
+  assert.equal(await staleRetry(), false, 'returning to an owner cannot revive an older retry closure');
+  const retry = useToasts().toasts.value.at(-1)?.action?.run; assert.ok(retry);
+  failOwner = false;
+  assert.equal(await retry(), true);
+  const saved = owner.listTemplates().find(item => item.id === selected)!;
+  assert.equal(saved.name, 'Private owner template'); assert.equal(saved.tone, editor.form.tone);
+  assert.equal(saved.researchInterests, 'A separate tab updated only this field.', 'recovery retains the original three-way merge baseline');
+  assert.ok(saved.revision > baseline.revision);
+  editor.select('research');
+  const afterSelection = new Map(data);
+  assert.equal(await retry(), false, 'retry actions cannot follow a different template selection');
+  assert.deepEqual(data, afterSelection);
+  props.userId = 'other'; await nextTick();
+  owner.saveTemplate({ ...saved, name: 'A later saved name' });
+  props.userId = 'owner'; await nextTick();
+  assert.equal(editor.selectedId, owner.defaultTemplate()?.id, 'a successful same-draft save removes the failed recovery editor');
+  editor.select(selected);
+  assert.equal(editor.form.name, 'A later saved name');
+  assert.equal(createLetterRepository(storage, 'other').listTemplates().some(item => item.name === 'Private owner template'), false);
+});
+
+test('invalid letter drafts survive a forced account change without overwriting the saved record', async t => {
+  const { editor, exposed, props, owner } = importFixture(t);
+  const saved = structuredClone(owner.defaultTemplate());
+  editor.form.name = ''; editor.form.structure = 'A private incomplete structure.';
+  assert.equal(exposed.flush(), false);
+  props.userId = 'other'; await nextTick();
+  assert.notEqual(editor.form.structure, 'A private incomplete structure.');
+  props.userId = 'owner'; await nextTick();
+  assert.equal(editor.form.name, ''); assert.equal(editor.form.structure, 'A private incomplete structure.');
+  assert.equal(exposed.flush(), false); assert.deepEqual(owner.defaultTemplate(), saved);
+  editor.form.name = 'Recovered template'; assert.equal(exposed.flush(), true);
+  assert.equal(owner.defaultTemplate()?.name, 'Recovered template');
+});
+
+test('letter flush rejects a synchronous record A–B–A change during native publication', t => {
+  const { editor, exposed, owner } = importFixture(t);
+  const selected = editor.selectedId; const saved = structuredClone(owner.defaultTemplate());
+  let pending = true;
+  const unregister = textareaCommit.registerTextareaCommit(() => {
+    if (!pending) return;
+    pending = false;
+    editor.select('industry'); editor.select(selected);
+    editor.form.tone = 'A later draft from the replacement editor lifecycle.';
+  });
+  try {
+    assert.equal(exposed.flush(), false);
+    assert.equal(editor.selectedId, selected);
+    assert.equal(owner.defaultTemplate()?.tone, saved?.tone, 'the outer flush cannot save a newer editor lifecycle merely because its record ID matches');
+    assert.equal(editor.form.tone, 'A later draft from the replacement editor lifecycle.');
+  } finally { unregister(); }
+  assert.equal(exposed.flush(), true);
+  assert.equal(owner.defaultTemplate()?.tone, editor.form.tone);
+});
+
+test('forced letter owner initialization remains visible when the old native editor cannot publish', async t => {
+  const { editor, exposed, props, storage } = importFixture(t);
+  const other = createLetterRepository(storage, 'other');
+  const otherSaved = other.saveTemplate({ ...other.defaultTemplate()!, name: 'Other account saved template', tone: 'Other account saved tone.' });
+  editor.form.tone = 'Original account committed draft awaiting a save.';
+  const unregister = textareaCommit.registerTextareaCommit(() => {}, () => false);
+  try {
+    assert.equal(exposed.flush(), false);
+    props.userId = 'other'; await nextTick();
+    assert.ok(editor.form, 'new-owner initialization cannot depend on publishing the old composer again');
+    assert.equal(editor.form.name, otherSaved.name); assert.equal(editor.form.tone, otherSaved.tone);
+    assert.equal(editor.selectedId, otherSaved.id);
+    props.userId = 'owner'; await nextTick();
+    assert.equal(editor.form.tone, 'Original account committed draft awaiting a save.');
+  } finally { unregister(); }
+  assert.equal(exposed.flush(), true);
 });
