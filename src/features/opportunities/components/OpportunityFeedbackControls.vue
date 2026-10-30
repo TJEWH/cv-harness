@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
 import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import InfoHint from '../../../shared/ui/InfoHint.vue';
 import { OPPORTUNITY_INTEREST_REASON_CATEGORIES, type Opportunity, type OpportunityInterestReason, type OpportunityReview } from '../../../app/cloudTypes';
 import { deriveOpportunityFeedback, normalizeOpportunityInterestReasons, parseOpportunityInterestRating, type OpportunitySubmissionEvidence } from '../domain/opportunityFeedback';
-import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
+import { flushEditorSession } from '../../../shared/editing/editorSession';
 import { useToastWatch } from '../../../shared/ui/useToasts';
 import { opportunityFeedbackTextIsSafe } from '../domain/opportunityFeedbackPrivacy';
 import { MAX_OPPORTUNITY_EVALUATION_LENGTH } from '../domain/opportunityEvaluation';
@@ -38,6 +38,8 @@ const reasonsSaving = ref(false);
 const actionError = ref('');
 const actionSaving = ref(false);
 let generation = 0;
+let editorDisposed = false;
+onBeforeUnmount(() => { editorDisposed = true; generation++; });
 let ratingSaving: Promise<boolean> | null = null;
 let reasonRequest: Promise<boolean> | null = null;
 let retryAction: (() => Promise<boolean>) | null = null;
@@ -178,15 +180,21 @@ const evaluationHint = computed(() => {
   return `${inclusion}. ${text('Your searches use public opportunity details, your review state, rating, reasons, saved evaluation and confirmed-submission signal by default. Excluding this opportunity withholds all of its feedback. Longer evaluations use the first 600 characters; the full evaluation stays saved. Application notes, CVs and letters stay private. Contact details, credentials and unsafe instructions are withheld.', 'Deine Suchen verwenden standardmäßig öffentliche Stellendaten, deine Interessenauswahl, Bewertung, Gründe, gespeicherte Einschätzung und bestätigte Einreichungen. Wenn du diese Stelle ausschließt, wird ihr gesamtes Feedback zurückgehalten. Bei längeren Einschätzungen werden die ersten 600 Zeichen verwendet; der vollständige Text bleibt gespeichert. Bewerbungsnotizen, Lebensläufe und Briefe bleiben privat. Kontaktdaten, Zugangsdaten und unsichere Anweisungen werden zurückgehalten.')}`;
 });
 const flushSummary = () => props.flushPrivateComment();
-async function flush(): Promise<boolean> {
-  commitPendingTextareas();
+function flush(): Promise<boolean> {
   const ownerGeneration = generation;
-  if (reasonRequest && !await reasonRequest || ownerGeneration !== generation) return false;
-  if (ratingSaving && !await ratingSaving || ownerGeneration !== generation) return false;
-  if (reasonPending.value && !await saveReasons() || reasonPending.value || ownerGeneration !== generation) return false;
-  if ((ratingSaving || ratingPending.value) && !await saveRating() || ratingPending.value) return false;
-  return ownerGeneration === generation && !reasonError.value;
+  const pendingReasons = reasonRequest, pendingRating = ratingSaving;
+  return flushEditorSession({
+    current: () => !editorDisposed && ownerGeneration === generation,
+    steps: [
+      () => pendingReasons || true,
+      () => pendingRating || true,
+      async () => !reasonPending.value || await saveReasons() && !reasonPending.value,
+      async () => !(ratingSaving || ratingPending.value) || await saveRating() && !ratingPending.value,
+    ],
+    settled: () => !reasonPending.value && !ratingPending.value && !reasonError.value,
+  });
 }
+
 function retry() { return reasonError.value ? saveReasons() : retryAction?.(); }
 useToastWatch(() => reasonError.value || actionError.value, () => ({ tone: 'error', action: reasonError.value || retryAction ? { label: text('Retry', 'Erneut versuchen'), run: retry } : undefined }));
 defineExpose({ flush });

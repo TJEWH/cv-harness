@@ -228,6 +228,52 @@ test('live local-draft models still commit on navigation after the model echo', 
   assert.equal(f.commits.length, 1);
 });
 
+test('only changed native draft input advances the shared revision, not mounting, echoes or commits', async t => {
+  const revision = textareaCommit.getTextareaDraftRevision();
+  const f = fixture(t, true);
+  assert.equal(textareaCommit.getTextareaDraftRevision(), revision);
+  f.setup.value = 'Saved assessment';
+  assert.equal(textareaCommit.getTextareaDraftRevision(), revision);
+  f.setup.value = 'Native edit';
+  assert.equal(textareaCommit.getTextareaDraftRevision(), revision + 1);
+  assert.equal(commitPendingTextareas(), true); await nextTick();
+  assert.equal(textareaCommit.getTextareaDraftRevision(), revision + 1);
+  f.model.value = 'External saved version'; await nextTick();
+  assert.equal(f.setup.value, 'External saved version');
+  assert.equal(textareaCommit.getTextareaDraftRevision(), revision + 1);
+  f.setup.value = 'External saved version';
+  assert.equal(textareaCommit.getTextareaDraftRevision(), revision + 1);
+});
+
+test('composition blocks programmatic and blur publication while retaining the lazy draft for an explicit later commit', async t => {
+  const f = fixture(t, true);
+  f.setup.onFocus(); f.setup.onCompositionStart(); f.setup.value = 'Unconfirmed composition';
+  assert.equal(textareaCommit.canCommitTextareas(), false);
+  assert.equal(commitPendingTextareas(), false);
+  f.window.dispatchEvent(new Event('blur'));
+  f.document.hidden = true; f.document.dispatchEvent(new Event('visibilitychange'));
+  f.setup.onBlur();
+  assert.equal(f.model.value, 'Saved assessment'); assert.deepEqual(f.commits, []);
+  f.setup.onCompositionEnd(); await nextTick();
+  assert.equal(textareaCommit.canCommitTextareas(), true);
+  assert.equal(f.model.value, 'Saved assessment', 'composition confirmation alone does not publish');
+  assert.deepEqual(f.commits, []);
+  assert.equal(commitPendingTextareas(), true);
+  assert.equal(f.model.value, 'Unconfirmed composition');
+  assert.deepEqual(f.commits, ['Unconfirmed composition']);
+});
+
+test('composition readiness blocks navigation before any model input and does not depend on dirty state', t => {
+  const f = fixture(t, true), revision = textareaCommit.getTextareaDraftRevision();
+  f.setup.onCompositionStart();
+  assert.equal(textareaCommit.getTextareaDraftRevision(), revision);
+  assert.equal(commitPendingTextareas(), false);
+  assert.deepEqual(f.commits, []);
+  f.setup.onCompositionEnd();
+  assert.equal(commitPendingTextareas(), true);
+  assert.deepEqual(f.commits, [], 'ending an unchanged composition does not create a save');
+});
+
 test('an older model acknowledgement preserves newer uncommitted typing', async t => {
   const f = fixture(t, true);
   f.setup.value = 'First version';

@@ -20,7 +20,7 @@ Organize source by the workflow or document capability it belongs to. The first 
 | `src/documents/layout/` | Content ordering, timeline layout, and font loading shared by document rendering. |
 | `src/documents/pdf/` | Layout capture, vector rendering, PDF.js integration, preview controllers, and preview surfaces. |
 | `src/shared/ui/` | Shared controls, toasts, sidebar portals, and responsive action placement. |
-| `src/shared/editing/` | Textarea commit coordination and recoverable per-record text drafts. |
+| `src/shared/editing/` | Editor publication/flush coordination, textarea drafts, and recoverable per-record text drafts. |
 | `src/shared/lib/` | Markdown text, safe URL, and clipboard helpers. |
 | `src/platform/` | Supabase client/configuration, authentication, and paginated transport helpers. |
 | `src/i18n/` | The shared translation dictionary. |
@@ -70,6 +70,10 @@ Keep live-document rendering and existing-PDF parsing separate: `useDocumentPdfP
 ## Editing and persistence contracts
 
 Follow the [textarea behavior](textarea-behavior.md). Use `shared/ui/AutosaveTextarea.vue` or the CV-specific `documents/cv/components/MarkdownTextarea.vue`, keep typing in a local draft, and commit on blur or Enter. Publish pending textareas through `shared/editing/textareaCommit.ts`, then await the relevant persistence flush before navigation or replacing an editor. A text commit must keep disclosure, upload, and workflow submission as separate actions.
+
+`shared/editing/editorSession.ts` defines the runtime `flush()` contract and its synchronous counterpart for local stores. A session publishes textarea drafts, drains ordered persistence steps, and returns an explicit safe-to-leave result. Owners capture their account/record lifecycle and child editors; the coordinator checks that scope, composition readiness, and the native draft revision before and after each step. New typing during an asynchronous save stays unpublished and prevents navigation. Existing method names remain compatibility aliases.
+
+CV Studio, job/application workspaces, search templates, CV sections, refinement annotations, and opportunity feedback/status controls use that coordination while retaining their own queues, snapshots, validation, recovery, and retries. Letter templates expose local-save flush; attachments expose private text-recovery flush only. A successful attachment flush does not save a file, share metadata, or approve disclosure. Failed local library drafts remain scoped to their account; forced account changes retain an in-memory recovery snapshot for that owner to revisit. Native library editor instances are keyed by account so an unfinished composition cannot cross into the incoming owner’s draft.
 
 `shared/editing/useApplicationNotesAutosave.ts` supports application notes and opportunity text drafts. Keep its account/record scoping, queued snapshots, recovery, and retries when reusing it.
 

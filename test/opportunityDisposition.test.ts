@@ -129,3 +129,34 @@ test('technical notes use the shared textarea commit contract', () => {
   assert.match(source, /<AutosaveTextarea[^>]*v-model="notes"[^>]*@commit="flushNote"/);
   assert.doesNotMatch(source, /<textarea\b|@input=.*save|setTimeout\(/);
 });
+
+test('leaving drains a technical-note commit queued behind an already pending status write', async t => {
+  const f = fixture(t), pendingStatus = deferred<OpportunityReview | null>();
+  f.handlers.save = async (_id, patch) => {
+    if ('manually_archived' in patch) return pendingStatus.promise;
+    const saved = { ...f.props.review, ...patch }; f.props.review = saved; return saved;
+  };
+  const status = f.setup.changeArchived({ target: { checked: true } });
+  await settle();
+  const { registerTextareaCommit } = requireLocal('../../../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
+  let published = false;
+  let committed: Promise<boolean> | undefined;
+  const unregister = registerTextareaCommit(() => {
+    if (published) return;
+    published = true;
+    f.setup.notes = 'The portal rejects the uploaded certificate.';
+    committed = f.setup.flushNote();
+  });
+  t.after(unregister);
+  const leaving = f.setup.flush();
+  await settle();
+  assert.equal(f.calls.length, 1, 'the technical note waits behind the status patch');
+  f.props.review = { ...f.props.review, manually_archived: true };
+  pendingStatus.resolve(f.props.review);
+  assert.equal(await status, true);
+  assert.equal(await leaving, true, 'navigation waits for the note rather than treating its pending write as a failure');
+  assert.equal(await committed, true);
+  assert.deepEqual(f.calls.map(call => call.patch), [
+    { manually_archived: true }, { technical_issue_note: 'The portal rejects the uploaded certificate.' },
+  ]);
+});

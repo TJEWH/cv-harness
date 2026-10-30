@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
@@ -15,7 +15,7 @@ const code = ts.transpileModule(compiled.content, { compilerOptions: { module: t
 const exports: { default?: Component } = {};
 const requireFromApp = createRequire(filename);
 const { useToasts } = requireFromApp('../shared/ui/useToasts') as typeof import('../src/shared/ui/useToasts');
-const { registerTextareaCommit } = requireFromApp('../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
+const { registerTextareaCommit, markTextareaDraftChanged } = requireFromApp('../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
 new Function('require', 'exports', code)((path: string) => {
   if (path.endsWith('.vue')) return { default: {} };
   if (path.endsWith('/useSupabaseAuth')) return { useSupabaseAuth: () => ({ user: ref(null), client: null }) };
@@ -168,4 +168,125 @@ test('CV Studio reports pending edits immediately, updates the saved time, and f
   } finally {
     app.unmount();
   }
+});
+
+interface SessionApp {
+  state: CvState; activeWorkspace: string; activeBuilderGroup: string; previewMode: boolean;
+  selectedConfigurationId: string; cloudUser: { id: string } | null;
+  letterTemplates: { flush(): boolean } | null; localAttachments: { flush(): boolean } | null;
+  jobWorkspace: { flush(): Promise<boolean>; openList(kind: string): Promise<boolean> } | null;
+  backupManager: unknown; formBuilder: unknown;
+  selectBuilderGroup(group: string): void; selectWorkspace(workspace: string): Promise<void>;
+  selectWorkspaceList(workspace: string): Promise<void>; openFullPreview(): void;
+  prepareConfigurationChange(): boolean; readCloudVersion(id: string): CvState | null;
+  openStudioVariant(id: string): Promise<void>;
+}
+function sessionApp(t: TestContext) {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const storage = new Map<string, string>();
+  class ElementStub { matches() { return false; } }
+  const restores: (() => void)[] = [];
+  for (const [name, value] of Object.entries({
+    localStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) },
+    sessionStorage: { getItem: () => null, setItem() {} },
+    window: Object.assign(new EventTarget(), { matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) }),
+    document: Object.assign(new EventTarget(), { activeElement: null }), Element: ElementStub, HTMLElement: ElementStub,
+  })) {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { configurable: true, value });
+    restores.push(() => previous ? Object.defineProperty(globalThis, name, previous) : Reflect.deleteProperty(globalThis, name));
+  }
+  const app = renderer.createApp(component);
+  const instance = app.mount({}) as unknown as { $: { setupState: SessionApp } };
+  const setup = instance.$.setupState;
+  setup.backupManager = { saveCurrent: () => true };
+  setup.formBuilder = { flushSectionSaves: () => true, resetSectionVersions: () => true };
+  t.after(() => { app.unmount(); useToasts().clear(); restores.forEach(restore => restore()); });
+  return setup;
+}
+function pendingSave() {
+  let resolve!: (saved: boolean) => void;
+  const promise = new Promise<boolean>(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+test('Studio navigation and snapshots await the active template or private attachment recovery contract', async t => {
+  const setup = sessionApp(t);
+  await nextTick();
+  let saved = false, published = '', pending = 'Newest library textarea draft', templateFlushes = 0, privateFlushes = 0;
+  const unregister = registerTextareaCommit(() => { if (pending) { published = pending; pending = ''; } });
+  t.after(unregister);
+  setup.letterTemplates = { flush: () => { templateFlushes++; assert.equal(published, 'Newest library textarea draft'); return saved; } };
+  setup.activeBuilderGroup = 'templates';
+  setup.selectBuilderGroup('design');
+  assert.equal(setup.activeBuilderGroup, 'templates');
+  assert.equal(setup.prepareConfigurationChange(), false);
+  assert.equal(setup.readCloudVersion('version'), null, 'a failed library save prevents taking a replacement snapshot');
+  await setup.selectWorkspace('opportunities');
+  await setup.selectWorkspaceList('applications');
+  assert.equal(setup.activeWorkspace, 'cv-studio');
+  setup.openFullPreview(); assert.equal(setup.previewMode, false);
+  assert(templateFlushes >= 6, 'all programmatic exit boundaries consult the active owner');
+
+  saved = true;
+  setup.selectBuilderGroup('attachments');
+  assert.equal(setup.activeBuilderGroup, 'attachments');
+  saved = false;
+  setup.localAttachments = { flush: () => { privateFlushes++; return saved; } };
+  setup.selectBuilderGroup('content');
+  await setup.selectWorkspace('opportunities');
+  assert.equal(setup.activeBuilderGroup, 'attachments');
+  assert.equal(setup.activeWorkspace, 'cv-studio');
+  assert(privateFlushes >= 2);
+  saved = true;
+  setup.selectBuilderGroup('content');
+  assert.equal(setup.activeBuilderGroup, 'content', 'successful private recovery allows leaving without submitting the attachment');
+});
+
+test('App retains newer uncommitted typing and rejects an account A–B–A transition during a child flush', async t => {
+  const setup = sessionApp(t);
+  await nextTick();
+  setup.activeWorkspace = 'opportunities';
+  let pending = '', published = '';
+  const unregister = registerTextareaCommit(() => { if (pending) { published = pending; pending = ''; } });
+  t.after(unregister);
+  let save = pendingSave();
+  setup.jobWorkspace = { flush: () => save.promise, openList: () => save.promise };
+  const leaving = setup.selectWorkspace('cv-studio');
+  await nextTick();
+  pending = 'Typing after the exit snapshot';
+  markTextareaDraftChanged();
+  save.resolve(true); await leaving;
+  assert.equal(setup.activeWorkspace, 'opportunities');
+  assert.equal(pending, 'Typing after the exit snapshot');
+  assert.equal(published, '', 'completion must not republish a newer lazy draft');
+
+  pending = '';
+  setup.cloudUser = { id: 'owner-a' };
+  save = pendingSave();
+  const oldOwner = setup.selectWorkspace('cv-studio');
+  await nextTick();
+  setup.cloudUser = { id: 'owner-b' }; setup.cloudUser = { id: 'owner-a' };
+  save.resolve(true); await oldOwner;
+  assert.equal(setup.activeWorkspace, 'opportunities', 'matching final owner IDs cannot revive an obsolete exit');
+  setup.jobWorkspace = { flush: async () => true, openList: async () => true };
+  await setup.selectWorkspace('cv-studio');
+  assert.equal(setup.activeWorkspace, 'cv-studio');
+});
+
+test('opening a Studio variant waits for the cloud editor and retains it after a failed save', async t => {
+  const setup = sessionApp(t);
+  await nextTick();
+  setup.activeWorkspace = 'applications';
+  let saved = false;
+  const selected: string[] = [];
+  setup.backupManager = { saveCurrent: () => true, selectConfiguration: (id: string) => { selected.push(id); return true; } };
+  setup.jobWorkspace = { flush: async () => saved, openList: async () => saved };
+  await setup.openStudioVariant('target');
+  assert.deepEqual(selected, []);
+  assert.equal(setup.activeWorkspace, 'applications');
+  saved = true; await setup.openStudioVariant('target');
+  assert.deepEqual(selected, ['target']);
+  assert.equal(setup.activeWorkspace, 'cv-studio');
+  assert.equal(setup.activeBuilderGroup, 'content');
 });

@@ -32,6 +32,7 @@ import { createJobSwipe } from '../../features/opportunities/interaction/jobSwip
 import { createJobCardSwipe } from '../../features/opportunities/interaction/jobCardSwipe';
 import { useJobCardTrackHeight } from '../../features/opportunities/composables/useJobCardTrackHeight';
 import { commitPendingTextareas } from '../../shared/editing/textareaCommit';
+import { flushEditorSession } from '../../shared/editing/editorSession';
 
 const props = withDefaults(defineProps<{
   client: SupabaseClient | null; userId: string; tab: 'opportunities' | 'applications'; lang: string;
@@ -206,6 +207,11 @@ const selectedOpportunity = computed(() => opportunityById.value.get(selectedOpp
 // Both editors share one draft and recovery key for the underlying opportunity.
 const evaluationOpportunityId = computed(() => props.tab === 'applications'
   ? editingApplication.value?.opportunity_id : selectedOpportunity.value?.id);
+let editorSessionEpoch = 0;
+let editorDisposed = false;
+watch([() => props.userId, () => props.client, () => props.active, () => props.tab,
+  () => props.tab === 'applications' ? editingId.value : selectedOpportunityId.value, evaluationOpportunityId, opportunityView], () => { editorSessionEpoch++; }, { flush: 'sync' });
+onBeforeUnmount(() => { editorDisposed = true; editorSessionEpoch++; });
 const { notes: opportunityComment, status: commentStatus, error: commentError, flush: flushComment } = useApplicationNotesAutosave({
   application: () => evaluationOpportunityId.value ? { id: evaluationOpportunityId.value,
     notes: reviewById.value.get(evaluationOpportunityId.value)?.comment } : null,
@@ -409,27 +415,45 @@ async function openList(kind: 'opportunities' | 'applications'): Promise<boolean
   if (id) focusResult(kind, id);
   return true;
 }
-async function flushApplicationTextareas() {
-  commitPendingTextareas();
-  if (applicationWorkspace.value && !await applicationWorkspace.value.flushTextareas()) return false;
-  if (applicationFeedback.value && !await applicationFeedback.value.flush()) return false;
-  if (applicationDisposition.value && !await applicationDisposition.value.flush()) return false;
-  return flushNotes();
+function flushApplicationTextareas() {
+  const epoch = editorSessionEpoch;
+  const workspace = applicationWorkspace.value, feedback = applicationFeedback.value, disposition = applicationDisposition.value;
+  return flushEditorSession({
+    current: () => !editorDisposed && epoch === editorSessionEpoch && workspace === applicationWorkspace.value
+      && feedback === applicationFeedback.value && disposition === applicationDisposition.value,
+    steps: [
+      ...(workspace ? [() => workspace.flush()] : []),
+      ...(feedback ? [() => feedback.flush()] : []),
+      ...(disposition ? [() => disposition.flush()] : []),
+      flushNotes,
+    ],
+  });
 }
-async function flushEvaluation() {
-  commitPendingTextareas();
-  if (!await flushComment()) return false;
-  if (opportunityFeedback.value && !await opportunityFeedback.value.flush()) return false;
-  if (opportunityDisposition.value && !await opportunityDisposition.value.flush()) return false;
-  if (applicationDisposition.value && !await applicationDisposition.value.flush()) return false;
-  return !applicationFeedback.value || await applicationFeedback.value.flush();
+function flushEvaluation() {
+  const epoch = editorSessionEpoch;
+  const feedback = opportunityFeedback.value, disposition = opportunityDisposition.value;
+  const applicationAction = applicationDisposition.value, applicationReview = applicationFeedback.value;
+  return flushEditorSession({
+    current: () => !editorDisposed && epoch === editorSessionEpoch && feedback === opportunityFeedback.value
+      && disposition === opportunityDisposition.value && applicationAction === applicationDisposition.value && applicationReview === applicationFeedback.value,
+    steps: [
+      flushComment,
+      ...(feedback ? [() => feedback.flush()] : []),
+      ...(disposition ? [() => disposition.flush()] : []),
+      ...(applicationAction ? [() => applicationAction.flush()] : []),
+      ...(applicationReview ? [() => applicationReview.flush()] : []),
+    ],
+  });
 }
-async function flushTextareas() {
-  commitPendingTextareas();
-  if (searchTemplates.value && !await searchTemplates.value.flushTextareas()) return false;
-  return await flushEvaluation() && await flushApplicationTextareas();
+function flushTextareas() {
+  const epoch = editorSessionEpoch, searches = searchTemplates.value;
+  return flushEditorSession({
+    current: () => !editorDisposed && epoch === editorSessionEpoch && searches === searchTemplates.value,
+    steps: [...(searches ? [() => searches.flush()] : []), flushEvaluation, flushApplicationTextareas],
+  });
 }
-defineExpose({ openList, flushTextareas });
+const flush = flushTextareas;
+defineExpose({ openList, flush, flushTextareas });
 
 let swipeAnimations: Animation[] = [];
 function cancelSwipeTransition() {

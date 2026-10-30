@@ -8,6 +8,7 @@ import { useCvDesign } from '../documents/cv/composables/useCvDesign';
 import { usePdfExport } from '../documents/pdf/composables/usePdfExport';
 import { useDocumentPdfPreview } from '../documents/pdf/composables/useDocumentPdfPreview';
 import { commitPendingTextareas } from '../shared/editing/textareaCommit';
+import { flushEditorSession, flushEditorSessionSync, type SyncEditorSession } from '../shared/editing/editorSession';
 import { CV_TEXTAREA_COMMIT } from '../documents/cv/composables/cvTextareaCommit';
 import FormBuilder from '../features/cv-studio/components/FormBuilder.vue';
 import CvPreview from '../documents/cv/components/CvPreview.vue';
@@ -100,7 +101,7 @@ async function selectWorkspace(workspace: Workspace) {
   const request = ++workspaceNavigationRequest;
   const editor = jobWorkspace.value;
   if (!prepareConfigurationChange()) return;
-  if (editor && !await editor.flushTextareas()) return;
+  if (!await flushJobEditor(request, editor)) return;
   if (request !== workspaceNavigationRequest || editor !== jobWorkspace.value) return;
   activeWorkspace.value = workspace; previewMode.value = false;
 }
@@ -108,9 +109,17 @@ async function selectWorkspaceList(workspace: Workspace) {
   const request = ++workspaceNavigationRequest;
   const editor = jobWorkspace.value;
   if (!prepareConfigurationChange()) return;
-  if (editor && !(workspace === 'cv-studio' ? await editor.flushTextareas() : await editor.openList(workspace))) return;
-  if (request !== workspaceNavigationRequest || editor !== jobWorkspace.value) return;
+  const epoch = editorSessionEpoch;
+  if (editor && !(workspace === 'cv-studio' ? await editor.flush() : await editor.openList(workspace))) return;
+  if (appDisposed || epoch !== editorSessionEpoch || request !== workspaceNavigationRequest || editor !== jobWorkspace.value) return;
   activeWorkspace.value = workspace; previewMode.value = false;
+}
+async function flushJobEditor(request: number, editor = jobWorkspace.value) {
+  const epoch = editorSessionEpoch;
+  const current = () => !appDisposed && epoch === editorSessionEpoch
+    && request === workspaceNavigationRequest && editor === jobWorkspace.value;
+  const saved = await flushEditorSession({ current, steps: [() => editor ? editor.flush() : true] });
+  return saved && current();
 }
 function saveCareerVariant(name: string, data: CvState) {
   const saved = backupManager.value?.saveAsDocument(name, data) ?? false;
@@ -119,9 +128,11 @@ function saveCareerVariant(name: string, data: CvState) {
 function createVariant(name: string, data: CvState): string | null {
   return backupManager.value?.createVariant(name, data) ?? null;
 }
-function openStudioVariant(id: string) {
+async function openStudioVariant(id: string) {
+  const request = ++workspaceNavigationRequest;
+  const editor = jobWorkspace.value;
+  if (!prepareConfigurationChange() || !await flushJobEditor(request, editor)) return;
   if (!backupManager.value?.selectConfiguration(id)) return;
-  workspaceNavigationRequest++;
   activeWorkspace.value = 'cv-studio'; activeBuilderGroup.value = 'content'; previewMode.value = false;
 }
 const savedConfigurations = ref<SavedConfiguration[]>([]);
@@ -135,6 +146,28 @@ const saveStatus = ref<SaveStatus>('saved');
 const lastSavedAt = ref<number | null>(null);
 const backupManager = ref<InstanceType<typeof BackupManager> | null>(null);
 const formBuilder = ref<InstanceType<typeof FormBuilder> | null>(null);
+const letterTemplates = ref<SyncEditorSession | null>(null);
+const localAttachments = ref<SyncEditorSession | null>(null);
+let editorSessionEpoch = 0;
+let appDisposed = false;
+watch([selectedConfigurationId, activeWorkspace, activeBuilderGroup, () => cloudUser.value?.id], () => {
+  editorSessionEpoch++;
+}, { flush: 'sync' });
+function activeStudioLibrary() {
+  if (activeWorkspace.value !== 'cv-studio') return null;
+  return activeBuilderGroup.value === 'templates' ? letterTemplates.value
+    : activeBuilderGroup.value === 'attachments' ? localAttachments.value : null;
+}
+function flushStudioEdits() {
+  const epoch = editorSessionEpoch;
+  const builder = formBuilder.value, library = activeStudioLibrary();
+  return flushEditorSessionSync({
+    current: () => !appDisposed && epoch === editorSessionEpoch
+      && builder === formBuilder.value && library === activeStudioLibrary(),
+    steps: [() => library ? library.flush() : true, flushStateSave, () => builder ? builder.flushSectionSaves() : true],
+    settled: () => combinedSaveStatus.value === 'saved',
+  });
+}
 provide(CV_TEXTAREA_COMMIT, flushStateSave);
 const sectionSaveStatus = ref<SaveStatus>('saved');
 const combinedSaveStatus = computed(() => {
@@ -144,8 +177,9 @@ const combinedSaveStatus = computed(() => {
 const readSectionVersion = (id: string) => backupManager.value?.readConfigData(id);
 const saveSectionVersion = (id: string, data: CvState) => backupManager.value?.saveVersion(id, data) ?? false;
 function prepareConfigurationChange() {
-  flushStateSave();
-  return formBuilder.value?.resetSectionVersions() !== false && saveStatus.value !== 'error';
+  if (!flushStudioEdits()) return false;
+  const builder = formBuilder.value;
+  return builder ? builder.resetSectionVersions() : true;
 }
 const builderGroups = computed(() => [
   { key: 'versions', label: lang.value === 'de' ? 'Varianten' : 'Variants', icon: 'layer-group' },
@@ -159,8 +193,7 @@ function groupDisabled(key: string) {
   return isEmptyDocument.value && ['content', 'design', 'privacy'].includes(key);
 }
 function readCloudVersion(id: string): CvState | null {
-  flushStateSave();
-  if (formBuilder.value?.flushSectionSaves() === false || saveStatus.value === 'error') return null;
+  if (!flushStudioEdits()) return null;
   if (id === selectedConfigurationId.value) return JSON.parse(JSON.stringify(state));
   return backupManager.value?.readConfigData(id) || null;
 }
@@ -424,29 +457,36 @@ function commitDeferredSliderPreview() {
   if (shouldSave) scheduleStateSave();
 }
 
-function flushStateSave() {
-  // Release local textarea drafts before taking a snapshot, including when a
-  // programmatic tab change or pagehide happens without a native blur event.
-  commitPendingTextareas();
-  if (isSliderPreviewUpdateDeferred && sliderSaveUpdatePending) {
-    isSliderPreviewUpdateDeferred = false;
-    sliderSaveUpdatePending = false;
-    persistState();
-    return;
-  }
-  saveDebounced.flush();
+function flushStateSave(): boolean {
+  const epoch = editorSessionEpoch;
+  return flushEditorSessionSync({
+    current: () => !appDisposed && epoch === editorSessionEpoch,
+    steps: [() => {
+      if (isSliderPreviewUpdateDeferred && sliderSaveUpdatePending) {
+        isSliderPreviewUpdateDeferred = false;
+        sliderSaveUpdatePending = false;
+        return persistState();
+      }
+      // An idle debounce has no return value; the owning save status still
+      // determines whether all committed CV content is durably saved.
+      const saved = saveDebounced.flush();
+      return saved !== false && saveStatus.value === 'saved';
+    }],
+  });
 }
 
 onMounted(() => {
-  window.addEventListener('pagehide', flushStateSave);
+  window.addEventListener('pagehide', flushStudioEdits);
   // A slider can be released outside the app or lose focus during a drag.
   window.addEventListener('pointerup', commitDeferredSliderPreview);
   window.addEventListener('pointercancel', commitDeferredSliderPreview);
   window.addEventListener('blur', commitDeferredSliderPreview);
 });
 onBeforeUnmount(() => {
-  flushStateSave();
-  window.removeEventListener('pagehide', flushStateSave);
+  flushStudioEdits();
+  appDisposed = true; editorSessionEpoch++;
+  clearTimeout(saveToastTimer);
+  window.removeEventListener('pagehide', flushStudioEdits);
   window.removeEventListener('pointerup', commitDeferredSliderPreview);
   window.removeEventListener('pointercancel', commitDeferredSliderPreview);
   window.removeEventListener('blur', commitDeferredSliderPreview);
@@ -522,16 +562,14 @@ function exportStudioPreview() {
 }
 
 function openFullPreview() {
-  flushStateSave();
-  if (formBuilder.value?.flushSectionSaves() === false) return;
+  if (!flushStudioEdits()) return;
   fullPreviewMode.value = isPrivacyStudioPreview.value ? 'anonymized' : 'normal';
   previewMode.value = true;
 }
 
 function selectBuilderGroup(group: string) {
   if (group === 'opportunities' || group === 'applications') { selectWorkspace(group); return; }
-  flushStateSave();
-  if (formBuilder.value?.flushSectionSaves() === false || saveStatus.value === 'error') return;
+  if (!flushStudioEdits()) return;
   activeBuilderGroup.value = group;
   previewMode.value = false;
 }
@@ -662,8 +700,8 @@ function selectBuilderGroup(group: string) {
               :lang="lang"
             />
           </Transition>
-          <LetterTemplates v-show="activeBuilderGroup === 'templates'" class="builder-group-panel studio-templates" :client="supabaseClient" :user-id="cloudUser?.id || 'local'" :lang="lang" :sidebar-active="!isCloudTab && activeBuilderGroup === 'templates'" />
-          <LocalAttachments v-show="activeBuilderGroup === 'attachments'" class="builder-group-panel studio-attachments" :user-id="cloudUser?.id || ''" :client="supabaseClient" :lang="lang" :active="!isCloudTab && activeBuilderGroup === 'attachments'" :sidebar-active="!isCloudTab && activeBuilderGroup === 'attachments'" />
+          <LetterTemplates ref="letterTemplates" v-show="activeBuilderGroup === 'templates'" class="builder-group-panel studio-templates" :client="supabaseClient" :user-id="cloudUser?.id || 'local'" :lang="lang" :sidebar-active="!isCloudTab && activeBuilderGroup === 'templates'" />
+          <LocalAttachments ref="localAttachments" v-show="activeBuilderGroup === 'attachments'" class="builder-group-panel studio-attachments" :user-id="cloudUser?.id || ''" :client="supabaseClient" :lang="lang" :active="!isCloudTab && activeBuilderGroup === 'attachments'" :sidebar-active="!isCloudTab && activeBuilderGroup === 'attachments'" />
         </div>
 
         <InlineDocumentPreview v-if="!isMobile && studioHasPreview" class="studio-inline-preview" hide-actions v-model:page="studioPreviewPage" :pages="studioPreviewPages" :is-updating="isStudioPreviewRendering" :error="studioPreviewError" @retry="retryStudioPreview" :lang="lang" :downloading="isStudioPreviewExporting" :title="t(isPrivacyStudioPreview ? 'privacyPreview' : 'liveCvPreview')" @open="openFullPreview" @download="exportStudioPreview">

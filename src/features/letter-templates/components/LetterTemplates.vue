@@ -9,7 +9,7 @@ import { createLetterRepository, DEFAULT_LETTER_TEMPLATES, DEFAULT_QUESTION_GUID
 import { useToasts, useToastWatch } from '../../../shared/ui/useToasts';
 import DesktopSidebarPortal from '../../../shared/ui/DesktopSidebarPortal.vue';
 import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
-import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
+import { flushEditorSessionSync } from '../../../shared/editing/editorSession';
 import LetterFormattingControls from '../../../documents/letter/components/LetterFormattingControls.vue';
 import { useDesktopSidebar } from '../../../shared/ui/desktopSidebar';
 import { SEARCH_TEMPLATES_UPDATED_EVENT } from '../../meta-search/data/useSearchTemplates';
@@ -44,10 +44,23 @@ let disposed = false;
 let replacingForm = false;
 let dirty = false;
 let savedForm: LetterTemplate | null = null;
+let editorGeneration = 0;
+type FailedDraft = { form: LetterTemplate; baseline: LetterTemplate | null; selectedId: string; error: string; validationError: string };
+// One blocked editor per owner; private drafts never cross an account boundary.
+const failedDrafts = new Map<string, FailedDraft>();
+const cloneTemplate = (value: LetterTemplate) => JSON.parse(JSON.stringify(value)) as LetterTemplate;
+function retainFailedDraft() {
+  if (!dirty || !form.value) return;
+  failedDrafts.set(editingOwner, { form: cloneTemplate(form.value), baseline: savedForm && cloneTemplate(savedForm), selectedId: selectedId.value, error: error.value, validationError: validationError.value });
+}
+function retrySave() {
+  const owner = editingOwner; const id = form.value?.id; const token = editorGeneration;
+  return () => !disposed && props.userId === owner && editingOwner === owner && form.value?.id === id && token === editorGeneration ? flush() : false;
+}
 const text = (en: string, de: string) => props.lang === 'de' ? de : en;
 const { notify } = useToasts();
 useToastWatch(() => message.value, { tone: 'success' });
-useToastWatch(() => error.value, { tone: 'error' });
+useToastWatch(() => error.value, () => ({ tone: 'error', ...(dirty ? { action: { label: text('Retry', 'Erneut versuchen'), run: retrySave() } } : {}) }));
 useToastWatch(() => validationError.value, { tone: 'error' });
 useToastWatch(() => isImporting.value ? text('Reading the template file…', 'Vorlagendatei wird gelesen…') : '', { passive: true });
 useToastWatch(() => form.value?.useMetaSearchInterests && sharedInterestsState.value === 'loading'
@@ -55,13 +68,17 @@ useToastWatch(() => form.value?.useMetaSearchInterests && sharedInterestsState.v
   : form.value?.useMetaSearchInterests && sharedInterestsState.value === 'error'
     ? text('Shared research interests could not be loaded.', 'Gemeinsame Forschungsinteressen konnten nicht geladen werden.') : '',
 () => sharedInterestsState.value === 'error'
-  ? { tone: 'error', action: { label: text('Retry', 'Erneut versuchen'), run: reloadSharedResearchInterests } }
+  ? { tone: 'error', action: { label: text('Retry', 'Erneut versuchen'), run: retrySharedInterests() } }
   : { passive: true });
 const announceSaved = debounce(() => {
   notify({ message: text('All changes saved locally', 'Alle Änderungen lokal gespeichert'), tone: 'success', key: 'letter-template-autosave' });
 }, 1500);
 const applicantNamePlaceholder = '{{APPLICANT_NAME}}';
 const repository = () => createLetterRepository(localStorage, editingOwner);
+function retrySharedInterests() {
+  const owner = editingOwner; const id = form.value?.id; const token = editorGeneration;
+  return () => !disposed && props.userId === owner && editingOwner === owner && form.value?.id === id && token === editorGeneration ? reloadSharedResearchInterests() : false;
+}
 async function reloadSharedResearchInterests() {
   if (form.value?.useMetaSearchInterests === false) return;
   try { await sharedSearchSource.load({ refreshCloud: true }); }
@@ -70,10 +87,11 @@ async function reloadSharedResearchInterests() {
 function updateResearchInterestSource() {
   if (flushSave() && form.value?.useMetaSearchInterests) void reloadSharedResearchInterests();
 }
-function select(id: string) {
-  if (!flushSave()) return;
+function select(id: string, initializingOwner = false) {
+  if (!initializingOwner && !flushSave()) return;
   try { templates.value = repository().listTemplates(); }
   catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); return; }
+  editorGeneration++; error.value = '';
   selectedId.value = id;
   const selected = templates.value.find((item) => item.id === id);
   replaceForm(selected ? JSON.parse(JSON.stringify(selected)) : null);
@@ -87,11 +105,11 @@ function selectFromInput(event: Event) {
   select(input.value);
   input.value = selectedId.value;
 }
-function reload() {
+function reload(initializingOwner = false) {
   try {
     templates.value = repository().listTemplates();
     defaultId.value = repository().defaultTemplate()?.id || '';
-    select(templates.value.find((item) => item.id === selectedId.value)?.id || defaultId.value);
+    select(templates.value.find((item) => item.id === selectedId.value)?.id || defaultId.value, initializingOwner);
   }
   catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
 }
@@ -111,6 +129,7 @@ function revealInvalidSection(event: Event) {
 }
 function create() {
   if (!flushSave()) return;
+  editorGeneration++; error.value = '';
   replaceForm({ ...DEFAULT_LETTER_TEMPLATES[0]!, id: crypto.randomUUID(), name: text('New letter template', 'Neue Briefvorlage'), revision: 1 }, null);
   selectedId.value = ''; message.value = ''; dirty = true;
   save();
@@ -131,12 +150,14 @@ function save(): boolean {
   if (!form.value.name.trim() || !form.value.structure.trim() || !form.value.tone.trim()) {
     validationError.value = text('Enter a template name, structure and tone to save your changes.', 'Zum Speichern Vorlagenname, Struktur und Tonalität eingeben.');
     saveStatus.value = 'error';
+    retainFailedDraft();
     return false;
   }
   validationError.value = '';
   try {
     error.value = '';
     const saved = repository().saveTemplate(form.value, savedForm);
+    if (failedDrafts.get(editingOwner)?.form.id === saved.id) failedDrafts.delete(editingOwner);
     dirty = false;
     selectedId.value = saved.id;
     replaceForm(saved);
@@ -149,23 +170,37 @@ function save(): boolean {
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause);
     saveStatus.value = 'error';
+    retainFailedDraft();
     return false;
   }
 }
-function flushSave() { commitPendingTextareas(); return save(); }
+function flushSave(): boolean {
+  const owner = editingOwner; const id = form.value?.id; const token = editorGeneration;
+  return flushEditorSessionSync({ steps: [save], current: () => owner === editingOwner && id === form.value?.id && token === editorGeneration });
+}
+function flush(): boolean { return !disposed && editingOwner === props.userId && flushSave(); }
+defineExpose({ flush });
 watch(form, () => {
   if (replacingForm) return;
   announceSaved.cancel();
   dirty = true; saveStatus.value = 'unsaved'; message.value = '';
+  if (failedDrafts.get(editingOwner)?.form.id === form.value?.id) retainFailedDraft();
 }, { deep: true, flush: 'sync' });
 watch(() => props.userId, (id) => {
   importGeneration++; isImporting.value = false;
-  const saved = flushSave();
+  if (!flushSave()) retainFailedDraft();
   announceSaved.cancel();
-  editingOwner = id; dirty = false; selectedId.value = ''; message.value = '';
-  replaceForm(null);
-  if (saved) { error.value = ''; saveStatus.value = 'saved'; }
-  reload();
+  editingOwner = id; editorGeneration++; dirty = false; selectedId.value = ''; templates.value = []; defaultId.value = ''; message.value = ''; error.value = '';
+  replaceForm(null); saveStatus.value = 'saved';
+  const retained = failedDrafts.get(id);
+  if (retained) {
+    try { templates.value = repository().listTemplates(); defaultId.value = repository().defaultTemplate()?.id || ''; }
+    catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
+    selectedId.value = retained.selectedId;
+    replaceForm(cloneTemplate(retained.form), retained.baseline && cloneTemplate(retained.baseline));
+    dirty = true; saveStatus.value = 'error'; error.value = retained.error; validationError.value = retained.validationError;
+    void reloadSharedResearchInterests();
+  } else reload(true);
 }, { immediate: true });
 watch(() => props.client, () => { void reloadSharedResearchInterests(); });
 onMounted(() => { window.addEventListener('pagehide', flushSave); window.addEventListener(SEARCH_TEMPLATES_UPDATED_EVENT, reloadSharedResearchInterests); window.addEventListener('focus', reloadSharedResearchInterests); });
@@ -232,7 +267,7 @@ async function importLibrary(event: Event) {
         <input ref="importInput" hidden type="file" accept=".json,application/json" :disabled="isImporting" @change="importLibrary" />
       </aside>
       </DesktopSidebarPortal>
-      <form v-if="form" class="template-form" @submit.prevent="flushSave" @focusout="flushSave" @invalid.capture="revealInvalidSection">
+      <form v-if="form" :key="userId" class="template-form" @submit.prevent="flushSave" @focusout="flushSave" @invalid.capture="revealInvalidSection">
         <label>{{ text('Template name', 'Vorlagenname') }}<input v-model="form.name" required maxlength="120" /></label>
         <details class="template-section" open>
           <summary><FontAwesomeIcon :icon="faAlignLeft" aria-hidden="true" /><span>{{ text('Main text', 'Haupttext') }}</span><FontAwesomeIcon class="template-chevron" :icon="faChevronDown" aria-hidden="true" /></summary>

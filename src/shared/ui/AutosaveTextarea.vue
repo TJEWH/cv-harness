@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { registerTextareaCommit } from '../editing/textareaCommit';
+import { markTextareaDraftChanged, registerTextareaCommit } from '../editing/textareaCommit';
 
 const props = withDefaults(defineProps<{
   modelValue?: string;
@@ -16,6 +16,7 @@ let publishing = false;
 const value = computed({
   get: () => draft.value,
   set: (text: string) => {
+    if (text !== draft.value) markTextareaDraftChanged();
     draft.value = text;
     dirty = text !== committed;
     if (!props.modelModifiers?.lazy) emit('update:modelValue', text);
@@ -44,7 +45,7 @@ function resize() {
   field.style.height = `${field.scrollHeight + (style.boxSizing === 'border-box' ? borders : 0)}px`;
 }
 function commit() {
-  if (publishing) return;
+  if (publishing || composing) return;
   publishing = true;
   try {
     const text = draft.value;
@@ -76,7 +77,7 @@ function onWindowBlur() { if (focused) commit(); }
 function onVisibilityChange() { if (document.hidden) onWindowBlur(); }
 let unregister: (() => void) | undefined;
 onMounted(() => {
-  unregister = registerTextareaCommit(commitDraft);
+  unregister = registerTextareaCommit(commitDraft, () => !composing);
   window.addEventListener('blur', onWindowBlur);
   window.addEventListener('pagehide', onWindowBlur);
   document.addEventListener('visibilitychange', onVisibilityChange);

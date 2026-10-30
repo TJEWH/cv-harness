@@ -41,6 +41,7 @@ import { refinementMatchesScope, visibleRefinementProposals } from '../../refine
 import { useDesktopSidebar } from '../../../shared/ui/desktopSidebar';
 import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
+import { flushEditorSession } from '../../../shared/editing/editorSession';
 import { copyPreparedText } from '../../../shared/lib/preparedClipboard';
 import { captureMetaSearchInterests, letterTemplateWithSearchProfile } from '../../../documents/letter/searchLetterContext';
 import { useSharedSearchSource } from '../../meta-search/composables/useSharedSearchSource';
@@ -593,14 +594,22 @@ watch([tab, stageNavigation, desktopSidebar, () => props.active, () => props.lan
     stageNavigation.value?.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 }, { flush: 'post' });
-async function flushTextareas(): Promise<boolean> {
-  commitPendingTextareas();
-  if (props.flushEvaluation && !await props.flushEvaluation()) return false;
-  if (annotations.value && !await annotations.value.flush()) return false;
-  persist();
-  return !saveError.value;
+let editorSessionEpoch = 0;
+watch([() => props.userId, () => props.application.id, () => props.client, () => props.active,
+  tab, feedbackScope, selectedCvId, selectedTemplateId, () => selectedProposal.value?.id], () => { editorSessionEpoch++; }, { flush: 'sync' });
+function flushTextareas(): Promise<boolean> {
+  const epoch = editorSessionEpoch, evaluation = props.flushEvaluation, annotationEditor = annotations.value;
+  return flushEditorSession({
+    current: () => !disposed && epoch === editorSessionEpoch && evaluation === props.flushEvaluation && annotationEditor === annotations.value,
+    steps: [
+      ...(evaluation ? [evaluation] : []),
+      ...(annotationEditor ? [() => annotationEditor.flush()] : []),
+      () => { persist(); return !saveError.value; },
+    ],
+  });
 }
-defineExpose({ flushTextareas });
+const flush = flushTextareas;
+defineExpose({ flush, flushTextareas });
 async function selectIterationNote(field: IterationNoteField): Promise<boolean> {
   if (!await flushTextareas()) return false;
   activeIterationNote.value = field;

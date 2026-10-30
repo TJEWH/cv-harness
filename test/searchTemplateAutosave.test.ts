@@ -11,11 +11,13 @@ import { isSearchTemplateSaved, type SearchPromptOptions } from '../src/features
 import type { AdaptiveSearchRunnerState } from '../src/features/meta-search/domain/adaptiveSearchTask';
 import type { SearchCloudTemplate, SearchTemplate } from '../src/features/meta-search/searchTypes';
 import * as textareaCommit from '../src/shared/editing/textareaCommit';
+import { flushEditorSession } from '../src/shared/editing/editorSession';
 import { clearSearchDraft, recoverSearchDraft, retainSearchDraft } from '../src/features/meta-search/data/searchTemplateRecovery';
 
 interface Editor {
   form: SearchTemplate; status: string; error: string; copiedFallback: string; loadingCloud: boolean;
-  flushSave(): Promise<boolean>; flushTextareas(): Promise<boolean>; copy(): Promise<void>; retrySave(): Promise<unknown>;
+  flushSave(): Promise<boolean>; flushTextareas(): Promise<boolean>; flush(): Promise<boolean>;
+  adaptiveDashboard: { flush(): Promise<boolean> } | null; copy(): Promise<void>; retrySave(): Promise<unknown>;
   onDraftInput(): void;
 }
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -81,6 +83,7 @@ async function fixture(t: TestContext, options: { linked?: boolean; readGate?: R
     if (path.endsWith('.vue')) return { default: {} };
     if (path.endsWith('/useToasts')) return { useToastWatch: () => {}, useSaveStateToast: () => {} };
     if (path.endsWith('/textareaCommit')) return textareaCommit;
+    if (path.endsWith('/editorSession')) return { flushEditorSession };
     if (path.endsWith('/searchTemplateRecovery')) return { clearSearchDraft, recoverSearchDraft, retainSearchDraft };
     if (path.endsWith('/searchPrompts')) return {
       isSearchTemplateSaved, buildSearchSystemPrompt: () => 'System', buildSearchUserPrompt: () => 'User',
@@ -352,4 +355,73 @@ test('the shared profile exposes committed textareas without language postfixes 
     assert.match(textarea, /@commit="flushSave"/, `${key} must save on Enter as well as blur`);
   }
   assert.doesNotMatch(template, /· English|Shared professional context|Professional background and goals|form\.profiles|addProfile|removeProfile|selectProfile|Include in daily search|form\.active/);
+});
+
+
+test('a newer native draft during the search save prevents a later dashboard flush without publishing that draft', async t => {
+  const { editor, saves, holdSave } = await fixture(t); const hold = holdSave();
+  let dashboardFlushes = 0, pendingDraft = false;
+  const unregister = textareaCommit.registerTextareaCommit(() => {
+    if (pendingDraft) { pendingDraft = false; editor.form.userPrompt = 'Newer unpublished lazy draft'; }
+  });
+  try {
+    editor.form.userPrompt = 'The committed strategy';
+    const pending = editor.flush(); await settle();
+    pendingDraft = true; textareaCommit.markTextareaDraftChanged(); editor.onDraftInput();
+    editor.adaptiveDashboard = { flush: async () => { dashboardFlushes++; return true; } };
+    hold.release();
+    assert.equal(await pending, false); assert.equal(dashboardFlushes, 0);
+    assert.equal(pendingDraft, true, 'a continuation must not publish typing that happened after its save began');
+    assert.equal(editor.form.userPrompt, 'The committed strategy');
+    assert.deepEqual(saves.map(value => value.userPrompt), ['The committed strategy']);
+    assert.equal(editor.status, 'unsaved');
+  } finally { unregister(); }
+});
+
+test('the uniform search flush preserves inactive saves and blocks navigation after a dashboard failure', async t => {
+  const { editor, props, saves } = await fixture(t, { linked: true });
+  Object.assign(props, { sidebarActive: false }); await settle();
+  let succeeded = false;
+  editor.adaptiveDashboard = { flush: async () => succeeded };
+  assert.equal(editor.flush, editor.flushTextareas);
+  assert.equal(await editor.flush(), false);
+  succeeded = true;
+  assert.equal(await editor.flush(), true, 'unchanged inactivity does not prevent persistence');
+  assert.equal(saves.length, 0);
+});
+
+test('search session epochs reject client and activation A-B-A changes during dashboard persistence', async t => {
+  for (const change of ['client', 'active'] as const) await t.test(change, async t => {
+    const { editor, props, saves } = await fixture(t, { linked: true }); const hold = gate();
+    const initialClient = props.client; let dashboardStarted = false;
+    editor.adaptiveDashboard = { flush: async () => { dashboardStarted = true; await hold.promise; return true; } };
+    const pending = editor.flush(); await settle(); assert.equal(dashboardStarted, true);
+    Object.assign(props, change === 'client' ? { client: null } : { sidebarActive: false }); await settle();
+    Object.assign(props, change === 'client' ? { client: initialClient } : { sidebarActive: true }); await settle();
+    hold.release(); assert.equal(await pending, false); assert.equal(saves.length, 0);
+  });
+});
+
+
+test('first search acknowledgement drains the dashboard it mounts before navigation completes', async t => {
+  const { editor, saves, holdSave } = await fixture(t), saving = holdSave(), dashboardSave = gate();
+  let dashboardFlushes = 0, finished = false;
+  editor.form.userPrompt = 'First committed search';
+  const pending = editor.flush().then(saved => { finished = true; return saved; }); await settle();
+  assert.equal(editor.adaptiveDashboard, null);
+  editor.adaptiveDashboard = { flush: async () => { dashboardFlushes++; await dashboardSave.promise; return true; } };
+  saving.release(); await settle();
+  assert.equal(dashboardFlushes, 1); assert.equal(finished, false, 'navigation awaits the intentionally mounted editor');
+  dashboardSave.release(); assert.equal(await pending, true);
+  assert.equal(saves.length, 1); assert.equal(editor.form.cloud?.id, cloudId);
+});
+
+test('a newly mounted search dashboard is identity-guarded after its flush begins', async t => {
+  const { editor, holdSave } = await fixture(t), saving = holdSave(), dashboardSave = gate();
+  let capturedFlushes = 0, replacementFlushes = 0;
+  const pending = editor.flush(); await settle();
+  editor.adaptiveDashboard = { flush: async () => { capturedFlushes++; await dashboardSave.promise; return true; } };
+  saving.release(); await settle(); assert.equal(capturedFlushes, 1);
+  editor.adaptiveDashboard = { flush: async () => { replacementFlushes++; return true; } };
+  dashboardSave.release(); assert.equal(await pending, false); assert.equal(replacementFlushes, 0);
 });

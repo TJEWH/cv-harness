@@ -19,7 +19,7 @@ import ConfirmDeletionDialog from '../../../shared/ui/ConfirmDeletionDialog.vue'
 import SectionVersionSelect from './SectionVersionSelect.vue';
 import CopyCvSection from './CopyCvSection.vue';
 import { useSectionVersions } from '../composables/useSectionVersions.ts';
-import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
+import { flushEditorSessionSync } from '../../../shared/editing/editorSession';
 import { CV_TEXTAREA_COMMIT } from '../../../documents/cv/composables/cvTextareaCommit';
 import { makeT } from '../../../i18n/dict.ts';
 import { createContentId, moveSectionInOrder, normalizeContentState } from '../../../documents/layout/contentLayout.ts';
@@ -71,13 +71,23 @@ provide(CV_TEXTAREA_COMMIT, () => {
   sectionVersions.flush();
   commitParentTextarea();
 });
+let sectionSessionEpoch = 0;
+let sectionSessionDisposed = false;
+watch(() => props.selectedId, () => { sectionSessionEpoch++; }, { flush: 'sync' });
+onBeforeUnmount(() => { sectionSessionDisposed = true; sectionSessionEpoch++; });
 function flushSectionSaves() {
-  commitPendingTextareas();
-  return sectionVersions.flush();
+  const epoch = sectionSessionEpoch;
+  return flushEditorSessionSync({
+    current: () => !sectionSessionDisposed && epoch === sectionSessionEpoch,
+    steps: [() => sectionVersions.flush()],
+  });
 }
 function resetSectionVersions() {
-  commitPendingTextareas();
-  return sectionVersions.reset();
+  const epoch = sectionSessionEpoch;
+  return flushEditorSessionSync({
+    current: () => !sectionSessionDisposed && epoch === sectionSessionEpoch,
+    steps: [() => sectionVersions.reset()],
+  });
 }
 const versionMode = sectionVersions.enabled;
 const showConfig = computed(() => configMode.value && !versionMode.value && !reorderMode.value);
@@ -115,7 +125,7 @@ const selectSectionVersion = (key: string, id: string) => {
   pendingDeletion.value = null;
   sectionVersions.select(key, id);
 };
-defineExpose({ flushSectionSaves, resetSectionVersions });
+defineExpose({ flush: flushSectionSaves, flushSectionSaves, resetSectionVersions });
 const collapsed = reactive<Record<string, boolean>>({
   about: true,
   education: true,

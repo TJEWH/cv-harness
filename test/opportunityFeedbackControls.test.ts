@@ -10,6 +10,7 @@ import type { OpportunityInterestReason, OpportunityReview } from '../src/app/cl
 import { normalizeOpportunity as readOpportunity } from '../src/app/composables/useJobWorkspace';
 import { normalizeOpportunityInterestReasons } from '../src/features/opportunities/domain/opportunityFeedback';
 import * as textareaCommit from '../src/shared/editing/textareaCommit';
+import * as editorSession from '../src/shared/editing/editorSession';
 const { registerTextareaCommit } = textareaCommit;
 
 const filename = new URL('../src/features/opportunities/components/OpportunityFeedbackControls.vue', import.meta.url);
@@ -19,7 +20,7 @@ const compiled = compileScript(descriptor, { id: 'opportunity-feedback-controls-
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const componentExports: { default?: Component } = {};
 const requireLocal = createRequire(filename);
-new Function('require', 'exports', code)((name: string) => name.endsWith('.vue') ? {} : name === '../../../shared/editing/textareaCommit' ? textareaCommit : requireLocal(name), componentExports);
+new Function('require', 'exports', code)((name: string) => name.endsWith('.vue') ? {} : name === '../../../shared/editing/textareaCommit' ? textareaCommit : name === '../../../shared/editing/editorSession' ? editorSession : requireLocal(name), componentExports);
 const component = { ...componentExports.default, render: () => null };
 const renderer = createRenderer<object, object>({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}), insert() {}, remove() {}, setText() {},

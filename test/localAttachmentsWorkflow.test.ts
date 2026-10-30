@@ -12,6 +12,7 @@ import { attachmentAccount, createAttachmentFixture } from './attachmentFixture'
 
 const requireFromComponents = createRequire(new URL('../src/features/attachments/components/LocalAttachments.vue', import.meta.url));
 const { registerTextareaCommit } = requireFromComponents('../../../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
+const { useToasts } = requireFromComponents('../../../shared/ui/useToasts') as typeof import('../src/shared/ui/useToasts');
 
 const componentPaths = {
   LocalAttachments: '../src/features/attachments/components/LocalAttachments.vue',
@@ -39,7 +40,7 @@ const renderer = createRenderer<object, object>({ createElement: () => ({}), cre
 type Entry = AttachmentMetadata & { local?: LocalDocumentMetadata };
 interface LibraryState {
   loading: boolean; loadFailed: boolean; busy: boolean; error: string; name: string; description: string; file: File | null;
-  formVisible: boolean; formCollapsed: boolean;
+  formVisible: boolean; formCollapsed: boolean; dirty: boolean; flush(): boolean;
   commitDescription(): void; cancelEdit(): void; toggleForm(): void;
   entries: Entry[]; localDocuments: LocalDocumentMetadata[]; sharedDocuments: AttachmentMetadata[]; editingId: string;
   previewDocument: LocalDocument | null; previewUrl: string; previewPage: number;
@@ -81,13 +82,13 @@ function mount<T extends LibraryState | ApplicationState>(t: TestContext, view: 
   let isMounted = true;
   const unmount = () => { if (isMounted) { app.unmount(); isMounted = false; } };
   app.mount({}); t.after(() => {
-    try { unmount(); }
+    try { unmount(); useToasts().clear(); }
     finally {
       if (previous) Object.defineProperty(globalThis, 'window', previous); else Reflect.deleteProperty(globalThis, 'window');
       if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage); else Reflect.deleteProperty(globalThis, 'localStorage');
     }
   });
-  return { fixture, unmount, draftData, setup: (mounted as { $: { setupState: T } }).$.setupState, setProps(value: Record<string, unknown>) { props.value = { ...props.value, ...value }; }, switchAccount(value: string) { fixture.setOwner(value); owner.value = value; } };
+  return { fixture, unmount, draftData, exposed: mounted as { flush(): boolean }, setup: (mounted as { $: { setupState: T } }).$.setupState, setProps(value: Record<string, unknown>) { props.value = { ...props.value, ...value }; }, switchAccount(value: string) { fixture.setOwner(value); owner.value = value; } };
 }
 
 test('attachment creation requires manual metadata, never derives it from the filename, and uploads only those fields', async t => {
@@ -436,4 +437,105 @@ test('a failed attachment draft commit keeps the current editor until a retry su
   assert.equal(setup.error, 'Storage full');
   writes.mock.restore(); setup.edit(); assert.equal(setup.editingId, '');
   setup.edit(selected); assert.equal(setup.description, 'Unsaved description that must remain available.');
+});
+
+test('the public attachment flush waits for native readiness and writes private text without saving or sharing a file', async t => {
+  const { setup, exposed, fixture, draftData } = mount<LibraryState>(t, Library); await idle(setup);
+  assert.equal(exposed.flush(), true); assert.equal(draftData.size, 0);
+  setup.edit(); const selectedFile = pdf(); setup.chooseFile(fileEvent(selectedFile)); setup.name = 'Private reference';
+  let ready = false; let published = false;
+  const unregister = registerTextareaCommit(() => {
+    if (published) return;
+    published = true; setup.description = 'A native description awaiting explicit approval.'; setup.commitDescription();
+  }, () => ready);
+  t.after(unregister);
+  assert.equal(exposed.flush(), false); setup.toggleForm();
+  assert.equal(published, false); assert.equal(setup.formCollapsed, false); assert.equal(draftData.size, 0);
+  ready = true; assert.equal(exposed.flush(), true);
+  assert.equal(published, true); assert.equal(setup.file, selectedFile);
+  assert.deepEqual([...draftData.values()].map(value => JSON.parse(value)), [{ name: setup.name, description: setup.description }]);
+  assert.doesNotMatch([...draftData.values()].join(''), /PRIVATE-original-file-name|Synthetic document bytes|mimeType/);
+  assert.equal(fixture.local.size, 0); assert.equal(fixture.rows.length, 0);
+  assert.equal(fixture.calls.filter(call => call.name === 'save_local_attachment_metadata').length, 0);
+});
+
+test('unavailable private attachment storage blocks flush and retries without approving metadata', async t => {
+  const { setup, exposed, fixture, draftData } = mount<LibraryState>(t, Library); await idle(setup);
+  const storage = localStorage;
+  setup.edit(); setup.name = 'Private record'; setup.description = 'Recovery text'; setup.chooseFile(fileEvent(pdf()));
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: undefined });
+  assert.equal(exposed.flush(), false); assert.match(setup.error, /draft storage is unavailable/i);
+  assert.equal(useToasts().toasts.value.at(-1)?.tone, 'error');
+  const retry = useToasts().toasts.value.at(-1)?.action?.run; assert.ok(retry);
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
+  assert.equal(await retry(), true); assert.equal(setup.error, ''); assert.equal(draftData.size, 1);
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('Storage access denied'); } });
+  assert.equal(exposed.flush(), false); assert.equal(setup.error, 'Storage access denied');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
+  assert.equal(exposed.flush(), true);
+  assert.equal(fixture.local.size, 0); assert.equal(fixture.rows.length, 0);
+  assert.equal(fixture.calls.filter(call => call.name === 'save_local_attachment_metadata').length, 0);
+});
+
+test('failed private attachment drafts restore only to their owner and stale retry actions never publish them', async t => {
+  const fixture = createAttachmentFixture();
+  const repo = new LocalDocumentRepository(attachmentAccount, fixture.storage);
+  const saved = await repo.addDocument(pdf(), 'Approved transcript', 'Previously approved text.');
+  const { setup, exposed, switchAccount, draftData } = mount<LibraryState>(t, Library, fixture); await idle(setup);
+  setup.edit(setup.entries[0]); const ownerFile = pdf(); setup.chooseFile(fileEvent(ownerFile));
+  setup.name = 'Private owner name'; setup.description = 'Private owner description.';
+  const writes = t.mock.method(localStorage, 'setItem', () => { throw new Error('Private storage full'); });
+  assert.equal(exposed.flush(), false);
+  const ownerRetry = useToasts().toasts.value.at(-1)?.action?.run; assert.ok(ownerRetry);
+  setup.description = 'Latest private owner description.';
+  const other = '90000000-0000-4000-8000-000000000092';
+  switchAccount(other); await idle(setup);
+  assert.equal(setup.formVisible, false); assert.equal(setup.file, null); assert.equal(setup.description, '');
+  assert.equal(await ownerRetry(), false);
+  setup.edit(); const otherFile = pdf(); setup.chooseFile(fileEvent(otherFile));
+  setup.name = 'Other private name'; setup.description = 'Other private description.';
+  assert.equal(exposed.flush(), false);
+  const otherRetry = useToasts().toasts.value.at(-1)?.action?.run; assert.ok(otherRetry);
+  switchAccount(attachmentAccount); await idle(setup);
+  assert.equal(setup.editingId, saved.id); assert.equal(setup.name, 'Private owner name');
+  assert.equal(setup.description, 'Latest private owner description.'); assert.equal(setup.file, ownerFile);
+  assert.equal(await ownerRetry(), false, 'an earlier owner session cannot resume after a forced reset');
+  assert.equal(await otherRetry(), false); assert.equal(draftData.size, 0);
+  const currentRetry = useToasts().toasts.value.at(-1)?.action?.run; assert.ok(currentRetry);
+  writes.mock.restore(); assert.equal(await currentRetry(), true);
+  assert.equal(setup.file, ownerFile); assert.equal(setup.formVisible, true);
+  assert.equal((await repo.getDocument(saved.id))?.description, 'Previously approved text.');
+  assert.equal(fixture.calls.filter(call => call.name === 'save_local_attachment_metadata').length, 0);
+  switchAccount(other); await idle(setup);
+  assert.equal(setup.name, 'Other private name'); assert.equal(setup.file, otherFile);
+  setup.cancelEdit();
+  switchAccount(attachmentAccount); await idle(setup);
+  assert.equal(setup.formVisible, false, 'successfully recovered drafts no longer have a failed in-memory editor');
+  switchAccount(other); await idle(setup);
+  assert.equal(setup.formVisible, false, 'explicit discard removes the other owner’s failed in-memory editor');
+  assert.equal(fixture.rows.length, 0); assert.equal((await repo.listDocuments()).length, 1);
+});
+
+test('attachment flush rejects a synchronous record A–B–A change during native publication', async t => {
+  const fixture = createAttachmentFixture();
+  await new LocalDocumentRepository(attachmentAccount, fixture.storage).addDocument(pdf(), 'Approved transcript', 'Previously approved text.');
+  const { setup, exposed, draftData } = mount<LibraryState>(t, Library, fixture); await idle(setup);
+  setup.edit(); setup.name = 'Private new record'; setup.description = 'Earlier private draft.'; setup.chooseFile(fileEvent(pdf()));
+  let pending = true;
+  const unregister = registerTextareaCommit(() => {
+    if (!pending) return;
+    pending = false;
+    setup.edit(setup.entries[0]); setup.edit();
+    setup.description = 'A later private draft from the replacement editor lifecycle.';
+  });
+  try {
+    assert.equal(exposed.flush(), false);
+    assert.equal(setup.editingId, '');
+    const saved = [...draftData.entries()].find(([key]) => key.endsWith(':new'));
+    assert.equal(JSON.parse(saved![1]).description, 'Earlier private draft.', 'the outer flush cannot persist text from a replacement editor lifecycle');
+    assert.equal(setup.description, 'A later private draft from the replacement editor lifecycle.');
+    assert.equal(fixture.calls.filter(call => call.name === 'save_local_attachment_metadata').length, 0);
+  } finally { unregister(); }
+  assert.equal(exposed.flush(), true);
+  assert.ok([...draftData.values()].some(value => JSON.parse(value).description === setup.description));
 });

@@ -11,7 +11,8 @@ import type { Component } from 'vue';
 import type { Application, ApplicationStage, Opportunity, OpportunityFeedbackPatch, OpportunityReview, OpportunityReviewState } from '../src/app/cloudTypes';
 import { normalizeOpportunity as readOpportunity } from '../src/app/composables/useJobWorkspace';
 import { useSaveStateToast, useToasts, useToastWatch } from '../src/shared/ui/useToasts';
-import { commitPendingTextareas, registerTextareaCommit } from '../src/shared/editing/textareaCommit';
+import { commitPendingTextareas, markTextareaDraftChanged, registerTextareaCommit } from '../src/shared/editing/textareaCommit';
+import { flushEditorSession } from '../src/shared/editing/editorSession';
 import { livingStandardFixture } from './fixtures/livingStandard';
 import { migrateOpportunityEvaluationDrafts } from '../src/features/opportunities/domain/opportunityEvaluation';
 
@@ -155,6 +156,7 @@ function mount(t: TestContext, options: { restoredOpportunityId?: string; active
   new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} }
     : path === '../composables/useJobWorkspace' ? { useJobWorkspace: () => workspace }
     : path === '../../shared/editing/textareaCommit' ? { commitPendingTextareas }
+    : path === '../../shared/editing/editorSession' ? { flushEditorSession }
     : path === '../../shared/ui/useToasts' ? { useSaveStateToast, useToasts, useToastWatch } : requireFromComponent(path), exports);
   const component = { ...exports.default, render: () => null };
   const props = reactive({ client: null, userId: 'account-one', tab: 'opportunities' as 'opportunities' | 'applications', lang: 'en', configurations: [], selectedId: '', readVersion: () => null, ...(options.active === undefined ? {} : { active: options.active }) });
@@ -173,7 +175,9 @@ function mount(t: TestContext, options: { restoredOpportunityId?: string; active
     pendingReviewSelections: Map<string, { state: OpportunityReviewState; status: 'saving' | 'error' }>;
     startingApplication: object | null;
     notes: string; notesStatus: string; notesError: string; flushNotes(): Promise<boolean>;
-    applicationWorkspace: { flushTextareas(): Promise<boolean> } | null; flushTextareas(): Promise<boolean>;
+    applicationWorkspace: { flush(): Promise<boolean> } | null; flushTextareas(): Promise<boolean>; flush(): Promise<boolean>;
+    searchTemplates: { flush(): Promise<boolean> } | null;
+    opportunityFeedback: { flush(): Promise<boolean> } | null; applicationFeedback: { flush(): Promise<boolean> } | null;
     opportunityDisposition: { flush(): Promise<boolean> } | null;
     applicationDisposition: { flush(): Promise<boolean> } | null;
     opportunityComment: string; commentStatus: string; commentError: string; flushComment(): Promise<boolean>;
@@ -192,7 +196,7 @@ function mount(t: TestContext, options: { restoredOpportunityId?: string; active
     requestDetailRemoval(item: Application): Promise<void>; cancelRemoval(): void; confirmRemoval(item: Application): Promise<void>;
   } } }).$.setupState;
   const componentProps = (mounted as { $props: { active: boolean } }).$props;
-  return { migrateRecovery: () => migrateOpportunityEvaluationDrafts(props.userId, reviews.value as unknown as Record<string, unknown>[]), setup, props, componentProps, opportunity, opportunities, application, applications, receipts, reviews, storage, removed, applicationUpdates, commentUpdates, feedbackUpdates, evaluationWrites, stageUpdates, historyResets, reviewUpdates, saving, savingReview, handlers, failNextNotesSave: () => { failNotes = true; }, failNextCommentSave: () => { failComment = true; }, failNextFeedbackSave: () => { failFeedback = true; }, failNextHistoryReset: () => { failHistoryReset = true; }, created: () => created };
+  return { close: () => unmount(), migrateRecovery: () => migrateOpportunityEvaluationDrafts(props.userId, reviews.value as unknown as Record<string, unknown>[]), setup, props, componentProps, opportunity, opportunities, application, applications, receipts, reviews, storage, removed, applicationUpdates, commentUpdates, feedbackUpdates, evaluationWrites, stageUpdates, historyResets, reviewUpdates, saving, savingReview, handlers, failNextNotesSave: () => { failNotes = true; }, failNextCommentSave: () => { failComment = true; }, failNextFeedbackSave: () => { failFeedback = true; }, failNextHistoryReset: () => { failHistoryReset = true; }, created: () => created };
 }
 
 function deferred<T>() {
@@ -224,7 +228,7 @@ test('tracking history reset saves pending notes first and retains the current s
   f.setup.openApplication(item);
   f.setup.notes = 'Confirm the funding before applying.';
   let nestedFlushed = false;
-  f.setup.applicationWorkspace = { flushTextareas: async () => { nestedFlushed = true; return true; } };
+  f.setup.applicationWorkspace = { flush: async () => { nestedFlushed = true; return true; } };
   await f.setup.resetTrackingHistory(item);
   assert.equal(nestedFlushed, true);
   assert.deepEqual(f.historyResets, [{ id: item.id, notes: 'Confirm the funding before applying.' }]);
@@ -269,11 +273,11 @@ test('tracking history reset stops when pending textarea saves fail and succeeds
   assert.equal(f.setup.notesStatus, 'error');
   assert.equal(f.setup.historyResetError, 'Pending edits could not be saved. Please retry.');
   assert.equal(f.setup.resettingHistory, false);
-  f.setup.applicationWorkspace = { flushTextareas: async () => false };
+  f.setup.applicationWorkspace = { flush: async () => false };
   await f.setup.resetTrackingHistory(item);
   assert.deepEqual(f.historyResets, [], 'a failed nested editor save must also stop the reset');
   assert.equal(f.setup.historyResetError, 'Pending edits could not be saved. Please retry.');
-  f.setup.applicationWorkspace = { flushTextareas: async () => true };
+  f.setup.applicationWorkspace = { flush: async () => true };
   await f.setup.resetTrackingHistory(item);
   assert.deepEqual(f.historyResets, [{ id: item.id, notes: 'Unsaved follow-up note.' }]);
   assert.deepEqual(f.setup.statusHistory, [item.status_history![1]]);
@@ -308,7 +312,7 @@ test('changing applications while a history reset flushes cannot reset either re
   await nextTick();
   f.setup.openApplication(item);
   let release!: (value: boolean) => void;
-  f.setup.applicationWorkspace = { flushTextareas: () => new Promise(resolve => { release = resolve; }) };
+  f.setup.applicationWorkspace = { flush: () => new Promise(resolve => { release = resolve; }) };
   const pending = f.setup.resetTrackingHistory(item);
   assert.equal(f.setup.resettingHistory, true);
   f.setup.openApplication(other);
@@ -389,18 +393,18 @@ test('application navigation waits for nested textarea saves and retains the ite
   await nextTick();
   f.setup.openApplication(f.application);
   let release!: (saved: boolean) => void;
-  f.setup.applicationWorkspace = { flushTextareas: () => new Promise<boolean>(resolve => { release = resolve; }) };
+  f.setup.applicationWorkspace = { flush: () => new Promise<boolean>(resolve => { release = resolve; }) };
   const navigation = f.setup.navigateDetail(1);
   assert.equal(f.setup.editingApplication?.id, f.application.id);
   release(false);
   await navigation;
   assert.equal(f.setup.editingApplication?.id, f.application.id);
   assert.equal(f.applicationUpdates.length, 0, 'failed nested saves must stop later writes');
-  f.setup.applicationWorkspace = { flushTextareas: async () => false };
+  f.setup.applicationWorkspace = { flush: async () => false };
   await f.setup.closeApplication();
   assert.equal(f.setup.editingApplication?.id, f.application.id);
   assert.equal(await f.setup.openList('applications'), false);
-  f.setup.applicationWorkspace = { flushTextareas: async () => true };
+  f.setup.applicationWorkspace = { flush: async () => true };
   await f.setup.navigateDetail(1);
   assert.equal(f.setup.editingApplication?.id, second.id);
 });
@@ -543,7 +547,7 @@ test('Apply opens the created application when the parent activates its tab afte
   f.setup.openOpportunity(f.opportunity.id);
   const parentFlush = deferred<boolean>();
   let flushingParentEditors = false;
-  f.setup.applicationWorkspace = { flushTextareas: () => {
+  f.setup.applicationWorkspace = { flush: () => {
     flushingParentEditors = true;
     return parentFlush.promise;
   } };
@@ -612,7 +616,7 @@ test('application evaluations share opportunity drafts and block record navigati
   f.setup.opportunityComment = 'Updated while preparing the application.';
   await nextTick();
   assert.equal(f.commentUpdates.length, 0, 'typing must remain a local draft');
-  f.setup.applicationWorkspace = { flushTextareas: () => f.setup.flushComment() };
+  f.setup.applicationWorkspace = { flush: () => f.setup.flushComment() };
   f.failNextCommentSave();
   await f.setup.navigateDetail(1);
   assert.equal(f.setup.editingApplication?.id, f.application.id);
@@ -1559,4 +1563,67 @@ test('failed disposition drafts block opportunity and application navigation', a
   f.props.tab = 'applications'; f.applications.value = [f.application]; await nextTick(); f.setup.openApplication(f.application);
   f.setup.applicationDisposition = { flush: async () => false };
   await f.setup.closeApplication(); assert.equal(f.setup.editingApplication?.id, f.application.id);
+});
+
+
+test('the workspace flush contract preserves the complete evaluation and application child order', async t => {
+  const f = mount(t, { active: false });
+  const order: string[] = [];
+  const child = (name: string) => ({ flush: async () => { order.push(name); return true; } });
+  f.setup.searchTemplates = child('search');
+  f.setup.opportunityFeedback = child('opportunity feedback');
+  f.setup.opportunityDisposition = child('opportunity disposition');
+  f.setup.applicationFeedback = child('application feedback');
+  f.setup.applicationDisposition = child('application disposition');
+  f.setup.applicationWorkspace = child('application');
+  assert.equal(f.setup.flush, f.setup.flushTextareas, 'legacy callers retain the uniform flush implementation');
+  assert.equal(await f.setup.flush(), true, 'an unchanged inactive workspace can still drain its editors');
+  assert.deepEqual(order, ['search', 'opportunity feedback', 'opportunity disposition', 'application disposition', 'application feedback',
+    'application', 'application feedback', 'application disposition']);
+});
+
+test('new native typing during a workspace child save stops later evaluation and application flushes', async t => {
+  const f = mount(t);
+  f.applications.value = [f.application]; f.props.tab = 'applications'; await nextTick(); f.setup.openApplication(f.application);
+  f.setup.notes = 'The existing uncommitted application note';
+  f.setup.opportunityComment = 'The existing private evaluation';
+  const saving = deferred<boolean>(); let nextChild = 0;
+  f.setup.searchTemplates = { flush: () => saving.promise };
+  f.setup.applicationWorkspace = { flush: async () => { nextChild++; return true; } };
+  const pending = f.setup.flush();
+  markTextareaDraftChanged();
+  saving.resolve(true);
+  assert.equal(await pending, false);
+  assert.equal(nextChild, 0); assert.deepEqual(f.commentUpdates, []); assert.deepEqual(f.applicationUpdates, []);
+  assert.equal(f.setup.notes, 'The existing uncommitted application note');
+  assert.equal(f.setup.opportunityComment, 'The existing private evaluation');
+});
+
+test('workspace session epochs reject account and activation A-B-A changes before later child saves', async t => {
+  for (const change of ['owner', 'active'] as const) await t.test(change, async t => {
+    const f = mount(t); const saving = deferred<boolean>(); let laterFlushes = 0;
+    f.setup.searchTemplates = { flush: () => saving.promise };
+    f.setup.applicationWorkspace = { flush: async () => { laterFlushes++; return true; } };
+    const pending = f.setup.flush();
+    if (change === 'owner') f.props.userId = 'another-owner'; else f.props.active = false;
+    await nextTick();
+    if (change === 'owner') f.props.userId = 'account-one'; else f.props.active = true;
+    await nextTick();
+    saving.resolve(true);
+    assert.equal(await pending, false); assert.equal(laterFlushes, 0);
+    assert.deepEqual(f.commentUpdates, []); assert.deepEqual(f.applicationUpdates, []);
+  });
+});
+
+test('workspace replacement and disposal cannot flush a later child from an obsolete session', async t => {
+  for (const change of ['replace-child', 'unmount'] as const) await t.test(change, async t => {
+    const f = mount(t); const saving = deferred<boolean>(); let laterFlushes = 0;
+    f.setup.searchTemplates = { flush: () => saving.promise };
+    f.setup.applicationWorkspace = { flush: async () => { laterFlushes++; return true; } };
+    const pending = f.setup.flush();
+    if (change === 'replace-child') f.setup.searchTemplates = { flush: async () => true };
+    else f.close();
+    saving.resolve(true);
+    assert.equal(await pending, false); assert.equal(laterFlushes, 0);
+  });
 });
