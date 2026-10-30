@@ -6,7 +6,7 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, nextTick, ref, type Component } from 'vue';
 
-const filename = new URL('../src/App.vue', import.meta.url);
+const filename = new URL('../src/app/App.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'preview-recovery-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

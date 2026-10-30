@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { effectScope, ref, watch } from 'vue';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Application, OpportunityReview } from '../src/cloudTypes';
-import { createCloudCvSnapshot } from '../src/composables/cloudCvPrivacy';
-import { normalizeOpportunity as readOpportunity, useJobWorkspace } from '../src/composables/useJobWorkspace';
-import { opportunityRecency } from '../src/composables/opportunityRecency';
+import type { Application, OpportunityReview } from '../src/app/cloudTypes';
+import { createCloudCvSnapshot } from '../src/documents/privacy/domain/cloudCvPrivacy';
+import { normalizeOpportunity as readOpportunity, useJobWorkspace } from '../src/app/composables/useJobWorkspace';
+import { opportunityRecency } from '../src/features/opportunities/domain/opportunityRecency';
 import { createTestState, stub } from './helpers';
 
 const normalizeOpportunity = (input: Record<string, unknown> & { id: string }) => readOpportunity(opportunityFixture(input));

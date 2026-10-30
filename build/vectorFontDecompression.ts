@@ -63,7 +63,7 @@ export default function vectorFontDecompression() {
     resolveId(id: string, importer?: string) {
       if (id === 'wawoff2/build/decompress_binding.js') return decoderId;
       if (id === 'virtual:vector-fontkit') return fontkitId;
-      if (id === 'fontkit' && importer?.split('?')[0].endsWith('/src/composables/pdfVectorExport.ts')) return fontkitId;
+      if (id === 'fontkit' && importer?.split('?')[0].endsWith('/src/documents/pdf/pdfVectorExport.ts')) return fontkitId;
     },
     load(id: string) {
       if (id === decoderId) {

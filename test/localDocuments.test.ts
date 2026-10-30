@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { LocalDocumentRepository, defaultPackageManifest } from '../src/composables/localDocuments';
-import type { LocalDocumentStorage, LocalDocumentWrite } from '../src/composables/localDocuments';
+import { LocalDocumentRepository, defaultPackageManifest } from '../src/features/attachments/data/localDocuments';
+import type { LocalDocumentStorage, LocalDocumentWrite } from '../src/features/attachments/data/localDocuments';
 
 class MemoryStorage implements LocalDocumentStorage {
   rows = new Map<string, { scope: string; collection: string; value: unknown }>();

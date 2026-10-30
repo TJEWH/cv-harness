@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { file, reset, sql } from './db';
-import { adaptiveDiscoveryLeadTime, type AdaptiveDeadlineEvidence } from '../../src/composables/adaptiveSearchQuality';
-import { opportunityFeedbackTimestamp } from '../../src/composables/opportunityFeedback';
+import { adaptiveDiscoveryLeadTime, type AdaptiveDeadlineEvidence } from '../../src/features/meta-search/domain/adaptiveSearchQuality';
+import { opportunityFeedbackTimestamp } from '../../src/features/opportunities/domain/opportunityFeedback';
 
 test('AF-05 records real execution, preserves immutable attribution and exposes owner-scoped metrics', () => {
   reset({ searchProtocol: true });

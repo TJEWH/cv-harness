@@ -1,15 +1,15 @@
 /** Synthetic refinement backend shared by component tests and the dev-only browser fixture. */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { RefinementRequest, RefinementProposal } from '../src/refinementTypes';
-import type { CvOperation } from '../src/cvStructuredTypes';
-import { parseRefinementProposal, refinementSignature } from '../src/composables/applicationRefinement';
-import { IDENTITY_PLACEHOLDERS } from '../src/composables/identityRedaction';
+import type { RefinementRequest, RefinementProposal } from '../src/features/refinement/refinementTypes';
+import type { CvOperation } from '../src/features/refinement/cvStructuredTypes';
+import { parseRefinementProposal, refinementSignature } from '../src/features/refinement/applicationRefinement';
+import { IDENTITY_PLACEHOLDERS } from '../src/documents/privacy/domain/identityRedaction';
 import { reactive } from 'vue';
-import type { Application, ApplicationStage } from '../src/cloudTypes';
-import type { CvState, SavedConfiguration } from '../src/types';
-import { createEmptyDocument, createSampleDocument } from '../src/composables/builtinConfigurations';
-import { cloneCv } from '../src/composables/applicationCv';
-import { createCloudCvSnapshot } from '../src/composables/cloudCvPrivacy';
+import type { Application, ApplicationStage } from '../src/app/cloudTypes';
+import type { CvState, SavedConfiguration } from '../src/documents/cv/types';
+import { createEmptyDocument, createSampleDocument } from '../src/features/cv-studio/domain/builtinConfigurations';
+import { cloneCv } from '../src/features/applications/applicationCv';
+import { createCloudCvSnapshot } from '../src/documents/privacy/domain/cloudCvPrivacy';
 
 type Row = Record<string, unknown>;
 export const REFINEMENT_TABLES = ['application_refinement_state', 'application_refinement_requests', 'application_refinement_proposals', 'application_refinement_reviews', 'application_refinement_protocols'] as const;

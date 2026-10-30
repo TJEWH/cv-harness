@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { LetterTemplate } from '../src/letterTypes';
-import { cloneCv } from '../src/composables/applicationCv';
-import { refinementSignature } from '../src/composables/applicationRefinement';
+import type { LetterTemplate } from '../src/documents/letter/letterTypes';
+import { cloneCv } from '../src/features/applications/applicationCv';
+import { refinementSignature } from '../src/features/refinement/applicationRefinement';
 import { createPrivateRefinementCv } from './refinementFixture';
 import { idle, seedLegacyRound, mount, prepare, type Workspace } from './refinementWorkflowHarness';
 

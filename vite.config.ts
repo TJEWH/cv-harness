@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import responsivePdfRenderer from './build/responsivePdfRenderer.ts';
 import vectorFontDecompression from './build/vectorFontDecompression.ts';
 import pdfPreviewAssets from './build/pdfPreviewAssets.ts';
-import { parseSupabaseConfiguration } from './src/lib/supabaseConfig.ts';
+import { parseSupabaseConfiguration } from './src/platform/supabase/supabaseConfig.ts';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), ['VITE_SUPABASE_', 'NEXT_PUBLIC_SUPABASE_']);

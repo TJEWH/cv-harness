@@ -10,7 +10,7 @@ Use this strategy for all textareas, including CV Studio, opportunity evaluation
 - Local recovery may update while typing. Keep recovery isolated by account and record; clear only the version that was successfully saved. Browser shutdown cannot guarantee a network request finishes, so retain recovery until success.
 - Track unsaved, saving, saved, and error states internally. Use the shared toast system for committed-save progress, success, and errors; do not render inline or hidden save-state text. Do not notify while typing or announce an already-saved record on open. Retain failed drafts and provide retry. Put general editing guidance in an `InfoHint` beside the field label.
 
-Use `src/components/AutosaveTextarea.vue` for the input behavior. It forwards native attributes such as `id`, `rows`, `maxlength`, and accessible labels to its textarea, and supports `auto-resize`. If changing the bound model already triggers persistence, use `v-model.lazy` so only a commit publishes its internal draft:
+Use `src/shared/ui/AutosaveTextarea.vue` for the input behavior. It forwards native attributes such as `id`, `rows`, `maxlength`, and accessible labels to its textarea, and supports `auto-resize`. If changing the bound model already triggers persistence, use `v-model.lazy` so only a commit publishes its internal draft:
 
 ```vue
 <AutosaveTextarea v-model.lazy="document.text" rows="3" @commit="flushDocument" />
@@ -24,7 +24,7 @@ Plain `v-model` is reserved for a draft whose setter and watchers do not persist
 
 `useApplicationNotesAutosave` implements commit-driven saving, serialized snapshots, and local recovery for opportunity evaluations and application notes. Reuse it for comparable per-record notes. Other persistence layers must implement the same contract; binding this component directly to a model with an input-triggered save watcher does not remove that watcher.
 
-Call `commitPendingTextareas()` from `src/composables/textareaCommit.ts` before reading a save/export snapshot or replacing an editor's model. It publishes dirty drafts synchronously and guards nested flushes. Then flush the owning persistence layer; await asynchronous saves before navigating. The component also commits on outside pointer interaction before another control changes the editor. A normal drag within the textarea never commits.
+Call `commitPendingTextareas()` from `src/shared/editing/textareaCommit.ts` before reading a save/export snapshot or replacing an editor's model. It publishes dirty drafts synchronously and guards nested flushes. Then flush the owning persistence layer; await asynchronous saves before navigating. The component also commits on outside pointer interaction before another control changes the editor. A normal drag within the textarea never commits.
 
 `MarkdownTextarea` applies this behavior to CV content and signals the owning CV/section/privacy persistence layer to flush. Keep PDF preview refreshes separate from storage writes; Shift+Enter must not refresh a deferred preview.
 

@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createOpportunityResultSchema } from '../src/composables/opportunityResultSchema';
-import { compileAdaptiveFeedbackSnapshot, type AdaptiveFeedbackExample } from '../src/composables/adaptiveFeedbackSnapshots';
-import { createAdaptiveSearchPlan } from '../src/composables/adaptiveSearchPlans';
-import { buildAdaptiveSearchPlanningContext, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY, createSearchBreadthPolicy, createLegacySearchBreadthPolicy } from '../src/composables/adaptiveSearchPlanner';
-import { opportunityFeedbackTextHash, includedOpportunitySearchSummary } from '../src/composables/opportunityFeedbackPrivacy';
-import { ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT, ADAPTIVE_BATCH_PROTOCOL_TEXT } from '../src/composables/adaptiveSearchProtocol';
+import { createOpportunityResultSchema } from '../src/features/opportunities/domain/opportunityResultSchema';
+import { compileAdaptiveFeedbackSnapshot, type AdaptiveFeedbackExample } from '../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
+import { createAdaptiveSearchPlan } from '../src/features/meta-search/domain/adaptiveSearchPlans';
+import { buildAdaptiveSearchPlanningContext, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY, createSearchBreadthPolicy, createLegacySearchBreadthPolicy } from '../src/features/meta-search/domain/adaptiveSearchPlanner';
+import { opportunityFeedbackTextHash, includedOpportunitySearchSummary } from '../src/features/opportunities/domain/opportunityFeedbackPrivacy';
+import { ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT, ADAPTIVE_BATCH_PROTOCOL_TEXT } from '../src/features/meta-search/domain/adaptiveSearchProtocol';
 import {
   ADAPTIVE_STARTUP_CAPABILITIES, ADAPTIVE_STARTUP_EXECUTION_CONTRACT, ADAPTIVE_STARTUP_MAX_BYTES, ADAPTIVE_STARTUP_PROTOCOL_TEXT,
   DEFAULT_ADAPTIVE_RUNNER_ENABLED, projectAdaptiveSearchStartup,
   type AdaptiveSearchStartupBundle, type AdaptiveStartupBinding, type AdaptiveStartupPrivacy,
-} from '../src/composables/adaptiveSearchStartup';
+} from '../src/features/meta-search/domain/adaptiveSearchStartup';
 
 const id = (index: number) => `79000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
 const owner = id(900), search = id(901), run = id(902), now = '2026-10-29T12:00:00Z';

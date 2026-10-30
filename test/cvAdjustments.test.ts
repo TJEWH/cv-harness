@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseCvAdjustmentResponse, prepareCvAdjustment, reconstructCvAdjustment } from '../src/composables/cvAdjustments';
-import type { LocalCvAdjustmentRequest } from '../src/cvAdjustmentTypes';
+import { parseCvAdjustmentResponse, prepareCvAdjustment, reconstructCvAdjustment } from '../src/features/refinement/domain/cvAdjustments';
+import type { LocalCvAdjustmentRequest } from '../src/features/refinement/cvAdjustmentTypes';
 import { createTestState } from './helpers';
 
 function fixture() {

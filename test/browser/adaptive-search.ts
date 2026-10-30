@@ -1,13 +1,13 @@
 import { createApp, h, ref } from 'vue';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import SearchTemplates from '../../src/components/SearchTemplates.vue';
-import { DEFAULT_SEARCH_TEMPLATES, searchTemplateContentKey } from '../../src/composables/useSearchTemplates';
-import { buildRecurringSearchPrompt, buildSearchSystemPrompt, buildSearchUserPrompt } from '../../src/composables/searchPrompts';
-import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../../src/composables/searchTemplateCloud';
-import type { SearchCloudTemplate } from '../../src/searchTypes';
-import type { AdaptiveSearchRunnerState } from '../../src/composables/adaptiveSearchTask';
-import type { AdaptiveSearchDashboardData } from '../../src/composables/adaptiveSearchDashboard';
-import { createSearchBreadthPolicy } from '../../src/composables/adaptiveSearchPlanner';
+import SearchTemplates from '../../src/features/meta-search/components/SearchTemplates.vue';
+import { DEFAULT_SEARCH_TEMPLATES, searchTemplateContentKey } from '../../src/features/meta-search/data/useSearchTemplates';
+import { buildRecurringSearchPrompt, buildSearchSystemPrompt, buildSearchUserPrompt } from '../../src/features/meta-search/domain/searchPrompts';
+import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../../src/features/meta-search/data/searchTemplateCloud';
+import type { SearchCloudTemplate } from '../../src/features/meta-search/searchTypes';
+import type { AdaptiveSearchRunnerState } from '../../src/features/meta-search/domain/adaptiveSearchTask';
+import type { AdaptiveSearchDashboardData } from '../../src/features/meta-search/composables/adaptiveSearchDashboard';
+import { createSearchBreadthPolicy } from '../../src/features/meta-search/domain/adaptiveSearchPlanner';
 import dashboardFixture from './adaptive-dashboard.fixture.json';
 import '../../src/assets/cv.css';
 

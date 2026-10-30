@@ -1,8 +1,8 @@
 import { createApp, h, nextTick, ref, type App, type Component } from 'vue';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import LocalAttachments from '../../src/components/LocalAttachments.vue';
-import ApplicationDocuments from '../../src/components/ApplicationDocuments.vue';
-import { LocalDocumentRepository } from '../../src/composables/localDocuments';
+import LocalAttachments from '../../src/features/attachments/components/LocalAttachments.vue';
+import ApplicationDocuments from '../../src/features/applications/components/ApplicationDocuments.vue';
+import { LocalDocumentRepository } from '../../src/features/attachments/data/localDocuments';
 import { createAttachmentFixture, attachmentAccount } from '../attachmentFixture';
 import '../../src/assets/cv.css';
 import './style.css';
@@ -43,7 +43,7 @@ async function click(name: string, parent: ParentNode = current()) {
 }
 async function fill(name: string, value: string) {
   const label = [...current().querySelectorAll('label')].find(node => node.firstChild?.textContent?.trim() === name);
-  const input = label?.querySelector<HTMLInputElement | HTMLTextAreaElement>('input,textarea');
+  const input = (label?.control ?? label?.querySelector('input,textarea')) as HTMLInputElement | HTMLTextAreaElement | null;
   assert(input, `Missing field: ${name}`); input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); await settle();
 }
 async function chooseFile(blob: Blob, filename: string) {

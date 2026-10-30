@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { degrees, PDFArray, PDFDict, PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
-import { composeApplicationPackage, packageItemProblem } from '../src/composables/applicationPackage';
-import { defaultPackageManifest, LocalDocumentRepository, safeDocumentFilename } from '../src/composables/localDocuments';
-import type { LocalDocumentStorage, LocalDocumentWrite } from '../src/composables/localDocuments';
-import type { ApplicationPackageManifest, LocalDocument } from '../src/documentTypes';
+import { composeApplicationPackage, packageItemProblem } from '../src/features/applications/domain/applicationPackage';
+import { defaultPackageManifest, LocalDocumentRepository, safeDocumentFilename } from '../src/features/attachments/data/localDocuments';
+import type { LocalDocumentStorage, LocalDocumentWrite } from '../src/features/attachments/data/localDocuments';
+import type { ApplicationPackageManifest, LocalDocument } from '../src/features/attachments/documentTypes';
 
 class MemoryStorage implements LocalDocumentStorage {
   records = new Map<string, { scope: string; collection: string; value: unknown }>();

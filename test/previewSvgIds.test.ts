@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { scopePreviewSvgIds } from '../src/composables/previewSvgIds';
-import { createSvgDocument } from '../src/composables/pdfVectorPreview';
+import { scopePreviewSvgIds } from '../src/documents/pdf/previewSvgIds';
+import { createSvgDocument } from '../src/documents/pdf/pdfVectorPreview';
 
 test('simultaneous previews resolve timeline and page clipping inside their own SVG', () => {
   const doc = createSvgDocument('page');

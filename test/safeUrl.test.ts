@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { safeEmailUrl, safeLinkUrl, safeWebUrl } from '../src/composables/safeUrl';
-import { parseInlineMarkdown } from '../src/composables/markdownText';
-import { vectorPageLinks } from '../src/composables/pdfVectorLinks';
+import { safeEmailUrl, safeLinkUrl, safeWebUrl } from '../src/shared/lib/safeUrl';
+import { parseInlineMarkdown } from '../src/shared/lib/markdownText';
+import { vectorPageLinks } from '../src/documents/pdf/pdfVectorLinks';
 
 test('web links require HTTP(S) and reject executable, relative, and disguised schemes', () => {
   assert.equal(safeWebUrl(' HTTPS://Example.com/cv '), 'https://example.com/cv');

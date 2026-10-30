@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { effectScope, nextTick, ref } from 'vue';
-import { useSaveStateToast, useToasts, useToastWatch } from '../src/composables/useToasts';
+import { useSaveStateToast, useToasts, useToastWatch } from '../src/shared/ui/useToasts';
 
 const { toasts, notify, dismiss, pause, resume, clear } = useToasts();
 

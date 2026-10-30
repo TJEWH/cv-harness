@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildOpportunityGroups, checklistKeys, opportunityContextMarkdown, opportunityFieldLabel, personalFitScore, requirementTableRows } from '../src/composables/opportunityContext';
-import type { OpportunityContextNode } from '../src/composables/opportunityContext';
+import { buildOpportunityGroups, checklistKeys, opportunityContextMarkdown, opportunityFieldLabel, personalFitScore, requirementTableRows } from '../src/features/opportunities/domain/opportunityContext';
+import type { OpportunityContextNode } from '../src/features/opportunities/domain/opportunityContext';
 
 function flatten(nodes: OpportunityContextNode[]): OpportunityContextNode[] {
   return nodes.flatMap((node) => [node, ...flatten(node.children || [])]);

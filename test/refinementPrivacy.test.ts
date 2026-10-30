@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildRefinementPrompt, parseRefinementProposal, prepareRefinement, reconstructRefinementProposal, refinementSignature, sanitizeRefinementText } from '../src/composables/applicationRefinement';
-import { privacyContextTargets, privacySegments, redactFieldOriginals, validatePrivacyLegend } from '../src/composables/refinementPrivacy';
-import { validatePrivateTokenLines } from '../src/composables/cvAdjustments';
-import { DEFAULT_LETTER_TEMPLATES } from '../src/composables/motivationLetters';
-import type { ApprovedPrivacyContexts, RefinementProposalV2 } from '../src/refinementTypes';
+import { buildRefinementPrompt, parseRefinementProposal, prepareRefinement, reconstructRefinementProposal, refinementSignature, sanitizeRefinementText } from '../src/features/refinement/applicationRefinement';
+import { privacyContextTargets, privacySegments, redactFieldOriginals, validatePrivacyLegend } from '../src/features/refinement/domain/refinementPrivacy';
+import { validatePrivateTokenLines } from '../src/features/refinement/domain/cvAdjustments';
+import { DEFAULT_LETTER_TEMPLATES } from '../src/documents/letter/motivationLetters';
+import type { ApprovedPrivacyContexts, RefinementProposalV2 } from '../src/features/refinement/refinementTypes';
 import { createTestState } from './helpers';
 
 const APP = 'a0000000-0000-4000-8000-000000000001';

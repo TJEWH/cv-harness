@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { refinementMatchesScope, refinementRunMetadata, visibleRefinementProposals } from '../src/composables/refinementHistory';
-import { prepareRefinement, refinementSignature } from '../src/composables/applicationRefinement';
-import { DEFAULT_LETTER_TEMPLATES } from '../src/composables/motivationLetters';
-import type { RefinementProposalRow, RefinementRequestRow } from '../src/refinementTypes';
+import { refinementMatchesScope, refinementRunMetadata, visibleRefinementProposals } from '../src/features/refinement/domain/refinementHistory';
+import { prepareRefinement, refinementSignature } from '../src/features/refinement/applicationRefinement';
+import { DEFAULT_LETTER_TEMPLATES } from '../src/documents/letter/motivationLetters';
+import type { RefinementProposalRow, RefinementRequestRow } from '../src/features/refinement/refinementTypes';
 import { createTestState } from './helpers';
 
 function fixture() {

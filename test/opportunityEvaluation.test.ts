@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MAX_OPPORTUNITY_EVALUATION_LENGTH, migrateOpportunityEvaluationDrafts } from '../src/composables/opportunityEvaluation';
+import { MAX_OPPORTUNITY_EVALUATION_LENGTH, migrateOpportunityEvaluationDrafts } from '../src/features/opportunities/domain/opportunityEvaluation';
 
 const owner = 'owner:one', id = 'opportunity:one';
 const oldKey = (account = owner, opportunity = id) => `CV_SEARCH_FEEDBACK_SUMMARY_DRAFT:${encodeURIComponent(account)}:${encodeURIComponent(opportunity)}`;

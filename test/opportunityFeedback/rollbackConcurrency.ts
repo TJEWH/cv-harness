@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { adaptiveJsonSqlLiteral } from '../../src/composables/adaptiveSearchProtocol';
+import { adaptiveJsonSqlLiteral } from '../../src/features/meta-search/domain/adaptiveSearchProtocol';
 import { sql, sqlAsync } from './db';
 
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;

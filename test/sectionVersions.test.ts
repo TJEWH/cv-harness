@@ -1,12 +1,12 @@
 import type { TestContext } from 'node:test';
-import type { CvState, SaveStatus } from '../src/types';
+import type { CvState, SaveStatus } from '../src/documents/cv/types';
 import { createTestState } from './helpers';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { effectScope, nextTick, reactive, ref, watch } from 'vue';
-import { normalizeContentState } from '../src/composables/contentLayout.ts';
-import { SAMPLE_DOCUMENT_ID } from '../src/composables/builtinConfigurations';
-import { useSectionVersions } from '../src/composables/useSectionVersions.ts';
+import { normalizeContentState } from '../src/documents/layout/contentLayout.ts';
+import { SAMPLE_DOCUMENT_ID } from '../src/features/cv-studio/domain/builtinConfigurations';
+import { useSectionVersions } from '../src/features/cv-studio/composables/useSectionVersions.ts';
 
 function fixture(t: TestContext) {
   const makeVersion = (name: string, customIds: string[]): CvState => {

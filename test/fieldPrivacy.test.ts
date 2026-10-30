@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { FIELD_PRIVACY_TYPES } from '../src/types';
-import { createAnonymizedState, normalizeAnonymizationState } from '../src/composables/anonymization';
-import { createCloudCvSnapshot } from '../src/composables/cloudCvPrivacy';
-import { applyCvConfig, applyCvContent, createCvConfigJson, createCvContentJson, cvContent, parseCvConfigJson } from '../src/composables/cvJsonBackup';
-import { createFieldPrivacy, isProxyFieldEnabled, selectedProxyFieldValues } from '../src/composables/fieldPrivacy';
-import { readCvState } from '../src/composables/cvStateValidation';
+import { FIELD_PRIVACY_TYPES } from '../src/documents/cv/types';
+import { createAnonymizedState, normalizeAnonymizationState } from '../src/documents/privacy/domain/anonymization';
+import { createCloudCvSnapshot } from '../src/documents/privacy/domain/cloudCvPrivacy';
+import { applyCvConfig, applyCvContent, createCvConfigJson, createCvContentJson, cvContent, parseCvConfigJson } from '../src/features/cv-studio/domain/cvJsonBackup';
+import { createFieldPrivacy, isProxyFieldEnabled, selectedProxyFieldValues } from '../src/documents/privacy/domain/fieldPrivacy';
+import { readCvState } from '../src/documents/cv/domain/cvStateValidation';
 import { createTestState } from './helpers';
 
 function privateFieldsState() {

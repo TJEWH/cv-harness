@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { cloneCv, loadApplicationCv } from '../src/composables/applicationCv';
-import { finalizeLetter } from '../src/composables/motivationLetters';
-import type { ApplicationLetter } from '../src/letterTypes';
-import type { ApplicationStage } from '../src/cloudTypes';
+import { cloneCv, loadApplicationCv } from '../src/features/applications/applicationCv';
+import { finalizeLetter } from '../src/documents/letter/motivationLetters';
+import type { ApplicationLetter } from '../src/documents/letter/letterTypes';
+import type { ApplicationStage } from '../src/app/cloudTypes';
 import { account, applicationId, refinementKey, seedLegacyRound, mount, prepare, idle, documents } from './refinementWorkflowHarness';
 
 test('loading connected proposal history activates the complete temporary candidate without a cloud write or document save', async t => {

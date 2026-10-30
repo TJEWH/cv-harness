@@ -1,6 +1,6 @@
 /** Synthetic, account-scoped metadata transport and local file storage. No network. */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { LocalDocumentStorage, LocalDocumentWrite } from '../src/composables/localDocuments';
+import type { LocalDocumentStorage, LocalDocumentWrite } from '../src/features/attachments/data/localDocuments';
 
 export const attachmentAccount = '90000000-0000-4000-8000-000000000090';
 export type AttachmentRow = { id: string; user_id: string; name: string; description: string };

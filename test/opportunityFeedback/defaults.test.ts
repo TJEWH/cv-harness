@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test, { before } from 'node:test';
 import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
-import { projectAdaptiveSearchStartup } from '../../src/composables/adaptiveSearchStartup';
+import { projectAdaptiveSearchStartup } from '../../src/features/meta-search/domain/adaptiveSearchStartup';
 import { file, reset, sql, upgradeCurrentFeedbackContract } from './db';
 
 const owner = randomUUID(), otherOwner = randomUUID();

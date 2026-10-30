@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { designControlRows, type DesignControl, type FavoriteLink } from '../src/composables/designControls';
+import { designControlRows, type DesignControl, type FavoriteLink } from '../src/features/cv-studio/domain/designControls';
 
 const link: FavoriteLink = { linkKey: 'pageMarginVerticalLinked', primaryKey: 'pageMarginTop', secondaryKey: 'pageMarginBottom' };
 const top: DesignControl = { key: 'pageMarginTop', section: 'layout', label: 'Top', type: 'range', min: 0, max: 30, step: 1, unit: 'mm', link };

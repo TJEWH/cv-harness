@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { Application } from '../src/cloudTypes';
-import { applicationIdentifier, buildShortRefinementInstruction } from '../src/composables/applicationReference';
+import type { Application } from '../src/app/cloudTypes';
+import { applicationIdentifier, buildShortRefinementInstruction } from '../src/features/refinement/domain/applicationReference';
 
 const id = '81c40a65-c850-4faa-b539-4fe8c5c51327';
 function application(code?: string | null): Application {

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CONTACT_FIELDS } from '../src/types';
-import { DEFAULT_DESIGN, SAMPLE_CONTACT, resolveDesign } from '../src/defaults';
-import { createSampleDocument } from '../src/composables/builtinConfigurations';
-import { createCloudCvSnapshot } from '../src/composables/cloudCvPrivacy';
-import { applyCvConfig, createCvConfigJson, cvContent, parseCvConfigJson, parseStoredCvState } from '../src/composables/cvJsonBackup';
-import { applyLetterHeader, captureLetterHeaderSource, readLetterHeaderSource, resolveApplicationLetterState, resolveLetterContact } from '../src/composables/letterContact';
+import { CONTACT_FIELDS } from '../src/documents/cv/types';
+import { DEFAULT_DESIGN, SAMPLE_CONTACT, resolveDesign } from '../src/documents/cv/defaults';
+import { createSampleDocument } from '../src/features/cv-studio/domain/builtinConfigurations';
+import { createCloudCvSnapshot } from '../src/documents/privacy/domain/cloudCvPrivacy';
+import { applyCvConfig, createCvConfigJson, cvContent, parseCvConfigJson, parseStoredCvState } from '../src/features/cv-studio/domain/cvJsonBackup';
+import { applyLetterHeader, captureLetterHeaderSource, readLetterHeaderSource, resolveApplicationLetterState, resolveLetterContact } from '../src/documents/letter/domain/letterContact';
 
 test('older CVs use a restrained letter header while preserving all CV contact fields', () => {
   const cv = createSampleDocument();

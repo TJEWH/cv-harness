@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { file, reset, sql } from './db';
-import { buildAdaptiveRecurringSearchPrompt } from '../../src/composables/adaptiveSearchTask';
-import { buildSearchSetupReadSql } from '../../src/composables/searchPrompts';
+import { buildAdaptiveRecurringSearchPrompt } from '../../src/features/meta-search/domain/adaptiveSearchTask';
+import { buildSearchSetupReadSql } from '../../src/features/meta-search/domain/searchPrompts';
 
 test('AF-09 setup gates explicit migration, reads one safe handoff and records only setup receipts', () => {
   reset({ searchProtocol: true });

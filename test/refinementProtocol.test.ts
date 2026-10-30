@@ -7,8 +7,8 @@ import { readTrace, verifyTrace, decodeResult, type ToolCall, type Trace } from 
 import { generateCases } from './refinementProtocol/generate';
 import { seedSql, cleanupSql, bindSeedReceipt } from './refinementProtocol/fixtures';
 import { codexArguments } from './refinementProtocol/run';
-import { refinementSql, REFINEMENT_COMMANDS, REFINEMENT_SQL_DISCOVERY_QUERIES } from '../src/composables/refinementProtocolContract';
-import { parseRefinementProposal } from '../src/composables/applicationRefinement';
+import { refinementSql, REFINEMENT_COMMANDS, REFINEMENT_SQL_DISCOVERY_QUERIES } from '../src/features/refinement/domain/refinementProtocolContract';
+import { parseRefinementProposal } from '../src/features/refinement/applicationRefinement';
 
 function proposal(fixture: ProtocolCase) {
   return { schemaVersion: 2, requestId: fixture.request.requestId, summary: '0 automatic changes · 0 questions',

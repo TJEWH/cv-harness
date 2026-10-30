@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { effectScope, isProxy, shallowRef } from 'vue';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
-import { usePdfBlobPreview } from '../src/composables/usePdfBlobPreview';
-import { retainPdfPage } from '../src/composables/pdfJs';
+import { usePdfBlobPreview } from '../src/documents/pdf/composables/usePdfBlobPreview';
+import { retainPdfPage } from '../src/documents/pdf/pdfJs';
 
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (cause: unknown) => void;

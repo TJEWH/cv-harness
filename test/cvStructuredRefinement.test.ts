@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { CvOperation, CvStructure } from '../src/cvStructuredTypes';
-import { applyCvOperations, describeCvOperation, prepareCvStructure, validateCvOperations, validateCvStructure } from '../src/composables/cvStructuredRefinement';
-import { prepareCvAdjustment } from '../src/composables/cvAdjustments';
+import type { CvOperation, CvStructure } from '../src/features/refinement/cvStructuredTypes';
+import { applyCvOperations, describeCvOperation, prepareCvStructure, validateCvOperations, validateCvStructure } from '../src/features/refinement/domain/cvStructuredRefinement';
+import { prepareCvAdjustment } from '../src/features/refinement/domain/cvAdjustments';
 import { createTestState } from './helpers';
 
 function fixture() {

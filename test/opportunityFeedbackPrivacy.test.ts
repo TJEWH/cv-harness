@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { OpportunityReview } from '../src/cloudTypes';
+import type { OpportunityReview } from '../src/app/cloudTypes';
 import {
   MAX_SEARCH_FEEDBACK_SUMMARY_LENGTH, includedOpportunitySearchSummary, validateAdaptiveSummaryInclusion, opportunityFeedbackTextHash,
   opportunityFeedbackTextIsSafe, projectOpportunityFeedback, sanitizeOpportunityFeedbackUrl,
   type OpportunityFeedbackProjectionInput,
-} from '../src/composables/opportunityFeedbackPrivacy';
+} from '../src/features/opportunities/domain/opportunityFeedbackPrivacy';
 
 const owner = '20000000-0000-4000-8000-000000000001';
 const other = '20000000-0000-4000-8000-000000000002';

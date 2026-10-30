@@ -1,5 +1,5 @@
 import { createApp, h } from 'vue';
-import OpportunityContext from '../../src/components/OpportunityContext.vue';
+import OpportunityContext from '../../src/features/opportunities/components/OpportunityContext.vue';
 import { livingStandardFixture } from '../fixtures/livingStandard';
 import '../../src/assets/cv.css';
 

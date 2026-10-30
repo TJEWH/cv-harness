@@ -7,16 +7,16 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive } from 'vue';
 import type { Component } from 'vue';
-import type { Application } from '../src/cloudTypes';
-import type { CvState, SavedConfiguration } from '../src/types';
-import { createSampleDocument } from '../src/composables/builtinConfigurations';
-import { cloneCv, createApplicationCv, loadApplicationCv, saveApplicationCv } from '../src/composables/applicationCv';
-import type { ApplicationCvRecord } from '../src/composables/applicationCv';
-import { createCloudCvSnapshot } from '../src/composables/cloudCvPrivacy';
-import { createApplicationLetter, createLetterRepository, DEFAULT_LETTER_TEMPLATES } from '../src/composables/motivationLetters';
+import type { Application } from '../src/app/cloudTypes';
+import type { CvState, SavedConfiguration } from '../src/documents/cv/types';
+import { createSampleDocument } from '../src/features/cv-studio/domain/builtinConfigurations';
+import { cloneCv, createApplicationCv, loadApplicationCv, saveApplicationCv } from '../src/features/applications/applicationCv';
+import type { ApplicationCvRecord } from '../src/features/applications/applicationCv';
+import { createCloudCvSnapshot } from '../src/documents/privacy/domain/cloudCvPrivacy';
+import { createApplicationLetter, createLetterRepository, DEFAULT_LETTER_TEMPLATES } from '../src/documents/letter/motivationLetters';
 import { createRefinementFixture } from './refinementFixture';
-import type { ApplicationLetter, LetterFormatting } from '../src/letterTypes';
-import type { AnnotationStatus, LocalRefinementRequest, RefinementRequestRow, RefinementProposalRow, RefinementScope, RefinementSetup } from '../src/refinementTypes';
+import type { ApplicationLetter, LetterFormatting } from '../src/documents/letter/letterTypes';
+import type { AnnotationStatus, LocalRefinementRequest, RefinementRequestRow, RefinementProposalRow, RefinementScope, RefinementSetup } from '../src/features/refinement/refinementTypes';
 
 const account = '90000000-0000-4000-8000-000000000001';
 const applicationId = '10000000-0000-4000-8000-000000000001';
@@ -29,7 +29,7 @@ interface WorkspaceSetup {
   requests: RefinementRequestRow[]; proposals: RefinementProposalRow[]; selectedProposalId: string;
   shortInstruction: string; shortInstructionNotice: string; shortInstructionError: string;
   preparedSource: LocalRefinementRequest | null; sourceError: string; outgoingFeedback: string;
-  privacyContexts: import('../src/refinementTypes').ApprovedPrivacyContexts;
+  privacyContexts: import('../src/features/refinement/refinementTypes').ApprovedPrivacyContexts;
   effectiveSettings: { setup: RefinementSetup; provenance: unknown };
   currentPublishedRequest: RefinementRequestRow | null; publishedSource: RefinementRequestRow | null;
   publicationStatus: 'unpublished' | 'current' | 'outdated' | 'unverifiable';
@@ -41,7 +41,7 @@ interface WorkspaceSetup {
   previewLetterCvState: CvState | null; previewLetterLanguage: string; localRequests: Record<string, LocalRefinementRequest>;
   previewLetterContent: ApplicationLetter['working'] | undefined; temporaryReview: { result: { state: CvState; letterText: string } | null; error: string }; reviewAcceptanceError: string;
   proposalChanges: { id: string; type: string; status: 'proposed' | 'accepted' | 'rejected'; before: string; after: string; target: string }[];
-  proposalAnnotations: (import('../src/composables/refinementAnnotations').AnnotationView & { referenceChanged: boolean; included: boolean })[];
+  proposalAnnotations: (import('../src/features/refinement/domain/refinementAnnotations').AnnotationView & { referenceChanged: boolean; included: boolean })[];
   saveAnnotation(id: string, status: AnnotationStatus, response: string, previousReviewId: string | null): Promise<boolean>;
   includeAnnotationFeedback(id: string): Promise<void>;
   copyShortInstruction(): Promise<void>;
@@ -59,15 +59,15 @@ async function idle(setup: WorkspaceSetup) {
   assert.fail('Workspace did not become idle.');
 }
 
-const filename = new URL('../src/components/ApplicationWorkspace.vue', import.meta.url);
+const filename = new URL('../src/features/applications/components/ApplicationWorkspace.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'application-variant-selection' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exports: { default?: Component } = {};
 const requireFromComponent = createRequire(filename);
-const { registerTextareaCommit } = requireFromComponent('../composables/textareaCommit') as typeof import('../src/composables/textareaCommit');
+const { registerTextareaCommit } = requireFromComponent('../../../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
 new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} }
-  : path === '../lib/supabase' ? { supabaseConfiguration: { status: 'ready', url: 'https://fixture.supabase.co', publishableKey: 'sb_publishable_fixture_only' } }
+  : path === '../../../platform/supabase/supabase' ? { supabaseConfiguration: { status: 'ready', url: 'https://fixture.supabase.co', publishableKey: 'sb_publishable_fixture_only' } }
     : requireFromComponent(path), exports);
 const renderer = createRenderer<object, object>({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}),

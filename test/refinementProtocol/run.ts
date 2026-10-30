@@ -10,7 +10,7 @@ import { CASE_NAMES, createCase, suiteFingerprint, type CaseName, type ProtocolC
 import { bindSeedReceipt, cleanupSql, inspectSql, seedSql } from './fixtures';
 import { decodeResult, isSqlTool, object, readTrace, verifyTrace } from './trace';
 import { generateCases } from './generate';
-import { parseRefinementProposal } from '../../src/composables/applicationRefinement';
+import { parseRefinementProposal } from '../../src/features/refinement/applicationRefinement';
 
 export function codexArguments(directory: string): string[] {
   return ['exec', '--sandbox', 'read-only', '-c', 'approval_policy="on-request"', '-c', 'approvals_reviewer="auto_review"', '--ephemeral', '--skip-git-repo-check', '--json', '-C', directory,

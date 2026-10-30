@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createJobSwipe } from '../src/composables/jobSwipe';
+import { createJobSwipe } from '../src/features/opportunities/interaction/jobSwipe';
 
 type Point = { identifier: number; clientX: number; clientY: number };
 const point = (x: number, y = 100, identifier = 1): Point => ({ clientX: x, clientY: y, identifier });

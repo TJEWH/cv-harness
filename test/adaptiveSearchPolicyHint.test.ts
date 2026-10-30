@@ -5,9 +5,9 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, defineComponent, h, nextTick, reactive, type Component } from 'vue';
-import { DEFAULT_ADAPTIVE_SEARCH_POLICY } from '../src/composables/adaptiveSearchPlanner';
+import { DEFAULT_ADAPTIVE_SEARCH_POLICY } from '../src/features/meta-search/domain/adaptiveSearchPlanner';
 
-const filename = new URL('../src/components/AdaptiveSearchPolicyHint.vue', import.meta.url);
+const filename = new URL('../src/features/meta-search/components/AdaptiveSearchPolicyHint.vue', import.meta.url);
 const compiled = compileScript(parse(readFileSync(filename, 'utf8')).descriptor, { id: 'adaptive-search-policy-hint', inlineTemplate: true });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const componentExports: { default?: Component } = {};

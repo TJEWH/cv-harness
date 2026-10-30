@@ -6,15 +6,19 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { computed, createRenderer, h, nextTick, ref, type Component } from 'vue';
 import { PDFDocument } from 'pdf-lib';
-import type { ApplicationPackageManifest, AttachmentMetadata, LocalDocument, LocalDocumentMetadata, PackageCompositionResult } from '../src/documentTypes';
-import { LocalDocumentRepository, type LocalDocumentStorage } from '../src/composables/localDocuments';
+import type { ApplicationPackageManifest, AttachmentMetadata, LocalDocument, LocalDocumentMetadata, PackageCompositionResult } from '../src/features/attachments/documentTypes';
+import { LocalDocumentRepository, type LocalDocumentStorage } from '../src/features/attachments/data/localDocuments';
 import { attachmentAccount, createAttachmentFixture } from './attachmentFixture';
 
-const requireFromComponents = createRequire(new URL('../src/components/LocalAttachments.vue', import.meta.url));
-const { registerTextareaCommit } = requireFromComponents('../composables/textareaCommit') as typeof import('../src/composables/textareaCommit');
+const requireFromComponents = createRequire(new URL('../src/features/attachments/components/LocalAttachments.vue', import.meta.url));
+const { registerTextareaCommit } = requireFromComponents('../../../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
 
-function component(name: string) {
-  const filename = new URL(`../src/components/${name}.vue`, import.meta.url);
+const componentPaths = {
+  LocalAttachments: '../src/features/attachments/components/LocalAttachments.vue',
+  ApplicationDocuments: '../src/features/applications/components/ApplicationDocuments.vue',
+} as const;
+function component(name: keyof typeof componentPaths) {
+  const filename = new URL(componentPaths[name], import.meta.url);
   const { descriptor } = parse(readFileSync(filename, 'utf8'));
   const compiled = compileScript(descriptor, { id: `local-attachment-${name}` });
   const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

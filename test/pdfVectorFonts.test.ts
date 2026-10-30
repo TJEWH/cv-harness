@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { create as createFont } from 'fontkit';
 import PDFDocument from 'pdfkit';
-import { createVectorFontResolver, parseVectorCanvasFont, parseVectorFontFaces } from '../src/composables/pdfVectorFonts.ts';
+import { createVectorFontResolver, parseVectorCanvasFont, parseVectorFontFaces } from '../src/documents/pdf/pdfVectorFonts.ts';
 
 const stylesheet = 'https://fonts.example.test/style.css';
 const faceCss = ({ family = 'Inter', weight = '400', style = 'normal', url = 'normal.woff2', range = 'U+0000-00FF' } = {}) => `@font-face {

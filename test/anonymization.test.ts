@@ -1,4 +1,4 @@
-import type { CvState } from '../src/types';
+import type { CvState } from '../src/documents/cv/types';
 import { stub } from './helpers';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -7,7 +7,7 @@ import {
   createAnonymizedContact,
   createAnonymizedState,
   normalizeAnonymizationState,
-} from '../src/composables/anonymization.ts';
+} from '../src/documents/privacy/domain/anonymization.ts';
 
 function sampleState(): CvState {
   return stub<CvState>({

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createTestState } from './helpers';
-import { createAnonymizedState, normalizeAnonymizationState } from '../src/composables/anonymization';
-import { createCloudCvSnapshot } from '../src/composables/cloudCvPrivacy';
-import { applyCvContent, createCvConfigJson, createCvContentJson, parseCvConfigJson, cvContent } from '../src/composables/cvJsonBackup';
-import { readCvState } from '../src/composables/cvStateValidation';
-import { applyPrivacyEditorChanges, createPrivacyEditorState, getFieldPrivacyOverride, privacyFieldEntries, privacyFieldKey } from '../src/composables/privacyOverrides';
+import { createAnonymizedState, normalizeAnonymizationState } from '../src/documents/privacy/domain/anonymization';
+import { createCloudCvSnapshot } from '../src/documents/privacy/domain/cloudCvPrivacy';
+import { applyCvContent, createCvConfigJson, createCvContentJson, parseCvConfigJson, cvContent } from '../src/features/cv-studio/domain/cvJsonBackup';
+import { readCvState } from '../src/documents/cv/domain/cvStateValidation';
+import { applyPrivacyEditorChanges, createPrivacyEditorState, getFieldPrivacyOverride, privacyFieldEntries, privacyFieldKey } from '../src/documents/privacy/domain/privacyOverrides';
 
 function source() {
   return createTestState({

@@ -5,11 +5,11 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, type Component } from 'vue';
-import type { CvState } from '../src/types';
-import type { ApplicationStage } from '../src/cloudTypes';
-import type { ApplicationLetter } from '../src/letterTypes';
-import type { LocalRefinementRequest, RefinementApprovals, RefinementFeedback, RefinementProposalRow, RefinementRequestRow, RefinementReviewRow, RefinementState } from '../src/refinementTypes';
-import { type ApplicationCvRecord } from '../src/composables/applicationCv';
+import type { CvState } from '../src/documents/cv/types';
+import type { ApplicationStage } from '../src/app/cloudTypes';
+import type { ApplicationLetter } from '../src/documents/letter/letterTypes';
+import type { LocalRefinementRequest, RefinementApprovals, RefinementFeedback, RefinementProposalRow, RefinementRequestRow, RefinementReviewRow, RefinementState } from '../src/features/refinement/refinementTypes';
+import { type ApplicationCvRecord } from '../src/features/applications/applicationCv';
 import { createSyntheticRefinementWorkspace } from './refinementFixture';
 
 export const account = '90000000-0000-4000-8000-000000000001';
@@ -36,7 +36,7 @@ export interface Workspace {
   getCvPdf(): Promise<Blob>; getLetterPdf(): Promise<Blob>;
   saveAnnotation(id: string, status: 'open' | 'resolved' | 'ignored', response: string, previousReviewId: string | null, proposalId?: string): Promise<boolean>;
   includeAnnotationFeedback(id: string, proposalId?: string): Promise<void>; feedbackHistory(): RefinementFeedback[];
-  proposalAnnotations: (import('../src/composables/refinementAnnotations').AnnotationView & { included: boolean; referenceChanged: boolean })[];
+  proposalAnnotations: (import('../src/features/refinement/domain/refinementAnnotations').AnnotationView & { included: boolean; referenceChanged: boolean })[];
   reviewAcceptanceError: string; letterText: string;
   selectCv(id: string): Promise<void>; selectLetterTemplate(id: string): Promise<void>; publishSources(): Promise<void>; syncRefinement(): Promise<void>; copyTask(): Promise<void>; copyIterationTask(): Promise<void>; clearRefinementHistory(): Promise<void>; checkProposals(): Promise<void>;
   openProposal(): void; discardReview(): void; acceptSelectedChanges(): Promise<void>;
@@ -53,17 +53,17 @@ export interface Workspace {
   reviewTab: 'changes' | 'question';
   reviewCounts: Record<'changes' | 'question', number>;
   selectReviewTab(tab: 'changes' | 'question'): Promise<boolean>;
-  currentAnnotations: (import('../src/composables/refinementAnnotations').AnnotationView & { included: boolean; referenceChanged: boolean })[];
+  currentAnnotations: (import('../src/features/refinement/domain/refinementAnnotations').AnnotationView & { included: boolean; referenceChanged: boolean })[];
 }
 
-const filename = new URL('../src/components/ApplicationWorkspace.vue', import.meta.url);
+const filename = new URL('../src/features/applications/components/ApplicationWorkspace.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'refinement-workflow' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const componentExports: { default?: Component } = {};
 const requireComponent = createRequire(filename);
 new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} }
-  : path === '../lib/supabase' ? { supabaseConfiguration: { status: 'ready', url: 'https://fixture.supabase.co', publishableKey: 'sb_publishable_fixture_only' } }
+  : path === '../../../platform/supabase/supabase' ? { supabaseConfiguration: { status: 'ready', url: 'https://fixture.supabase.co', publishableKey: 'sb_publishable_fixture_only' } }
     : requireComponent(path), componentExports);
 const renderer = createRenderer<object, object>({ createElement: () => ({}), createText: () => ({}), createComment: () => ({}),
   insert() {}, remove() {}, setText() {}, setElementText() {}, patchProp() {}, parentNode: () => null, nextSibling: () => null });

@@ -10,8 +10,8 @@ declare module 'pdfkit/output' {
   export function toBlob(document: PDFKit.PDFDocument): Promise<Blob>;
 }
 declare module 'virtual:responsive-html2canvas' {
-  type RenderTask = import('./pdfTypes').RenderTask;
-  type Surface = import('./pdfTypes').Surface;
+  type RenderTask = import('./documents/pdf/pdfTypes').RenderTask;
+  type Surface = import('./documents/pdf/pdfTypes').Surface;
   export default function paintLayout(element: HTMLElement, options: {
     scale: number; useCORS: boolean; scrollX: number; scrollY: number; logging: boolean;
     windowWidth: number; windowHeight: number; renderTask: RenderTask;

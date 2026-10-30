@@ -1,7 +1,7 @@
 import { stub } from './helpers';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { capturePdfLinks, vectorPageLinks } from '../src/composables/pdfVectorLinks.ts';
+import { capturePdfLinks, vectorPageLinks } from '../src/documents/pdf/pdfVectorLinks.ts';
 
 test('vector links follow separate clone scales and continuation page offsets', () => {
   const capture = { width: 100, height: 200, links: [{ href: 'https://example.com', x: 10, y: 90, width: 20, height: 30 }] };

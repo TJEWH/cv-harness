@@ -1,8 +1,8 @@
 import { stub } from './helpers';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyPdfPageBreaks } from '../src/composables/pdfPageBreaks.ts';
-import { createPdfPageGeometry } from '../src/composables/pdfPageGeometry.ts';
+import { applyPdfPageBreaks } from '../src/documents/pdf/pdfPageBreaks.ts';
+import { createPdfPageGeometry } from '../src/documents/pdf/pdfPageGeometry.ts';
 
 function fixture(style: Partial<CSSStyleDeclaration>, top: number, bottom: number) {
   const inserted: { height: string; before: unknown }[] = [];

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createTestState } from './helpers';
-import { createContentId, createNormalizedContentState, moveSectionInOrder, normalizeContentState, CUSTOM_BODY_FIELDS } from '../src/composables/contentLayout';
+import { createContentId, createNormalizedContentState, moveSectionInOrder, normalizeContentState, CUSTOM_BODY_FIELDS } from '../src/documents/layout/contentLayout';
 
 test('moves section cards without mutating the previous order or dropping hidden/custom sections', () => {
   const order = ['about', 'education', 'jobs', 'research'];

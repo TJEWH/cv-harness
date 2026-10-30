@@ -4,7 +4,7 @@ import {
   ADAPTIVE_QUALITY_MAX_BACKLOG, ADAPTIVE_QUALITY_MAX_CHECKS, ADAPTIVE_QUALITY_MAX_REPORT_BYTES,
   adaptiveDiscoveryLeadTime, calculateAdaptiveSearchQuality,
   type AdaptiveDeadlineEvidence, type AdaptiveQualityDiscovery, type AdaptiveQualityExecution, type AdaptiveQualityFeedback, type AdaptiveQualityInput,
-} from '../src/composables/adaptiveSearchQuality';
+} from '../src/features/meta-search/domain/adaptiveSearchQuality';
 
 const owner = '75000000-0000-4000-8000-000000000001', search = '75000000-0000-4000-8000-000000000002';
 const id = (index: number) => `76000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { LetterContent } from '../src/letterTypes';
-import { letterClosingSignature, letterParagraphGroups } from '../src/composables/letterLayout';
-import { letterFromEditableText, letterToEditableText, resolveLetterContent } from '../src/composables/motivationLetters';
+import type { LetterContent } from '../src/documents/letter/letterTypes';
+import { letterClosingSignature, letterParagraphGroups } from '../src/documents/letter/domain/letterLayout';
+import { letterFromEditableText, letterToEditableText, resolveLetterContent } from '../src/documents/letter/motivationLetters';
 
 const content = (body: string): LetterContent => ({ subject: '', salutation: '', body, closing: '' });
 

@@ -2,7 +2,7 @@
 
 Use the connected Supabase workflow: **Sync / Copy task → ChatGPT → Sync**, with version-2 requests and proposals. Standalone letter-drafting/CV-adjustment APIs, version-1 refinement and manual proposal imports are retired. You retain opportunities, applications, current refinement history and private working documents.
 
-For a new database use [`schema.sql`](schema.sql). For existing installations, apply [`refinement_document_rounds.sql`](refinement_document_rounds.sql) in a transaction **before releasing this client**. It backfills only the existing current single-document request; the other pointer stays empty. Combined history is preserved without reactivating superseded requests. Follow [setup](README.md) for deployment. Find applied and superseded upgrade scripts in Git history. Use [`src/refinementTypes.ts`](../src/refinementTypes.ts) for the source contract. The app generates copied instructions from that contract; [`test/refinementProtocol`](../test/refinementProtocol) verifies them.
+For a new database use [`schema.sql`](schema.sql). For existing installations, apply [`refinement_document_rounds.sql`](refinement_document_rounds.sql) in a transaction **before releasing this client**. It backfills only the existing current single-document request; the other pointer stays empty. Combined history is preserved without reactivating superseded requests. Follow [setup](README.md) for deployment. Find applied and superseded upgrade scripts in Git history. Use [`src/features/refinement/refinementTypes.ts`](../src/features/refinement/refinementTypes.ts) for the source contract. The app generates copied instructions from that contract; [`test/refinementProtocol`](../test/refinementProtocol) verifies them.
 
 ## Workflow and storage
 

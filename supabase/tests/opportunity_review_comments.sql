@@ -93,10 +93,10 @@ begin
       and comment = 'Not enough funding' and state = 'not_interested' and reviewed_updated_at = source_version) then
     raise exception 'FAIL: application creation changed private review';
   end if;
+  select to_jsonb(r) into previous from public.opportunity_reviews r where user_id = user_a and opportunity_id = opportunity;
   perform public.remove_job_application(application);
-  if not exists (select 1 from public.opportunity_reviews where opportunity_id = opportunity
-      and comment = 'Not enough funding' and state = 'unreviewed' and reviewed_updated_at = source_version) then
-    raise exception 'FAIL: application removal lost private context or failed to restore opportunity';
+  if (select to_jsonb(r) from public.opportunity_reviews r where user_id = user_a and opportunity_id = opportunity) is distinct from previous then
+    raise exception 'FAIL: application removal changed private evaluation or receipt';
   end if;
 
   perform set_config('request.jwt.claims', jsonb_build_object('sub', user_b, 'role', 'authenticated', 'is_anonymous', false)::text, true);

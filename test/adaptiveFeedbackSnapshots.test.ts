@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { opportunityFeedbackTextHash } from '../src/composables/opportunityFeedbackPrivacy';
+import { opportunityFeedbackTextHash } from '../src/features/opportunities/domain/opportunityFeedbackPrivacy';
 import {
   ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING, ADAPTIVE_FEEDBACK_MAX_BYTES, ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
   compileAdaptiveFeedbackSnapshot, type AdaptiveFeedbackExample, type ApprovedAdaptivePreference, type CompileAdaptiveFeedbackInput,
-} from '../src/composables/adaptiveFeedbackSnapshots';
+} from '../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
 
 const owner = '70000000-0000-4000-8000-000000000001';
 const search = '70000000-0000-4000-8000-000000000002';

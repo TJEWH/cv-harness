@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { createRenderer, nextTick, ref } from 'vue';
-import type { PreviewPage, RenderOptions } from '../src/pdfTypes';
-import type { useDocumentPdfPreview } from '../src/composables/useDocumentPdfPreview';
+import type { PreviewPage, RenderOptions } from '../src/documents/pdf/pdfTypes';
+import type { useDocumentPdfPreview } from '../src/documents/pdf/composables/useDocumentPdfPreview';
 
 type Preview = ReturnType<typeof useDocumentPdfPreview>;
-const filename = new URL('../src/composables/useDocumentPdfPreview.ts', import.meta.url);
+const filename = new URL('../src/documents/pdf/composables/useDocumentPdfPreview.ts', import.meta.url);
 const sourceCode = ts.transpileModule(readFileSync(filename, 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;

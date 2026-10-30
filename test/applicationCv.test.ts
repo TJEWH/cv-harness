@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createSampleDocument } from '../src/composables/builtinConfigurations';
-import { cloneCv, copyCvSection, createApplicationCv, cvDifferences, isApplicationCvPublished, loadApplicationCv, saveApplicationCv } from '../src/composables/applicationCv';
-import { normalizeContentState } from '../src/composables/contentLayout';
+import { createSampleDocument } from '../src/features/cv-studio/domain/builtinConfigurations';
+import { cloneCv, copyCvSection, createApplicationCv, cvDifferences, isApplicationCvPublished, loadApplicationCv, saveApplicationCv } from '../src/features/applications/applicationCv';
+import { normalizeContentState } from '../src/documents/layout/contentLayout';
 
 function memoryStorage() {
   const values = new Map<string, string>();

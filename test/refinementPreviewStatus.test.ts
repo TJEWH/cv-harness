@@ -6,7 +6,7 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, defineComponent, h, nextTick, ref } from 'vue';
 import type { Component } from 'vue';
-import { createSampleDocument } from '../src/composables/builtinConfigurations';
+import { createSampleDocument } from '../src/features/cv-studio/domain/builtinConfigurations';
 
 interface Node { tag: string; text: string; props: Record<string, unknown>; children: Node[]; parent: Node | null }
 const node = (tag: string, text = ''): Node => ({ tag, text, props: {}, children: [], parent: null });
@@ -25,8 +25,14 @@ const renderer = createRenderer<Node, Node>({
 });
 const find = (root: Node, predicate: (value: Node) => boolean): Node[] => [...(predicate(root) ? [root] : []), ...root.children.flatMap(child => find(child, predicate))];
 const content = (root: Node): string => root.tag === '#comment' ? '' : root.text + root.children.map(content).join('');
-function compile(filename: string, replacements: Record<string, unknown> = {}) {
-  const url = new URL('../src/components/' + filename, import.meta.url);
+const componentPaths = {
+  'RefinementPreviewStatus.vue': '../src/features/refinement/components/RefinementPreviewStatus.vue',
+  'RefinementComparisonToggle.vue': '../src/features/refinement/components/RefinementComparisonToggle.vue',
+  'DocumentCvPreview.vue': '../src/documents/cv/components/DocumentCvPreview.vue',
+  'MotivationLetterPreview.vue': '../src/documents/letter/components/MotivationLetterPreview.vue',
+} as const;
+function compile(filename: keyof typeof componentPaths, replacements: Record<string, unknown> = {}) {
+  const url = new URL(componentPaths[filename], import.meta.url);
   const script = compileScript(parse(readFileSync(url, 'utf8')).descriptor, { id: filename, inlineTemplate: true });
   const code = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const result: { default?: Component } = {};
@@ -47,9 +53,9 @@ const Preview = {
 
 for (const document of ['CV', 'letter'] as const) test(`${document} inline and expanded surfaces synchronize Previous/Current controls`, async t => {
   const Document = compile(document === 'CV' ? 'DocumentCvPreview.vue' : 'MotivationLetterPreview.vue', {
-    './InlineDocumentPreview.vue': surface('inline'), './FullDocumentPreview.vue': surface('expanded'),
-    '../composables/useDocumentPdfPreview': Preview,
-    '../composables/useCvDesign': { applyCvDesign() {} },
+    '../../pdf/components/InlineDocumentPreview.vue': surface('inline'), '../../pdf/components/FullDocumentPreview.vue': surface('expanded'),
+    '../../pdf/composables/useDocumentPdfPreview': Preview,
+    '../../cv/composables/useCvDesign': { applyCvDesign() {} },
   });
   const comparison = ref<'original' | 'proposed'>('proposed');
   const state = createSampleDocument();

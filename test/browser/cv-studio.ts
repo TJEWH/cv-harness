@@ -1,7 +1,7 @@
 // Full application layout fixture. Use the isolated test/e2e Vite configuration.
 // All browser storage is synthetic; no saved CVs, files or sessions are read.
-import { createSampleDocument, SAMPLE_DOCUMENT_ID } from '../../src/composables/builtinConfigurations';
-import { indexedDocumentStorage } from '../../src/composables/localDocuments';
+import { createSampleDocument, SAMPLE_DOCUMENT_ID } from '../../src/features/cv-studio/domain/builtinConfigurations';
+import { indexedDocumentStorage } from '../../src/features/attachments/data/localDocuments';
 import { createAttachmentFixture } from '../attachmentFixture';
 
 const sample = createSampleDocument();

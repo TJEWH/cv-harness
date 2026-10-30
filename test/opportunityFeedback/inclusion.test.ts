@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
-import { createSearchBreadthPolicy } from '../../src/composables/adaptiveSearchPlanner';
+import { createSearchBreadthPolicy } from '../../src/features/meta-search/domain/adaptiveSearchPlanner';
 import { file, reset, sql } from './db';
 
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;

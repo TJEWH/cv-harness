@@ -1,4 +1,4 @@
-import { REFINEMENT_COMMANDS, type RefinementCommand } from '../../src/composables/refinementProtocolContract';
+import { REFINEMENT_COMMANDS, type RefinementCommand } from '../../src/features/refinement/domain/refinementProtocolContract';
 
 /** Parse one SELECT of a named helper with literal arguments.
  * Tokenize quoted strings to keep their contents separate from executable SQL. */

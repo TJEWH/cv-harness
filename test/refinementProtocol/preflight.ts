@@ -1,6 +1,6 @@
 import { CASE_NAMES, createCase, stableId } from './cases';
 import { seedSql, inspectSql } from './fixtures';
-import { refinementSql } from '../../src/composables/refinementProtocolContract';
+import { refinementSql } from '../../src/features/refinement/domain/refinementProtocolContract';
 import { randomUUID } from 'node:crypto';
 
 /** Run this SQL through the existing MCP execute_sql tool as postgres. Everything rolls back. */

@@ -5,13 +5,13 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive, type Component } from 'vue';
-import { prepareRefinement, refinementSignature } from '../src/composables/applicationRefinement';
-import { DEFAULT_LETTER_TEMPLATES } from '../src/composables/motivationLetters';
-import { useToasts } from '../src/composables/useToasts';
-import type { PrivacyContextType } from '../src/refinementTypes';
+import { prepareRefinement, refinementSignature } from '../src/features/refinement/applicationRefinement';
+import { DEFAULT_LETTER_TEMPLATES } from '../src/documents/letter/motivationLetters';
+import { useToasts } from '../src/shared/ui/useToasts';
+import type { PrivacyContextType } from '../src/features/refinement/refinementTypes';
 import { createTestState } from './helpers';
 
-const filename = new URL('../src/components/RefinementPrivacyPreview.vue', import.meta.url);
+const filename = new URL('../src/features/refinement/components/RefinementPrivacyPreview.vue', import.meta.url);
 const compiled = compileScript(parse(readFileSync(filename, 'utf8')).descriptor, { id: 'privacy-context-autosave' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const result: { default?: Component } = {};

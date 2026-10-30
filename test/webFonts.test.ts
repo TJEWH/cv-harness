@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { FontImportError, fontOptions, fontStylesheetUrl, importWebFont, selectedFont, storeCustomFont } from '../src/composables/webFonts';
+import { FontImportError, fontOptions, fontStylesheetUrl, importWebFont, selectedFont, storeCustomFont } from '../src/documents/layout/webFonts';
 
 const css = (name = 'Open Sans') => `@font-face { font-family: '${name}'; font-weight: 400; src: url(https://fonts.example.test/font.woff2) format('woff2'); unicode-range: U+0000-00FF; }`;
 const decode = async () => {};

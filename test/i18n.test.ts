@@ -3,9 +3,9 @@ import test from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { ref } from 'vue';
 import { dict, makeT } from '../src/i18n/dict';
-import { SUPPORTED_LANGUAGES } from '../src/defaults';
-import { builtinConfigurations, createEmptyDocument } from '../src/composables/builtinConfigurations';
-import { readCvState } from '../src/composables/cvStateValidation';
+import { SUPPORTED_LANGUAGES } from '../src/documents/cv/defaults';
+import { builtinConfigurations, createEmptyDocument } from '../src/features/cv-studio/domain/builtinConfigurations';
+import { readCvState } from '../src/documents/cv/domain/cvStateValidation';
 
 test('every dictionary entry has a translation in every supported language', () => {
   for (const [key, translations] of Object.entries(dict)) {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { Application } from '../src/cloudTypes';
-import { applicationStage, applicationStatusHistory, applicationTrackingStarted, applicationWasSubmitted, normalizeApplication } from '../src/composables/applicationTracking';
+import type { Application } from '../src/app/cloudTypes';
+import { applicationStage, applicationStatusHistory, applicationTrackingStarted, applicationWasSubmitted, normalizeApplication } from '../src/features/applications/domain/applicationTracking';
 import { createSyntheticRefinementWorkspace } from './refinementFixture';
 
 test('status history preserves repeated states in server order and never guesses missing transition dates', () => {

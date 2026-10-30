@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { compileAdaptiveFeedbackSnapshot } from '../src/composables/adaptiveFeedbackSnapshots';
-import { createSearchBreadthPolicy, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY } from '../src/composables/adaptiveSearchPlanner';
-import { adaptiveDashboardRunState, createAdaptiveSearchDashboardController, readAdaptiveSearchDashboard, validateAdaptiveSettingsPatch, validateAdaptiveSourcePatch } from '../src/composables/adaptiveSearchDashboard';
+import { compileAdaptiveFeedbackSnapshot } from '../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
+import { createSearchBreadthPolicy, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY } from '../src/features/meta-search/domain/adaptiveSearchPlanner';
+import { adaptiveDashboardRunState, createAdaptiveSearchDashboardController, readAdaptiveSearchDashboard, validateAdaptiveSettingsPatch, validateAdaptiveSourcePatch } from '../src/features/meta-search/composables/adaptiveSearchDashboard';
 
 const id = (index: number) => `81000000-0000-4000-8000-${index.toString(16).padStart(12,'0')}`;
 const scope = { ownerId: id(1), searchId: id(2), projectRef: 'abcdefghijklmnopqrst' };

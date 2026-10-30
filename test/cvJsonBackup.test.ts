@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createSampleDocument } from '../src/composables/builtinConfigurations';
+import { createSampleDocument } from '../src/features/cv-studio/domain/builtinConfigurations';
 import { createTestState } from './helpers';
-import { CV_STATE_VERSION } from '../src/types';
-import { readCvState } from '../src/composables/cvStateValidation';
-import { createNormalizedContentState } from '../src/composables/contentLayout';
+import { CV_STATE_VERSION } from '../src/documents/cv/types';
+import { readCvState } from '../src/documents/cv/domain/cvStateValidation';
+import { createNormalizedContentState } from '../src/documents/layout/contentLayout';
 import {
   CV_CONTENT_JSON_FORMAT, CV_CONFIG_JSON_FORMAT, CV_JSON_FORMAT_VERSION,
   createCvContentJson, createCvConfigJson, parseCvContentJson, parseCvConfigJson,
   cvContent, cvConfig, applyCvContent, applyCvConfig, parseStoredCvState,
-} from '../src/composables/cvJsonBackup';
+} from '../src/features/cv-studio/domain/cvJsonBackup';
 
 const sampleCv = createSampleDocument();
 sampleCv.contact.name = 'Ada Lovelace';

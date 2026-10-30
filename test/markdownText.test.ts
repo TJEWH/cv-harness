@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasMarkdownText, normalizeMarkdownText, parseInlineMarkdown, parseMarkdownText, safeMarkdownUrl } from '../src/composables/markdownText.ts';
+import { hasMarkdownText, normalizeMarkdownText, parseInlineMarkdown, parseMarkdownText, safeMarkdownUrl } from '../src/shared/lib/markdownText.ts';
 
 test('parses multiline prose before markdown bullets', () => {
   const parsed = parseMarkdownText('First line\nSecond line\n- First bullet\n- Second bullet');

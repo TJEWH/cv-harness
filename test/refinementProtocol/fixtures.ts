@@ -1,7 +1,7 @@
-import { createCloudCvSnapshot } from '../../src/composables/cloudCvPrivacy';
-import { sqlText } from '../../src/composables/refinementProtocolContract';
-import { buildShortRefinementInstruction } from '../../src/composables/applicationReference';
-import { assertActiveRefinementScope } from '../../src/composables/applicationRefinement';
+import { createCloudCvSnapshot } from '../../src/documents/privacy/domain/cloudCvPrivacy';
+import { sqlText } from '../../src/features/refinement/domain/refinementProtocolContract';
+import { buildShortRefinementInstruction } from '../../src/features/refinement/domain/applicationReference';
+import { assertActiveRefinementScope } from '../../src/features/refinement/applicationRefinement';
 import { CREATED, type ProtocolCase } from './cases';
 import { object } from './trace';
 const json = (value: unknown) => `${sqlText(JSON.stringify(value))}::jsonb`;

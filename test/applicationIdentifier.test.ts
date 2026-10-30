@@ -7,8 +7,8 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive } from 'vue';
 import type { Component } from 'vue';
-import type { Application } from '../src/cloudTypes';
-import { useToasts, useToastWatch } from '../src/composables/useToasts';
+import type { Application } from '../src/app/cloudTypes';
+import { useToasts, useToastWatch } from '../src/shared/ui/useToasts';
 
 interface HostNode {
   tag: string;
@@ -33,7 +33,7 @@ const renderer = createRenderer<HostNode, HostNode>({
   parentNode: child => child.parent,
   nextSibling: child => child.parent?.children[child.parent.children.indexOf(child) + 1] ?? null,
 });
-const filename = new URL('../src/components/ApplicationIdentifier.vue', import.meta.url);
+const filename = new URL('../src/features/applications/components/ApplicationIdentifier.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'application-identifier-test', inlineTemplate: true });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

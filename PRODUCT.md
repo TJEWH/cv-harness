@@ -54,7 +54,7 @@ The initial product brief specified no voice, visual identity, or other aestheti
 ## Evidence on Hand
 
 - `README.md` documents existing capabilities, workflows, storage boundaries, and export behavior.
-- `src/App.vue` and `src/components/ApplicationWorkspace.vue` implement the main workspaces and application stages.
+- `src/app/App.vue` and `src/features/applications/components/ApplicationWorkspace.vue` implement the main workspaces and application stages.
 - `src/i18n/dict.ts` contains existing German/English interface terminology and privacy explanations.
 - `docs/json-format.md` documents content/configuration backups and privacy-aware editing.
 - `test/browser/job-workspace.html` and `test/fixtures/` contain synthetic development scenarios. Do not cite them as evidence of applicant outcomes.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readHistoryPages } from '../src/composables/historyPages';
+import { readHistoryPages } from '../src/platform/supabase/historyPages';
 
 test('history reads all ordered pages beyond the default database row limit', async () => {
   const rows = Array.from({ length: 1205 }, (_, index) => ({ id: String(index) }));

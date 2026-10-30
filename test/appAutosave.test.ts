@@ -6,16 +6,16 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, nextTick, ref } from 'vue';
 import type { Component } from 'vue';
-import type { CvState, SaveStatus } from '../src/types';
+import type { CvState, SaveStatus } from '../src/documents/cv/types';
 
-const filename = new URL('../src/App.vue', import.meta.url);
+const filename = new URL('../src/app/App.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'app-autosave-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exports: { default?: Component } = {};
 const requireFromApp = createRequire(filename);
-const { useToasts } = requireFromApp('./composables/useToasts') as typeof import('../src/composables/useToasts');
-const { registerTextareaCommit } = requireFromApp('./composables/textareaCommit') as typeof import('../src/composables/textareaCommit');
+const { useToasts } = requireFromApp('../shared/ui/useToasts') as typeof import('../src/shared/ui/useToasts');
+const { registerTextareaCommit } = requireFromApp('../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
 new Function('require', 'exports', code)((path: string) => {
   if (path.endsWith('.vue')) return { default: {} };
   if (path.endsWith('/useSupabaseAuth')) return { useSupabaseAuth: () => ({ user: ref(null), client: null }) };

@@ -31,7 +31,7 @@ const renderer = createRenderer<HostNode, HostNode>({
   parentNode: child => child.parent,
   nextSibling: child => child.parent?.children[child.parent.children.indexOf(child) + 1] ?? null,
 });
-const filename = new URL('../src/components/RefinementChangeReview.vue', import.meta.url);
+const filename = new URL('../src/features/refinement/components/RefinementChangeReview.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'refinement-change-review-test', inlineTemplate: true });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

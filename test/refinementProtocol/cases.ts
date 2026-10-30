@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import type { RefinementRequest, RefinementScope } from '../../src/refinementTypes';
-import { prepareRefinement, refinementSignature } from '../../src/composables/applicationRefinement';
-import { buildShortRefinementInstruction } from '../../src/composables/applicationReference';
-import { DEFAULT_LETTER_TEMPLATES } from '../../src/composables/motivationLetters';
+import type { RefinementRequest, RefinementScope } from '../../src/features/refinement/refinementTypes';
+import { prepareRefinement, refinementSignature } from '../../src/features/refinement/applicationRefinement';
+import { buildShortRefinementInstruction } from '../../src/features/refinement/domain/applicationReference';
+import { DEFAULT_LETTER_TEMPLATES } from '../../src/documents/letter/motivationLetters';
 import { createTestState } from '../helpers';
 
 export const CASE_NAMES = ['cv', 'initial-letter', 'letter', 'feedback', 'missing-request', 'stale-request'] as const;

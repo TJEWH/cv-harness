@@ -1,8 +1,8 @@
-import type { CallRecord } from '../src/pdfTypes';
+import type { CallRecord } from '../src/documents/pdf/pdfTypes';
 import { stub } from './helpers';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPdfCanvasRecording } from '../src/composables/pdfCanvasRecording.ts';
+import { createPdfCanvasRecording } from '../src/documents/pdf/pdfCanvasRecording.ts';
 
 function nativeContext() {
   const calls: { method: string; args: unknown[] }[] = [];

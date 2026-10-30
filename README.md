@@ -99,12 +99,18 @@ Browser tests use in-memory data and an isolated Vite configuration. Follow the 
 
 | Path | Contents |
 | --- | --- |
-| [`src/components/`](src/components) | Workspace screens, document editors, and preview controls. |
-| [`src/composables/`](src/composables) | Document state, privacy, persistence, refinement, and rendering logic. |
-| [`src/types.ts`](src/types.ts), [`src/pdfTypes.ts`](src/pdfTypes.ts) | Shared CV and PDF contracts. |
+| [`src/app/`](src/app) | App shell, workspace coordination, and shared cloud contracts. |
+| [`src/features/`](src/features) | CV Studio, opportunities, applications, meta search, refinement, letter-template editing, and attachments. |
+| [`src/documents/`](src/documents) | CV and letter models, previews, privacy transformations, layout, and PDF rendering. |
+| [`src/shared/`](src/shared) | Shared UI controls, editing behavior, and small browser/text helpers. |
+| [`src/platform/`](src/platform) | Supabase configuration, authentication, and transport helpers. |
+| [`src/i18n/`](src/i18n) | Shared English and German labels. |
 | [`build/`](build) | PDF renderer adapters and build plugins. |
 | [`supabase/`](supabase) | Database setup, refinement contracts, and SQL tests. |
 | [`test/`](test) | Regression suites and synthetic browser fixtures. |
+| [`docs/`](docs) | Architecture, editor behavior, data formats, and protocol guides. |
+
+See the [architecture guide](docs/architecture.md) for folder ownership, naming conventions, and the modules that still span several responsibilities.
 
 The PDF renderer uses build-time adapters for pinned dependencies. After changing those dependencies, check the adapters, run the tests and build, and inspect document previews and exports in the browser.
 
@@ -116,6 +122,7 @@ The build targets `/cv-builder/` and writes to `dist/`. For another static host,
 
 ## Documentation
 
+- [Architecture and source ownership](docs/architecture.md)
 - [JSON formats and editing workflow](docs/json-format.md)
 - [Supabase setup and security model](supabase/README.md)
 - [Application refinement contract](supabase/REFINEMENT.md)

@@ -9,11 +9,11 @@ import {
   faGlobe, faLocationDot, faPhone, faSpinner,
 } from '@fortawesome/free-solid-svg-icons';
 import { faGithub, faLinkedin } from '@fortawesome/free-brands-svg-icons';
-import LetterFormattingControls from '../../src/components/LetterFormattingControls.vue';
-import MotivationLetterPreview from '../../src/components/MotivationLetterPreview.vue';
-import { createSampleDocument } from '../../src/composables/builtinConfigurations';
-import { DEFAULT_LETTER_FORMATTING } from '../../src/composables/letterFormatting';
-import type { LetterContent, LetterFormatting } from '../../src/letterTypes';
+import LetterFormattingControls from '../../src/documents/letter/components/LetterFormattingControls.vue';
+import MotivationLetterPreview from '../../src/documents/letter/components/MotivationLetterPreview.vue';
+import { createSampleDocument } from '../../src/features/cv-studio/domain/builtinConfigurations';
+import { DEFAULT_LETTER_FORMATTING } from '../../src/documents/letter/domain/letterFormatting';
+import type { LetterContent, LetterFormatting } from '../../src/documents/letter/letterTypes';
 import '../../src/assets/cv.css';
 
 if (!import.meta.env.DEV) throw new Error('The browser fixture is available only on the development server.');

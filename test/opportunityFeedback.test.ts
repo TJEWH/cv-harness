@@ -3,14 +3,14 @@ import test from 'node:test';
 import {
   APPLICATION_STATUSES, OPPORTUNITY_INTEREST_REASON_CATEGORIES, OPPORTUNITY_REVIEW_STATES,
   type OpportunityPredictionBaseline, type OpportunityReview,
-} from '../src/cloudTypes';
+} from '../src/app/cloudTypes';
 import {
   DEFAULT_OPPORTUNITY_INTEREST_POLICY, MAX_OPPORTUNITY_INTEREST_REASONS,
   MAX_OPPORTUNITY_INTEREST_TARGET_LENGTH, OPPORTUNITY_INTEREST_METRIC_VERSION,
   confirmedOpportunitySubmission, deriveOpportunityFeedback, isOpportunityInterestRating,
   normalizeOpportunityInterestReasons, parseOpportunityInterestRating,
   type OpportunityFeedbackInput, type OpportunitySubmissionEvidence,
-} from '../src/composables/opportunityFeedback';
+} from '../src/features/opportunities/domain/opportunityFeedback';
 
 const owner = '00000000-0000-4000-8000-000000000001';
 const opportunity = '00000000-0000-4000-8000-000000000002';

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { addIncomingDraft, contextChanges, createApplicationLetter, createLetterRepository, DEFAULT_LETTER_TEMPLATES, DEFAULT_QUESTION_GUIDANCE, DEFAULT_REFINEMENT_SYSTEM_PROMPT, DEFAULT_TEMPLATE_GUIDANCE,
   editLetter, finalizedLetterRevision, finalizeLetter, letterContextVersion, letterFromEditableText, letterToEditableText, openLetterRevision, parseIncomingLetter, readLetterTemplate, resolveLetterContent,
-  sameLetterContextInput, saveWorkingRevision, selectApplicationLetterTemplate, unresolvedLetterPlaceholders } from '../src/composables/motivationLetters';
+  sameLetterContextInput, saveWorkingRevision, selectApplicationLetterTemplate, unresolvedLetterPlaceholders } from '../src/documents/letter/motivationLetters';
 import { createTestState } from './helpers';
 
 const template = DEFAULT_LETTER_TEMPLATES[0];

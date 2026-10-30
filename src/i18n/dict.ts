@@ -1,4 +1,4 @@
-import type { Language } from '../defaults';
+import type { Language } from '../documents/cv/defaults';
 
 // Centralized dictionary for language translation (i18n)
 export const dict: Record<string, Record<Language, string>> = {

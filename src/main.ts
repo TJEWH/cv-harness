@@ -5,7 +5,7 @@ import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Select from 'primevue/select';
 import Textarea from 'primevue/textarea';
-import App from './App.vue';
+import App from './app/App.vue';
 import './assets/cv.css';
 
 import { library } from '@fortawesome/fontawesome-svg-core';

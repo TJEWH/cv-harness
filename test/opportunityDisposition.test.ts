@@ -5,10 +5,10 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive, type Component } from 'vue';
-import type { OpportunityDispositionPatch, OpportunityReview } from '../src/cloudTypes';
-import { isOpportunityInPast, normalizeOpportunityDispositionPatch, readOpportunityDisposition } from '../src/composables/opportunityDisposition';
+import type { OpportunityDispositionPatch, OpportunityReview } from '../src/app/cloudTypes';
+import { isOpportunityInPast, normalizeOpportunityDispositionPatch, readOpportunityDisposition } from '../src/features/opportunities/domain/opportunityDisposition';
 
-const filename = new URL('../src/components/OpportunityDispositionControls.vue', import.meta.url);
+const filename = new URL('../src/features/opportunities/components/OpportunityDispositionControls.vue', import.meta.url);
 const source = readFileSync(filename, 'utf8'), { descriptor } = parse(source);
 const compiled = compileScript(descriptor, { id: 'opportunity-disposition-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

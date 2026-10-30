@@ -1,4 +1,4 @@
-import type { LivingStandardAssessment } from '../../src/composables/livingStandard';
+import type { LivingStandardAssessment } from '../../src/features/opportunities/domain/livingStandard';
 
 /** Synthetic illustration, not a real city's budget or research. */
 export const livingStandardFixture: LivingStandardAssessment = {

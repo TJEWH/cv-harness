@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { LetterContent, LetterTemplate } from '../src/letterTypes';
-import type { LocalRefinementRequest, RefinementFeedback } from '../src/refinementTypes';
-import { prepareRefinement, refinementSignature } from '../src/composables/applicationRefinement';
-import { DEFAULT_LETTER_TEMPLATES, readLetterTemplate } from '../src/composables/motivationLetters';
-import { refinementInputsSignature, resolveRefinementSettings, sameRefinementInputs, serializeRefinementDraft } from '../src/composables/refinementSources';
+import type { LetterContent, LetterTemplate } from '../src/documents/letter/letterTypes';
+import type { LocalRefinementRequest, RefinementFeedback } from '../src/features/refinement/refinementTypes';
+import { prepareRefinement, refinementSignature } from '../src/features/refinement/applicationRefinement';
+import { DEFAULT_LETTER_TEMPLATES, readLetterTemplate } from '../src/documents/letter/motivationLetters';
+import { refinementInputsSignature, resolveRefinementSettings, sameRefinementInputs, serializeRefinementDraft } from '../src/features/refinement/domain/refinementSources';
 import { createTestState } from './helpers';
 
 const applicationId = '83000000-0000-4000-8000-000000000001';

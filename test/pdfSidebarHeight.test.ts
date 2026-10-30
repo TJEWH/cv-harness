@@ -1,7 +1,7 @@
 import { stub } from './helpers';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fitDeferredSidebarToContent } from '../src/composables/pdfSidebarHeight.ts';
+import { fitDeferredSidebarToContent } from '../src/documents/pdf/pdfSidebarHeight.ts';
 
 test('content-height deferred sidebars release the float below their content', () => {
   const properties: Record<string, string> = {};

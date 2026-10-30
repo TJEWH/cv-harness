@@ -5,21 +5,26 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, provide, reactive, type Component } from 'vue';
-import type { CvState } from '../src/types';
+import type { CvState } from '../src/documents/cv/types';
 import { createTestState } from './helpers';
 
-const requireFromComponents = createRequire(new URL('../src/components/FormBuilder.vue', import.meta.url));
-const { CV_TEXTAREA_COMMIT } = requireFromComponents('../composables/cvTextareaCommit') as typeof import('../src/composables/cvTextareaCommit');
-const { registerTextareaCommit } = requireFromComponents('../composables/textareaCommit') as typeof import('../src/composables/textareaCommit');
-const { privacyFieldKey } = requireFromComponents('../composables/privacyOverrides') as typeof import('../src/composables/privacyOverrides');
+const requireFromComponents = createRequire(new URL('../src/features/cv-studio/components/FormBuilder.vue', import.meta.url));
+const { CV_TEXTAREA_COMMIT } = requireFromComponents('../../../documents/cv/composables/cvTextareaCommit') as typeof import('../src/documents/cv/composables/cvTextareaCommit');
+const { registerTextareaCommit } = requireFromComponents('../../../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
+const { privacyFieldKey } = requireFromComponents('../../../documents/privacy/domain/privacyOverrides') as typeof import('../src/documents/privacy/domain/privacyOverrides');
 
-function component(name: string) {
-  const filename = new URL(`../src/components/${name}.vue`, import.meta.url);
+const componentPaths = {
+  FormBuilder: '../src/features/cv-studio/components/FormBuilder.vue',
+  AnonymizationPanel: '../src/documents/privacy/components/AnonymizationPanel.vue',
+} as const;
+function component(name: keyof typeof componentPaths) {
+  const filename = new URL(componentPaths[name], import.meta.url);
   const { descriptor } = parse(readFileSync(filename, 'utf8'));
   const script = compileScript(descriptor, { id: `cv-textarea-${name}` });
   const code = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports: { default?: Component } = {};
-  new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} } : requireFromComponents(path), exports);
+  const requireComponent = createRequire(filename);
+  new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} } : requireComponent(path), exports);
   return { ...exports.default, render: () => null };
 }
 const FormBuilder = component('FormBuilder');

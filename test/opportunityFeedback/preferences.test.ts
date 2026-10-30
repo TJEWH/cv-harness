@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { file, reset, sql, upgradeCurrentFeedbackContract } from './db';
 import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
-import { compileAdaptiveFeedbackSnapshot } from '../../src/composables/adaptiveFeedbackSnapshots';
-import { buildAdaptiveSearchPlanningContext, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY } from '../../src/composables/adaptiveSearchPlanner';
-import { SEARCH_CRITERIA_KEYS, type SearchCriteria } from '../../src/searchTypes';
-import type { SafeOpportunityFeedbackExample } from '../../src/composables/opportunityFeedbackPrivacy';
+import { compileAdaptiveFeedbackSnapshot } from '../../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
+import { buildAdaptiveSearchPlanningContext, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY } from '../../src/features/meta-search/domain/adaptiveSearchPlanner';
+import { SEARCH_CRITERIA_KEYS, type SearchCriteria } from '../../src/features/meta-search/searchTypes';
+import type { SafeOpportunityFeedbackExample } from '../../src/features/opportunities/domain/opportunityFeedbackPrivacy';
 
 test('AF-06 approved preferences and planning evidence are versioned and owner scoped', () => {
   reset({ searchProtocol: true });

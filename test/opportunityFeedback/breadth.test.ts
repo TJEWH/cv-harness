@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { createLegacySearchBreadthPolicy as createSearchBreadthPolicy } from '../../src/composables/adaptiveSearchPlanner';
+import { createLegacySearchBreadthPolicy as createSearchBreadthPolicy } from '../../src/features/meta-search/domain/adaptiveSearchPlanner';
 import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
 import { file, reset, sql, sqlAsync } from './db';
 

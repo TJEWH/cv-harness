@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { watch } from 'vue';
-import { cloneCv } from '../src/composables/applicationCv';
-import { letterToEditableText } from '../src/composables/motivationLetters';
-import type { RefinementProposalV2 } from '../src/refinementTypes';
+import { cloneCv } from '../src/features/applications/applicationCv';
+import { letterToEditableText } from '../src/documents/letter/motivationLetters';
+import type { RefinementProposalV2 } from '../src/features/refinement/refinementTypes';
 import { createPrivateRefinementCv } from './refinementFixture';
 import { applicationId, mount, prepare, idle, documents } from './refinementWorkflowHarness';
 

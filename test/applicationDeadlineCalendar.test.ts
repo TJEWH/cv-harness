@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildApplicationDeadlineCalendar } from '../src/composables/applicationDeadlineCalendar';
+import { buildApplicationDeadlineCalendar } from '../src/features/applications/domain/applicationDeadlineCalendar';
 
 const now = new Date('2026-10-10T12:34:56.789Z');
 const base = { id: 'application-123', application_code: 'APP-0042' };

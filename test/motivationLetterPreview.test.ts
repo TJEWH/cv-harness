@@ -6,10 +6,10 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, defineComponent, h, nextTick, reactive, ref, toRaw, watch } from 'vue';
 import type { Component, PropType } from 'vue';
-import type { Contact } from '../src/types';
-import type { LetterContent, LetterFormatting } from '../src/letterTypes';
-import type { useDocumentPdfPreview } from '../src/composables/useDocumentPdfPreview';
-import { createSampleDocument } from '../src/composables/builtinConfigurations';
+import type { Contact } from '../src/documents/cv/types';
+import type { LetterContent, LetterFormatting } from '../src/documents/letter/letterTypes';
+import type { useDocumentPdfPreview } from '../src/documents/pdf/composables/useDocumentPdfPreview';
+import { createSampleDocument } from '../src/features/cv-studio/domain/builtinConfigurations';
 
 interface Node { tag: string; text: string; props: Record<string, unknown>; children: Node[]; parent: Node | null }
 const node = (tag: string, text = ''): Node => ({ tag, text, props: {}, children: [], parent: null });
@@ -35,7 +35,7 @@ const letter = (overrides: Partial<LetterContent> = {}): LetterContent => ({
   body: 'My research addresses the reliability of interactive systems.', closing: 'Yours sincerely,', ...overrides,
 });
 type PreviewInput = Parameters<typeof useDocumentPdfPreview>[0];
-const sourceUrl = new URL('../src/components/MotivationLetterPreview.vue', import.meta.url);
+const sourceUrl = new URL('../src/documents/letter/components/MotivationLetterPreview.vue', import.meta.url);
 const compiled = compileScript(parse(readFileSync(sourceUrl, 'utf8')).descriptor, { id: 'MotivationLetterPreview.vue', inlineTemplate: true });
 const source = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const require = createRequire(sourceUrl);
@@ -49,10 +49,10 @@ function mountPreview(initialContent = letter()) {
     setup(props) { return () => h('address', { class: 'contact', 'data-contact': props.contact }, Object.values(props.contact).filter(Boolean).join(' · ')); },
   });
   const replacements: Record<string, unknown> = {
-    './CvContact.vue': { default: Contact },
-    '../composables/useCvDesign': { applyCvDesign() {} },
-    '../composables/useToasts': { useToastWatch() {} },
-    '../composables/useDocumentPdfPreview': {
+    '../../cv/components/CvContact.vue': { default: Contact },
+    '../../cv/composables/useCvDesign': { applyCvDesign() {} },
+    '../../../shared/ui/useToasts': { useToastWatch() {} },
+    '../../pdf/composables/useDocumentPdfPreview': {
       useDocumentPdfPreview(input: PreviewInput) {
         preview = input;
         watch(input.signature, value => { signatureVersions.push(JSON.stringify(value)); }, { deep: true, immediate: true, flush: 'sync' });

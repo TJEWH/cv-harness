@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
-import { observeJobCardScroll } from '../src/composables/jobCardScroll';
+import { observeJobCardScroll } from '../src/features/opportunities/interaction/jobCardScroll';
 
 function fixture(t: TestContext, initialLeft = 0, supportsScrollEnd = false) {
   t.mock.timers.enable({ apis: ['setTimeout'] });

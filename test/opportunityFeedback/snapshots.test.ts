@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { file, reset, sql, sqlAsync, upgradeCurrentFeedbackContract } from './db';
 import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
-import { sanitizeOpportunityFeedbackUrl } from '../../src/composables/opportunityFeedbackPrivacy';
-import { compileAdaptiveFeedbackSnapshot } from '../../src/composables/adaptiveFeedbackSnapshots';
+import { sanitizeOpportunityFeedbackUrl } from '../../src/features/opportunities/domain/opportunityFeedbackPrivacy';
+import { compileAdaptiveFeedbackSnapshot } from '../../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
 
 test('AF-03 deterministic owner-scoped snapshots, invalidation, pins and privacy revocation', () => {
   reset();

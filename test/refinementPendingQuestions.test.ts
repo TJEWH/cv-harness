@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildRefinementPrompt } from '../src/composables/applicationRefinement';
+import { buildRefinementPrompt } from '../src/features/refinement/applicationRefinement';
 import { createPrivateRefinementCv } from './refinementFixture';
 import { documents, idle, mount, prepare, type Workspace } from './refinementWorkflowHarness';
-import type { RefinementScope } from '../src/refinementTypes';
+import type { RefinementScope } from '../src/features/refinement/refinementTypes';
 
 function seed(fixture: ReturnType<typeof mount>, setup: Workspace, title: string) {
   const row = fixture.cloud.seedProposal(setup.requests[0].id);

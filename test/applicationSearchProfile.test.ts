@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { LetterTemplate } from '../src/letterTypes';
-import { createSearchTemplate, createSearchTemplateRepository } from '../src/composables/useSearchTemplates';
-import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/composables/searchTemplateCloud';
-import { createLetterRepository, DEFAULT_LETTER_TEMPLATES } from '../src/composables/motivationLetters';
+import type { LetterTemplate } from '../src/documents/letter/letterTypes';
+import { createSearchTemplate, createSearchTemplateRepository } from '../src/features/meta-search/data/useSearchTemplates';
+import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
+import { createLetterRepository, DEFAULT_LETTER_TEMPLATES } from '../src/documents/letter/motivationLetters';
 import { idle, mount, prepare, type Workspace } from './refinementWorkflowHarness';
 
 type SharedWorkspace = Workspace & {

@@ -1,8 +1,8 @@
 import { stub } from './helpers';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { timelinePageSegments, timelineRailPath, updateTimelineRails } from '../src/composables/timelineLayout.ts';
-import { createPdfPageGeometry } from '../src/composables/pdfPageGeometry.ts';
+import { timelinePageSegments, timelineRailPath, updateTimelineRails } from '../src/documents/layout/timelineLayout.ts';
+import { createPdfPageGeometry } from '../src/documents/pdf/pdfPageGeometry.ts';
 
 test('unpaginated timeline stays continuous through item spacing', () => {
   assert.equal(timelineRailPath([

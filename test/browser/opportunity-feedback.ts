@@ -1,14 +1,14 @@
 import { opportunityFixture } from '../fixtures/opportunity';
 /** Synthetic, memory-only AF-02 browser fixture. No Auth, database or external network calls. */
 import { createApp, defineComponent, h, ref } from 'vue';
-import OpportunityFeedbackControls from '../../src/components/OpportunityFeedbackControls.vue';
-import OpportunityDispositionControls from '../../src/components/OpportunityDispositionControls.vue';
-import type { OpportunityDispositionPatch, OpportunityFeedbackPatch, OpportunityReview } from '../../src/cloudTypes';
-import { normalizeOpportunity } from '../../src/composables/useJobWorkspace';
-import { normalizeOpportunityInterestReasons, parseOpportunityInterestRating } from '../../src/composables/opportunityFeedback';
-import { MAX_OPPORTUNITY_EVALUATION_LENGTH } from '../../src/composables/opportunityEvaluation';
-import { useApplicationNotesAutosave } from '../../src/composables/useApplicationNotesAutosave';
-import { normalizeOpportunityDispositionPatch } from '../../src/composables/opportunityDisposition';
+import OpportunityFeedbackControls from '../../src/features/opportunities/components/OpportunityFeedbackControls.vue';
+import OpportunityDispositionControls from '../../src/features/opportunities/components/OpportunityDispositionControls.vue';
+import type { OpportunityDispositionPatch, OpportunityFeedbackPatch, OpportunityReview } from '../../src/app/cloudTypes';
+import { normalizeOpportunity } from '../../src/app/composables/useJobWorkspace';
+import { normalizeOpportunityInterestReasons, parseOpportunityInterestRating } from '../../src/features/opportunities/domain/opportunityFeedback';
+import { MAX_OPPORTUNITY_EVALUATION_LENGTH } from '../../src/features/opportunities/domain/opportunityEvaluation';
+import { useApplicationNotesAutosave } from '../../src/shared/editing/useApplicationNotesAutosave';
+import { normalizeOpportunityDispositionPatch } from '../../src/features/opportunities/domain/opportunityDisposition';
 import '../../src/assets/cv.css';
 
 if (!import.meta.env.DEV) throw new Error('Synthetic feedback is available only on the development server.');

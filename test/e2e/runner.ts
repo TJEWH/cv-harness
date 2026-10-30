@@ -1,16 +1,16 @@
 import { createApp, h, nextTick, ref, type App, type Component } from 'vue';
 import { PDFDocument } from 'pdf-lib';
-import ApplicationWorkspace from '../../src/components/ApplicationWorkspace.vue';
-import LetterTemplates from '../../src/components/LetterTemplates.vue';
-import AppToaster from '../../src/components/AppToaster.vue';
-import DesktopSidebar from '../../src/components/DesktopSidebar.vue';
-import { provideDesktopSidebar } from '../../src/composables/desktopSidebar';
-import { useToasts } from '../../src/composables/useToasts';
+import ApplicationWorkspace from '../../src/features/applications/components/ApplicationWorkspace.vue';
+import LetterTemplates from '../../src/features/letter-templates/components/LetterTemplates.vue';
+import AppToaster from '../../src/shared/ui/AppToaster.vue';
+import DesktopSidebar from '../../src/shared/ui/DesktopSidebar.vue';
+import { provideDesktopSidebar } from '../../src/shared/ui/desktopSidebar';
+import { useToasts } from '../../src/shared/ui/useToasts';
 import { createPrivateRefinementCv, createSyntheticRefinementWorkspace } from '../refinementFixture';
-import { refinementSignature } from '../../src/composables/applicationRefinement';
-import { createLetterRepository, DEFAULT_REFINEMENT_SYSTEM_PROMPT } from '../../src/composables/motivationLetters';
-import { createSearchTemplateRepository } from '../../src/composables/useSearchTemplates';
-import type { RefinementProposalRow, RefinementProposalV2 } from '../../src/refinementTypes';
+import { refinementSignature } from '../../src/features/refinement/applicationRefinement';
+import { createLetterRepository, DEFAULT_REFINEMENT_SYSTEM_PROMPT } from '../../src/documents/letter/motivationLetters';
+import { createSearchTemplateRepository } from '../../src/features/meta-search/data/useSearchTemplates';
+import type { AnnotationReference, RefinementProposalRow, RefinementProposalV2 } from '../../src/features/refinement/refinementTypes';
 import type { Workspace } from '../refinementWorkflowHarness';
 import '../../src/assets/cv.css';
 import './style.css';
@@ -52,9 +52,15 @@ function button(name: string, parent: ParentNode = root) {
 async function click(name: string, parent: ParentNode = root) {
   const element = button(name, parent); assert(!element.disabled, `Disabled button: ${name}`); element.click(); await settle();
 }
-async function disclose(name: string) {
-  const summary = [...root.querySelectorAll('summary')].find(node => node.textContent?.trim() === name);
+function disclosure(name: string) {
+  const summary = [...root.querySelectorAll('summary')].find(node => [...node.childNodes]
+    .filter(child => child.nodeType !== Node.COMMENT_NODE && !(child instanceof Element && child.matches('.info-hint')))
+    .map(child => child.textContent).join('').trim() === name);
   assert(summary, `Missing disclosure: ${name}`);
+  return summary;
+}
+async function disclose(name: string) {
+  const summary = disclosure(name);
   if (!(summary.parentElement as HTMLDetailsElement).open) summary.click();
   await nextTick();
 }
@@ -524,9 +530,9 @@ async function scopedHistoryFlow() {
   const explicitVariantId = fixture.props.createVariant('Explicitly saved variant', fixture.base);
   await nextTick();
   function checkPreparation(cvLocked: boolean, letterLocked: boolean) {
-    const fields = [...root.querySelectorAll('.preparation-selection label')];
-    const cv = fields.find(label => label.firstChild?.textContent?.trim() === 'Saved CV')?.querySelector('select');
-    const letter = fields.find(label => label.firstChild?.textContent?.trim() === 'Letter template')?.querySelector('select');
+    const fields = [...root.querySelectorAll<HTMLLabelElement>('.preparation-selection label')];
+    const cv = fields.find(label => label.firstChild?.textContent?.trim() === 'Saved CV')?.control as HTMLSelectElement | null;
+    const letter = fields.find(label => label.firstChild?.textContent?.trim() === 'Letter template')?.control as HTMLSelectElement | null;
     assert(cv && letter, 'Preparation must retain both source selectors');
     assert(cv.disabled === cvLocked && letter.disabled === letterLocked, 'Only documents with uncleared proposals must lock their source selector');
     assert(![...cv.options].some(option => option.value === 'internal-refinement'), 'Internal refinements must not be offered as saved CVs');
@@ -569,7 +575,7 @@ async function scopedHistoryFlow() {
     else assert(root.querySelector('.cv-refinement-request textarea'), 'CV refinement must have one ungrouped request field');
   }
   function checkManualEditor() {
-    const manual = [...root.querySelectorAll('summary')].find(summary => summary.textContent?.trim() === 'Edit manually')?.parentElement;
+    const manual = disclosure('Edit manually').parentElement;
     assert(manual && !manual.textContent?.includes('Application writing instructions'), 'Manual editing must not expose Application writing instructions');
   }
   await loadProposal(cvProposal);
@@ -729,23 +735,38 @@ async function cvSelectionFlow() {
   await mount(true);
   assert(!setup.selectedChangeIds.includes(omission.id), 'Reload must preserve the unchecked change');
   await reviewCategory('question');
-  assert(root.querySelectorAll('.current-review .annotation-row').length === 3, 'Questions must merge legacy questions, comments and ToDos');
-  assert(root.querySelector('[data-review-tab="question"] .review-tab-count')?.textContent?.trim() === String(setup.reviewCounts.question), 'Question count must include legacy comments');
+  const expectedAnnotations = [row, nextProposal].flatMap(proposal => proposal.proposal_json.annotations!
+    .filter(annotation => annotation.document === 'cv').map(annotation => `${proposal.id}:${annotation.id}`)).sort();
+  const displayedAnnotations = [...root.querySelectorAll<HTMLElement>('.current-review .annotation-row')]
+    .map(annotation => `${annotation.dataset.proposalId}:${annotation.dataset.annotationId}`).sort();
+  assert(same(displayedAnnotations, expectedAnnotations), 'Questions must retain unanswered questions, comments and ToDos from both rounds with their original proposal identity');
+  assert(root.querySelector('[data-review-tab="question"] .review-tab-count')?.textContent?.trim() === String(expectedAnnotations.length + nextProposal.proposal_json.cvComments.length), 'Question count must include carried annotations and legacy comments');
   assert([...root.querySelectorAll('.review-tabs [role="tab"]')].map(tab => tab.getAttribute('data-review-tab')).join(',') === 'changes,question', 'Review order must be Changes then Questions');
   assert(!root.querySelector('.annotation-row header'), 'Repeated article headers must be removed');
   assert([...root.querySelectorAll('.question-group')].map(group => group.getAttribute('data-question-group')).join(',') === 'application_requirements,experience,follow_up,other', 'Questions must be grouped by purpose with legacy comments in Other');
   assert(!root.querySelector('.annotations')?.textContent?.includes('[experience]'), 'Category tags must not appear in question text');
-  const response = root.querySelector<HTMLTextAreaElement>('.current-review textarea')!;
-  const reviewCount = setup.reviews.length, beforeAnswer = refinementSignature(setup.record!.state);
-  response.value = 'Draft answer retained when changing review tabs.';
+  const responseSelector = `.current-review .annotation-row[data-proposal-id="${nextProposal.id}"][data-annotation-id="${question.id}"] textarea`;
+  const response = root.querySelector<HTMLTextAreaElement>(responseSelector)!;
+  assert(response, 'The current proposal must expose its own answer field');
+  const reviewCount = setup.reviews.length, requestCount = setup.requests.length, beforeAnswer = refinementSignature(setup.record!.state);
+  const beforeApprovals = refinementSignature(setup.approvals);
+  const responseValue = 'Draft answer retained when changing review tabs.';
+  response.value = responseValue;
   response.dispatchEvent(new Event('input', { bubbles: true }));
   await settle();
   assert(setup.reviews.length === reviewCount, 'Typing a response must not persist or submit it');
   await reviewCategory('changes');
-  assert(setup.proposalAnnotations.some(item => item.response === response.value && item.status === 'open'), 'Changing tabs must await the annotation draft save without resolving it');
-  assert(!setup.reviews.slice(reviewCount).some(item => item.kind === 'feedback'), 'Saving an open response must not submit feedback');
+  const answered = setup.currentAnnotations.find(item => item.proposalId === nextProposal.id && item.annotation.id === question.id);
+  assert(answered?.response === responseValue && answered.status === 'resolved' && answered.included, 'Changing tabs must await the current question’s committed answer and include its resolved feedback');
+  assert(setup.currentAnnotations.find(item => item.proposalId === row.id && item.annotation.id === question.id)?.status === 'open', 'Answering the current question must leave the same-numbered carried question open');
+  assert(setup.reviews.slice(reviewCount).filter(item => {
+    const reference = item.payload.annotation as AnnotationReference | undefined;
+    return item.kind === 'feedback' && reference?.proposalId === nextProposal.id && reference.annotationId === question.id && reference.reviewId === answered.reviewId;
+  }).length === 1, 'The committed answer must create feedback for exactly its saved question identity and review');
+  assert(setup.requests.length === requestCount, 'Committing an answer must not submit a new refinement task');
+  assert(refinementSignature(setup.approvals) === beforeApprovals, 'Committing an answer must not approve either document');
   await reviewCategory('question');
-  assert(root.querySelector<HTMLTextAreaElement>('.current-review textarea')?.value === response.value, 'Returning to Questions must retain its saved draft');
+  assert(root.querySelector<HTMLTextAreaElement>(responseSelector)?.value === responseValue, 'Returning to Questions must retain the saved answer for the current proposal');
   for (const [key, expected] of [['End', 'question'], ['ArrowRight', 'changes'], ['ArrowLeft', 'question'], ['Home', 'changes']] as const) {
     root.querySelector<HTMLElement>('.review-tabs [aria-selected="true"]')!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
     await settle();

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DEFAULT_DESIGN, createDefaultDesign, designNumber, resolveDesign } from '../src/defaults';
-import { createEmptyDocument, createSampleDocument } from '../src/composables/builtinConfigurations';
+import { DEFAULT_DESIGN, createDefaultDesign, designNumber, resolveDesign } from '../src/documents/cv/defaults';
+import { createEmptyDocument, createSampleDocument } from '../src/features/cv-studio/domain/builtinConfigurations';
 
 test('new documents, sample documents, and partial designs share the same defaults', () => {
   for (const design of [createEmptyDocument().design, createSampleDocument().design, resolveDesign(), createDefaultDesign()]) {

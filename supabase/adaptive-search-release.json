@@ -295,99 +295,99 @@
   },
   "runner_artifacts": [
     {
-      "path": "src/composables/adaptiveSearchProtocol.ts",
+      "path": "src/features/meta-search/domain/adaptiveSearchProtocol.ts",
       "sha256": "4d7a1d4fc39c8138e886b0c3f7901f4a94d31da25c172f23aa4d93c4d76ed0b0"
     },
     {
-      "path": "src/composables/adaptiveSearchTask.ts",
+      "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
       "sha256": "080c993f0cb2ede0d935e9e7db3c0d647e4643baf4cd1b80d036b30ab0ce0baf"
     },
     {
-      "path": "src/composables/adaptiveSearchStartup.ts",
-      "sha256": "abca6e671f050a10a551a8708c914f81c4933fa326e6e6879c2420df4f2d412c"
+      "path": "src/features/meta-search/domain/adaptiveSearchStartup.ts",
+      "sha256": "87be82b9da3522b43ff86a7839358fa58b46996921c8648e147bdcaae966b69d"
     },
     {
-      "path": "src/composables/opportunityResultSchema.ts",
-      "sha256": "de92aba55c38c4c75a764e6de984393ce04e4f87cb520f0946430fc3d619f1a7"
+      "path": "src/features/opportunities/domain/opportunityResultSchema.ts",
+      "sha256": "10c19a48e5a6118a05005387c15d093c4176b053303f639af11e4f5c627b9648"
     },
     {
       "path": "supabase/opportunity_schema_v6.json",
       "sha256": "88fa565dc597f349e010e6a7d90188eb9947aea453779f94154fd441a8904095"
     },
     {
-      "path": "src/composables/opportunityFeedback.ts",
-      "sha256": "35d018c9832f78a40ac35fbd000ea755fdcb57ff91c6421ae62ade6bebe3c374"
+      "path": "src/features/opportunities/domain/opportunityFeedback.ts",
+      "sha256": "08458ba3324d468bc55737d8db570c968b23cd34b4d4229d7d2bf8bcebb7842c"
     },
     {
-      "path": "src/composables/opportunityFeedbackPrivacy.ts",
-      "sha256": "a90d4857ea3c5b24038588bd6553da1052edaa85ed4d42e0624437cf7ac9e840"
+      "path": "src/features/opportunities/domain/opportunityFeedbackPrivacy.ts",
+      "sha256": "0a2ec189b7c6e26d42682b92bb5888856d7ffaf79e2948ca6f232ab01f914cc2"
     },
     {
-      "path": "src/composables/adaptiveFeedbackSnapshots.ts",
-      "sha256": "16ae6e8aeeb00393f675c8d9be07fe2ff246bf1fb5aea0098f2df04c4f41e8fb"
+      "path": "src/features/meta-search/domain/adaptiveFeedbackSnapshots.ts",
+      "sha256": "4f307fd09b2975e59921355be787cc92f25553747a012caef13cb1327df22025"
     },
     {
-      "path": "src/composables/adaptiveSearchPlans.ts",
-      "sha256": "6e029216e3e2b19e2f034b6563d17d464e5f73a688ee63d964bb294c71e7147d"
+      "path": "src/features/meta-search/domain/adaptiveSearchPlans.ts",
+      "sha256": "b4615f60986bf56890a917c781beb84e131628f2f062291cd76503b3502d329f"
     },
     {
-      "path": "src/composables/adaptiveSearchPlanner.ts",
-      "sha256": "d3e24499a0acfa30942deb044cf1727dc9c46b82b148cd833af92522a73525c7"
+      "path": "src/features/meta-search/domain/adaptiveSearchPlanner.ts",
+      "sha256": "7b45adc62d5a7c1b2f45fe316ccb894fb5c42215401fa8eebf447e26657a38d4"
     },
     {
-      "path": "src/composables/adaptiveSearchSources.ts",
-      "sha256": "024299482b6d5080fae7877f6c73ff9352091bf7e70b867691e6def1a18e4f55"
+      "path": "src/features/meta-search/domain/adaptiveSearchSources.ts",
+      "sha256": "0d2f5cf0eb75f85b97a6b7a60d4f124a150956468deec5bb2c145cd6a54bb02a"
     },
     {
-      "path": "src/composables/adaptiveSearchQuality.ts",
-      "sha256": "1a28d534125c2cf9ec6b8a15ba5f2c84427a321ba2d7de583419797816caff78"
+      "path": "src/features/meta-search/domain/adaptiveSearchQuality.ts",
+      "sha256": "87b406b0120fe8837bd8a4332ea68537f1911b02cda8b37317d2f3aa132db2fa"
     },
     {
-      "path": "src/composables/adaptiveSearchDashboard.ts",
-      "sha256": "f5b09a6451fa3a8fff5efc98d4d2a2719f19182175814d112a14b1a6716ce5eb"
+      "path": "src/features/meta-search/composables/adaptiveSearchDashboard.ts",
+      "sha256": "3000d3ded7edc27ff3751ec11d901eef0e589632bb51b7e581292baaa216099c"
     },
     {
-      "path": "src/composables/searchTemplateCloud.ts",
-      "sha256": "f3e366d2c9668ed1da3b3866eb8b443964262597566aa53933e895b73489ee9a"
+      "path": "src/features/meta-search/data/searchTemplateCloud.ts",
+      "sha256": "21b480b8abe963737229070632aa824fdd7273922ba277ad1a91581f303fe222"
     },
     {
-      "path": "src/composables/searchLetterContext.ts",
-      "sha256": "67ac62e40b32d47bbe1332293aacec813a9d61f53dcd3431d254367c41ca762e"
+      "path": "src/documents/letter/searchLetterContext.ts",
+      "sha256": "b13713d122f1bca34108411f1988094d6f58991c7fcfd0439926dd6ebe072298"
     },
     {
-      "path": "src/components/AdaptiveSearchDashboard.vue",
-      "sha256": "352a4889c431f498dcfccb108f9c2074939f88c618f8224631a524af0f2a8458"
+      "path": "src/features/meta-search/components/AdaptiveSearchDashboard.vue",
+      "sha256": "b0b2596644e43cd9c99bc8daae087aeff80a46fa32dcb12a56bd7e60e4ee26a0"
     },
     {
-      "path": "src/components/AdaptiveSearchPolicyHint.vue",
-      "sha256": "542c6db2bad672f4a22eb3262a51c4ba564b7f9894410a484248e093dd4c06a1"
+      "path": "src/features/meta-search/components/AdaptiveSearchPolicyHint.vue",
+      "sha256": "01dc51497c61118dfcae3d8f8d669ce791f3633d9d2e7a98c8b5cedf99a3e182"
     },
     {
-      "path": "src/components/SearchTemplates.vue",
-      "sha256": "926456fd1e452b57c0128a197d4082a88ac862cf6834f5cbcec81aa5241c9915"
+      "path": "src/features/meta-search/components/SearchTemplates.vue",
+      "sha256": "2e0a8a40037952bf6a2c548ff0c3d2b3df90b00049032078d1a2dbdc2362236c"
     },
     {
-      "path": "src/components/JobWorkspace.vue",
-      "sha256": "65ffd241a756e462fb48eb16275c3f162f1a5448ed3705c3ecdc109110819e7d"
+      "path": "src/app/components/JobWorkspace.vue",
+      "sha256": "267df155d3bfe03f34253b9fc7be9a6a7b2391031184022bfa442eb5726efdda"
     },
     {
-      "path": "src/components/OpportunityFeedbackControls.vue",
-      "sha256": "c2c1c3ff9a805696b9b6d9734eb9e685197990f6747a698a8c37915756e4e6c3"
+      "path": "src/features/opportunities/components/OpportunityFeedbackControls.vue",
+      "sha256": "aae97f414a6c918fcc147725bee70e2c08ac867aaf66a109498fb70cadc66ad5"
     },
     {
-      "path": "src/components/OpportunityDispositionControls.vue",
-      "sha256": "b80b7c4b1be526a82a6fcced6d2060044049a981c038d71c714dab8fd7903a9b"
+      "path": "src/features/opportunities/components/OpportunityDispositionControls.vue",
+      "sha256": "a1685765ef27181d289264a1d1edcb31b06791765c22308c8ad57f4b3abec421"
     },
     {
-      "path": "src/composables/opportunityDisposition.ts",
-      "sha256": "4c2d07725ba5cc5022434438530f2b199b117bdcf37a8dff554dc176013a9ea8"
+      "path": "src/features/opportunities/domain/opportunityDisposition.ts",
+      "sha256": "d88e58baa29bb9461da32b0d344324d33bed31c5c3717c7bf2353028b57af3b4"
     },
     {
-      "path": "src/composables/opportunityEvaluation.ts",
+      "path": "src/features/opportunities/domain/opportunityEvaluation.ts",
       "sha256": "b57b00ab0da25d72abf5bf173fa46d05e314a09213fa9da215b56a9d6d2b9791"
     },
     {
-      "path": "src/composables/useApplicationNotesAutosave.ts",
+      "path": "src/shared/editing/useApplicationNotesAutosave.ts",
       "sha256": "b3e8f07b16c986c3fe4167558c703fa4bb743e3e861207821576bc3dc8fd68b7"
     }
   ],

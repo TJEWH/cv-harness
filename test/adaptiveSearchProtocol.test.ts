@@ -4,7 +4,7 @@ import {
   ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT, ADAPTIVE_MAX_BATCH_BYTES, ADAPTIVE_MAX_OPPORTUNITY_BYTES,
   ADAPTIVE_PROTOCOL_STARTUP_CAPABILITIES, adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall,
   validateAdaptiveBatchEnvelope, validateAdaptiveCompletionEnvelope, type AdaptiveBatchPayload, type AdaptiveCompletionPayload,
-} from '../src/composables/adaptiveSearchProtocol';
+} from '../src/features/meta-search/domain/adaptiveSearchProtocol';
 
 const id = (index: number) => `88000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
 const scope = { project_ref: 'abcdefghijklmnopqrst', search_id: id(1), run_id: id(2) };

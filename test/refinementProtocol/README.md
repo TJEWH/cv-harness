@@ -18,7 +18,7 @@ npm run refinement:prompts
 
 Review the generated Markdown diff. `generated/*.md` contains copyable tasks for synthetic identifiers; `manifest.json` contains the expected identifiers and results. All writing instructions are in each task; no protocol document is fetched. These fixtures use no real applications. Generating them makes no Supabase calls; use live tests to check whether an agent follows the instructions.
 
-Edit helper names, typed SQL argument definitions, literal escaping and proposal examples in `src/composables/refinementProtocolContract.ts`. The production task builder uses that contract. Keep writing guidance in `buildRefinementPrompt`.
+Edit helper names, typed SQL argument definitions, literal escaping and proposal examples in `src/features/refinement/domain/refinementProtocolContract.ts`. The production task builder uses that contract. Keep writing guidance in `buildRefinementPrompt`.
 
 ## Live agent tests
 

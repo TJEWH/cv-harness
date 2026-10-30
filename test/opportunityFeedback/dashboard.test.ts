@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { file, reset, sql, upgradeCurrentFeedbackContract } from './db';
 import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
-import { readAdaptiveSearchDashboard } from '../../src/composables/adaptiveSearchDashboard';
+import { readAdaptiveSearchDashboard } from '../../src/features/meta-search/composables/adaptiveSearchDashboard';
 let privateAclBefore = '';
 
 test('AF-10 exact feedback preview preserves privacy, proof and runner semantics', () => {

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createTestState } from './helpers';
-import { createAnonymizedContact } from '../src/composables/anonymization';
-import { applyPrivacyEditorChanges, createPrivacyEditorState } from '../src/composables/privacyOverrides';
-import { applyCvContent, createCvContentJson, cvContent, parseCvContentJson } from '../src/composables/cvJsonBackup';
+import { createAnonymizedContact } from '../src/documents/privacy/domain/anonymization';
+import { applyPrivacyEditorChanges, createPrivacyEditorState } from '../src/documents/privacy/domain/privacyOverrides';
+import { applyCvContent, createCvContentJson, cvContent, parseCvContentJson } from '../src/features/cv-studio/domain/cvJsonBackup';
 
 function privateState() {
   const state = createTestState({

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createTestState } from './helpers';
-import { automaticMaskForField } from '../src/composables/privacyEditorMasking';
-import { privacyFieldEntries, privacyFieldKey } from '../src/composables/privacyOverrides';
+import { automaticMaskForField } from '../src/documents/privacy/domain/privacyEditorMasking';
+import { privacyFieldEntries, privacyFieldKey } from '../src/documents/privacy/domain/privacyOverrides';
 
 function fixture() {
   return createTestState({

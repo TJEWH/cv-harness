@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createRefinementRepository } from '../src/composables/applicationRefinement';
+import { createRefinementRepository } from '../src/features/refinement/applicationRefinement';
 import { stub } from './helpers';
 
 const applicationId = '11111111-1111-4111-8111-111111111111';

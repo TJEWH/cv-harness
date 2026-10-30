@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createCloudCvSnapshot } from '../src/composables/cloudCvPrivacy';
-import { readCvConfig, readCvContent } from '../src/composables/cvStateValidation';
-import { createDefaultDesign, SAMPLE_CONTACT } from '../src/defaults';
+import { createCloudCvSnapshot } from '../src/documents/privacy/domain/cloudCvPrivacy';
+import { readCvConfig, readCvContent } from '../src/documents/cv/domain/cvStateValidation';
+import { createDefaultDesign, SAMPLE_CONTACT } from '../src/documents/cv/defaults';
 import { createTestState } from './helpers';
-import { applyPrivacyEditorChanges, createPrivacyEditorState } from '../src/composables/privacyOverrides';
+import { applyPrivacyEditorChanges, createPrivacyEditorState } from '../src/documents/privacy/domain/privacyOverrides';
 
 const options = { id: '1ba99b9b-a230-4492-9c80-dd16a1d1560a', now: new Date('2026-09-19T16:00:00.000Z') };
 

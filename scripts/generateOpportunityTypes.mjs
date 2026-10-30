@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const schemaPath = new URL('../supabase/opportunity_schema_v6.json', import.meta.url);
-const outputPath = new URL('../src/opportunityTypes.ts', import.meta.url);
+const outputPath = new URL('../src/features/opportunities/opportunityTypes.ts', import.meta.url);
 const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
 const name = value => `Opportunity${value.split('_').map(word => word[0].toUpperCase() + word.slice(1)).join('')}`;
 function typeOf(node, depth = 0, required = new Set(node.required || [])) {

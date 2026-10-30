@@ -1,11 +1,11 @@
-import { createPdfRenderTask } from '../src/composables/pdfRenderTask';
-import type { VectorSnapshot, TextRecord, GraphicsState } from '../src/pdfTypes';
+import { createPdfRenderTask } from '../src/documents/pdf/pdfRenderTask';
+import type { VectorSnapshot, TextRecord, GraphicsState } from '../src/documents/pdf/pdfTypes';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
-import { renderVectorPdf } from '../src/composables/pdfVectorExport.ts';
-import { vectorTextIntersectsPage } from '../src/composables/pdfVectorText.ts';
+import { renderVectorPdf } from '../src/documents/pdf/pdfVectorExport.ts';
+import { vectorTextIntersectsPage } from '../src/documents/pdf/pdfVectorText.ts';
 
 const page = { sourceTop: 0, sourceBottom: 100, canvasWidth: 100, contentWidth: 100, leftOffset: 10, topOffset: 10 };
 const task = createPdfRenderTask();

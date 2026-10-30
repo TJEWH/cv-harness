@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { LIVING_STANDARD_FACTORS, livingStandardScore, readLivingStandard } from '../src/composables/livingStandard';
-import { buildOpportunityGroups, opportunityContextMarkdown } from '../src/composables/opportunityContext';
+import { LIVING_STANDARD_FACTORS, livingStandardScore, readLivingStandard } from '../src/features/opportunities/domain/livingStandard';
+import { buildOpportunityGroups, opportunityContextMarkdown } from '../src/features/opportunities/domain/opportunityContext';
 import { livingStandardFixture as fixture } from './fixtures/livingStandard';
 
 test('living-standard scores use the agreed weights and one decimal, independent of imported totals', () => {

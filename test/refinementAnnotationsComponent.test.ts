@@ -5,8 +5,8 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive, type Component } from 'vue';
-import type { AnnotationStatus } from '../src/refinementTypes';
-import type { AnnotationView } from '../src/composables/refinementAnnotations';
+import type { AnnotationStatus } from '../src/features/refinement/refinementTypes';
+import type { AnnotationView } from '../src/features/refinement/domain/refinementAnnotations';
 
 type Item = AnnotationView & { target: string; referenceChanged: boolean; included: boolean };
 interface Draft {
@@ -24,12 +24,12 @@ interface Setup {
   flush(): Promise<boolean>;
   failureMessage(item: Item): string;
 }
-const filename = new URL('../src/components/RefinementAnnotations.vue', import.meta.url);
+const filename = new URL('../src/features/refinement/components/RefinementAnnotations.vue', import.meta.url);
 const compiled = compileScript(parse(readFileSync(filename, 'utf8')).descriptor, { id: 'refinement-annotations-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const componentExports: { default?: Component } = {};
 const requireFromComponent = createRequire(filename);
-const { registerTextareaCommit } = requireFromComponent('../composables/textareaCommit') as typeof import('../src/composables/textareaCommit');
+const { registerTextareaCommit } = requireFromComponent('../../../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
 new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} } : requireFromComponent(path), componentExports);
 const component = { ...componentExports.default, render: () => null };
 const renderer = createRenderer<object, object>({

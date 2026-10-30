@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { EMPTY_LETTER } from '../src/composables/motivationLetters';
-import { refinementSignature } from '../src/composables/applicationRefinement';
+import { EMPTY_LETTER } from '../src/documents/letter/motivationLetters';
+import { refinementSignature } from '../src/features/refinement/applicationRefinement';
 import { createPrivateRefinementCv } from './refinementFixture';
 import { idle, seedLegacyRound, mount, prepare, refinementKey, type Workspace } from './refinementWorkflowHarness';
 

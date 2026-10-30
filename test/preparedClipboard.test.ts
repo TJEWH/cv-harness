@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
-import { copyPreparedText } from '../src/composables/preparedClipboard';
+import { copyPreparedText } from '../src/shared/lib/preparedClipboard';
 
 class TestClipboardItem {
   constructor(readonly content: Record<string, Promise<Blob>>) {}

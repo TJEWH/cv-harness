@@ -5,17 +5,17 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive, type Component } from 'vue';
-import type { CvState, FieldPrivacyType } from '../src/types';
-import type { PrivacyEditorContext } from '../src/composables/privacyEditorContext';
-import { cvContent } from '../src/composables/cvJsonBackup';
-import { normalizeAnonymizationState } from '../src/composables/anonymization';
-import { privacyFieldKey } from '../src/composables/privacyOverrides';
+import type { CvState, FieldPrivacyType } from '../src/documents/cv/types';
+import type { PrivacyEditorContext } from '../src/documents/privacy/composables/privacyEditorContext';
+import { cvContent } from '../src/features/cv-studio/domain/cvJsonBackup';
+import { normalizeAnonymizationState } from '../src/documents/privacy/domain/anonymization';
+import { privacyFieldKey } from '../src/documents/privacy/domain/privacyOverrides';
 import { createTestState } from './helpers';
 
 // Compile the actual setup script to exercise committed privacy changes,
 // source refreshes, and the field-reset contract used by the shared editor.
 function loadPanel(): Component {
-  const filename = new URL('../src/components/AnonymizationPanel.vue', import.meta.url);
+  const filename = new URL('../src/documents/privacy/components/AnonymizationPanel.vue', import.meta.url);
   const script = compileScript(parse(readFileSync(filename, 'utf8')).descriptor, { id: 'PrivacyEditorTest' });
   const code = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports: { default?: Component } = {};

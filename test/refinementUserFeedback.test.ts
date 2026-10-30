@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createRefinementRepository, refinementSignature } from '../src/composables/applicationRefinement';
+import { createRefinementRepository, refinementSignature } from '../src/features/refinement/applicationRefinement';
 import { createPrivateRefinementCv } from './refinementFixture';
 import { account, applicationId, documents, idle, mount, prepare, type Workspace } from './refinementWorkflowHarness';
 

@@ -4,7 +4,7 @@ import {
   createPdfPageGeometry,
   createPdfPageSlices,
   resolveLastPageSidebarPlacement,
-} from '../src/composables/pdfPageGeometry.ts';
+} from '../src/documents/pdf/pdfPageGeometry.ts';
 
 test('slices pages at the existing integer-rounded pixel boundaries', () => {
   const pages = createPdfPageSlices({ width: 703, height: 3000, pageWidth: 210, pageHeight: 297 });

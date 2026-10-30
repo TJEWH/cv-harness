@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { SearchCriteria } from '../src/searchTypes';
-import { compileAdaptiveFeedbackSnapshot, type AdaptiveFeedbackExample, type AdaptiveFeedbackSnapshot } from '../src/composables/adaptiveFeedbackSnapshots';
-import { createAdaptiveSearchPlan, type AdaptiveSearchPlanBasis, type AdaptiveSearchQueryInput } from '../src/composables/adaptiveSearchPlans';
-import { opportunityFeedbackTextHash } from '../src/composables/opportunityFeedbackPrivacy';
+import type { SearchCriteria } from '../src/features/meta-search/searchTypes';
+import { compileAdaptiveFeedbackSnapshot, type AdaptiveFeedbackExample, type AdaptiveFeedbackSnapshot } from '../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
+import { createAdaptiveSearchPlan, type AdaptiveSearchPlanBasis, type AdaptiveSearchQueryInput } from '../src/features/meta-search/domain/adaptiveSearchPlans';
+import { opportunityFeedbackTextHash } from '../src/features/opportunities/domain/opportunityFeedbackPrivacy';
 import {
   ADAPTIVE_SEARCH_POLICY_VERSION, ADAPTIVE_SEED_GENERATOR_VERSION, DEFAULT_ADAPTIVE_SEARCH_POLICY,
   createSearchBreadthPolicy, createLegacySearchBreadthPolicy, validateAdaptiveSearchPolicy, LEGACY_ADAPTIVE_SEARCH_POLICY,
   buildAdaptiveSearchPlanningContext, createColdStartAdaptiveSearchPlan, recordGeneratedAdaptiveSearchPlan,
   validateApprovedAdaptiveRules, validatePendingAdaptiveRuleSuggestion, type AdaptiveSearchPlannerInput, type ApprovedAdaptiveRule,
-} from '../src/composables/adaptiveSearchPlanner';
+} from '../src/features/meta-search/domain/adaptiveSearchPlanner';
 
 const id = (index: number) => `78000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
 const owner = id(900), search = id(901);

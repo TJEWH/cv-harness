@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
-import type { LetterTemplate } from '../src/letterTypes';
-import { cloneCv } from '../src/composables/applicationCv';
-import { createLetterRepository } from '../src/composables/motivationLetters';
+import type { LetterTemplate } from '../src/documents/letter/letterTypes';
+import { cloneCv } from '../src/features/applications/applicationCv';
+import { createLetterRepository } from '../src/documents/letter/motivationLetters';
 import { account, applicationId, idle, mount, prepare, seedLegacyRound } from './refinementWorkflowHarness';
 
 type Fixture = ReturnType<typeof mount>;
-const requireComponent = createRequire(new URL('../src/components/ApplicationWorkspace.vue', import.meta.url));
-const { registerTextareaCommit } = requireComponent('../composables/textareaCommit') as typeof import('../src/composables/textareaCommit');
+const requireComponent = createRequire(new URL('../src/features/applications/components/ApplicationWorkspace.vue', import.meta.url));
+const { registerTextareaCommit } = requireComponent('../../../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
 
 function pauseNextHistoryLoad(fixture: Fixture) {
   let release = () => {}, started = () => {}, paused = false;

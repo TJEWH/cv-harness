@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatOpportunityDeadline, isOpportunityDeadlinePassed, opportunityDeadlineSortKey } from '../src/composables/opportunityDeadline';
+import { formatOpportunityDeadline, isOpportunityDeadlinePassed, opportunityDeadlineSortKey } from '../src/features/opportunities/domain/opportunityDeadline';
 
 test('date-only deadlines include the entire stated date in the deadline timezone', () => {
   const now = new Date('2026-09-20T14:00:00Z');

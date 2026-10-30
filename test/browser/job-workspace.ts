@@ -7,7 +7,7 @@ import InputNumber from 'primevue/inputnumber';
 import Select from 'primevue/select';
 import Textarea from 'primevue/textarea';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { CvState, SavedConfiguration } from '../../src/types';
+import type { CvState, SavedConfiguration } from '../../src/documents/cv/types';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import {
   faArrowDown, faArrowLeft, faArrowRight, faArrowsLeftRightToLine, faBriefcase, faCheck,
@@ -19,12 +19,12 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { faGithub, faLinkedin } from '@fortawesome/free-brands-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-import JobWorkspace from '../../src/components/JobWorkspace.vue';
-import AppToaster from '../../src/components/AppToaster.vue';
-import DesktopSidebar from '../../src/components/DesktopSidebar.vue';
-import { provideDesktopSidebar } from '../../src/composables/desktopSidebar';
-import { createSampleDocument } from '../../src/composables/builtinConfigurations';
-import { createLetterRepository, DEFAULT_LETTER_TEMPLATES } from '../../src/composables/motivationLetters';
+import JobWorkspace from '../../src/app/components/JobWorkspace.vue';
+import AppToaster from '../../src/shared/ui/AppToaster.vue';
+import DesktopSidebar from '../../src/shared/ui/DesktopSidebar.vue';
+import { provideDesktopSidebar } from '../../src/shared/ui/desktopSidebar';
+import { createSampleDocument } from '../../src/features/cv-studio/domain/builtinConfigurations';
+import { createLetterRepository, DEFAULT_LETTER_TEMPLATES } from '../../src/documents/letter/motivationLetters';
 import { createRefinementFixture, REFINEMENT_TABLES } from '../refinementFixture';
 import { livingStandardFixture } from '../fixtures/livingStandard';
 import { canonicalOpportunityFixture } from '../fixtures/canonicalOpportunity';

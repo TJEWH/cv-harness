@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPdfRenderTask, createPreviewRenderSlot } from '../src/composables/pdfRenderTask.ts';
+import { createPdfRenderTask, createPreviewRenderSlot } from '../src/documents/pdf/pdfRenderTask.ts';
 
 test('render batches yield to input only after their time budget', async () => {
   let time = 0;

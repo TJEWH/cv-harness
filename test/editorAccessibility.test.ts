@@ -5,15 +5,23 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive, type Component } from 'vue';
-import { createSampleDocument } from '../src/composables/builtinConfigurations';
-import { createAnonymizedState } from '../src/composables/anonymization';
-import { applyPrivacyEditorChanges, createPrivacyEditorState } from '../src/composables/privacyOverrides';
+import { createSampleDocument } from '../src/features/cv-studio/domain/builtinConfigurations';
+import { createAnonymizedState } from '../src/documents/privacy/domain/anonymization';
+import { applyPrivacyEditorChanges, createPrivacyEditorState } from '../src/documents/privacy/domain/privacyOverrides';
 import { createTestState } from './helpers';
-import type { CustomSection, CvItem } from '../src/types';
-const { PRIVACY_EDITOR } = createRequire(import.meta.url)('../src/composables/privacyEditorContext');
+import type { CustomSection, CvItem } from '../src/documents/cv/types';
+const { PRIVACY_EDITOR } = createRequire(import.meta.url)('../src/documents/privacy/composables/privacyEditorContext');
 
-function loadComponent(name: string, inlineTemplate = false): Component {
-  const filename = new URL(`../src/components/${name}.vue`, import.meta.url);
+const componentPaths = {
+  FormBuilder: '../src/features/cv-studio/components/FormBuilder.vue',
+  SectionHeading: '../src/shared/ui/SectionHeading.vue',
+  SectionList: '../src/features/cv-studio/components/SectionList.vue',
+  SectionItems: '../src/features/cv-studio/components/SectionItems.vue',
+  CvPreview: '../src/documents/cv/components/CvPreview.vue',
+  PrivacySectionHeading: '../src/documents/privacy/components/PrivacySectionHeading.vue',
+} as const;
+function loadComponent(name: keyof typeof componentPaths, inlineTemplate = false): Component {
+  const filename = new URL(componentPaths[name], import.meta.url);
   const script = compileScript(parse(readFileSync(filename, 'utf8')).descriptor, { id: name, inlineTemplate });
   const code = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports: { default?: Component } = {};

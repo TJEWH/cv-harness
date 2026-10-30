@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { conciseLetterSummary, refinementSummaryCounts } from '../src/composables/refinementSummary';
-import { buildRefinementPrompt, prepareRefinement, refinementSignature } from '../src/composables/applicationRefinement';
-import { DEFAULT_LETTER_TEMPLATES } from '../src/composables/motivationLetters';
-import type { RefinementProposalV2 } from '../src/refinementTypes';
+import { conciseLetterSummary, refinementSummaryCounts } from '../src/features/refinement/domain/refinementSummary';
+import { buildRefinementPrompt, prepareRefinement, refinementSignature } from '../src/features/refinement/applicationRefinement';
+import { DEFAULT_LETTER_TEMPLATES } from '../src/documents/letter/motivationLetters';
+import type { RefinementProposalV2 } from '../src/features/refinement/refinementTypes';
 import { createTestState } from './helpers';
 
 function proposal(): RefinementProposalV2 {

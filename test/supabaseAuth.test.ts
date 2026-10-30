@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { AuthChangeEvent, Session, SupabaseClient, User } from '@supabase/supabase-js';
-import { createSupabaseAuth } from '../src/composables/useSupabaseAuth';
-import { createTabAuthStorage } from '../src/lib/supabase';
-import { parseSupabaseConfiguration } from '../src/lib/supabaseConfig';
+import { createSupabaseAuth } from '../src/platform/auth/useSupabaseAuth';
+import { createTabAuthStorage } from '../src/platform/supabase/supabase';
+import { parseSupabaseConfiguration } from '../src/platform/supabase/supabaseConfig';
 
 const configuration = { status: 'ready' as const, url: 'https://example.supabase.co', publishableKey: 'sb_publishable_public_test_key' };
 const member = (id: string) => ({ id, email: `${id}@example.com`, is_anonymous: false } as User);

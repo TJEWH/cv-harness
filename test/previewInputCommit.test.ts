@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { createRenderer, nextTick } from 'vue';
-import { usePreviewInputCommit } from '../src/composables/usePreviewInputCommit';
+import { usePreviewInputCommit } from '../src/documents/pdf/composables/usePreviewInputCommit';
 
 const renderer = createRenderer<object, object>({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}),

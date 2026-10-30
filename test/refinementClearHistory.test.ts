@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createRefinementRepository, refinementSignature } from '../src/composables/applicationRefinement';
+import { createRefinementRepository, refinementSignature } from '../src/features/refinement/applicationRefinement';
 import { createRefinementFixture } from './refinementFixture';
 import { stub } from './helpers';
-import { EMPTY_LETTER } from '../src/composables/motivationLetters';
-import { refinementMatchesScope } from '../src/composables/refinementHistory';
+import { EMPTY_LETTER } from '../src/documents/letter/motivationLetters';
+import { refinementMatchesScope } from '../src/features/refinement/domain/refinementHistory';
 import { account, applicationId, documents, idle, mount, prepare, refinementKey, type Workspace } from './refinementWorkflowHarness';
 
 const documentFingerprint = (setup: Workspace) => refinementSignature(JSON.parse(documents(setup)));

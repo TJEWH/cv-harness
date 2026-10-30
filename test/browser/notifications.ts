@@ -1,8 +1,8 @@
 /** Isolated UI fixture: no accounts, storage, or network operations. */
 import { createApp, h, nextTick, ref } from 'vue';
-import AppToaster from '../../src/components/AppToaster.vue';
-import InfoHint from '../../src/components/InfoHint.vue';
-import { useToasts } from '../../src/composables/useToasts';
+import AppToaster from '../../src/shared/ui/AppToaster.vue';
+import InfoHint from '../../src/shared/ui/InfoHint.vue';
+import { useToasts } from '../../src/shared/ui/useToasts';
 import '../../src/assets/cv.css';
 
 createApp({

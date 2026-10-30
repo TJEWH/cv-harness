@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { file, reset, sql, sqlAsync, upgradeCurrentFeedbackContract } from './db';
 import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
-import { projectAdaptiveSearchStartup } from '../../src/composables/adaptiveSearchStartup';
+import { projectAdaptiveSearchStartup } from '../../src/features/meta-search/domain/adaptiveSearchStartup';
 
 test('AF-07 one startup call returns a bounded authorized bundle with pinned revisions and privacy-safe retries', () => {
   reset({ searchProtocol: true });

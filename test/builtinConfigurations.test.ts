@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { builtinConfigurations, createEmptyDocument, createSampleDocument, EMPTY_DOCUMENT_ID, SAMPLE_DOCUMENT_ID } from '../src/composables/builtinConfigurations';
-import { createNormalizedContentState } from '../src/composables/contentLayout';
-import { ANONYMIZED_CONTACT, createAnonymizedContact } from '../src/composables/anonymization';
-import { readCvState } from '../src/composables/cvStateValidation';
+import { builtinConfigurations, createEmptyDocument, createSampleDocument, EMPTY_DOCUMENT_ID, SAMPLE_DOCUMENT_ID } from '../src/features/cv-studio/domain/builtinConfigurations';
+import { createNormalizedContentState } from '../src/documents/layout/contentLayout';
+import { ANONYMIZED_CONTACT, createAnonymizedContact } from '../src/documents/privacy/domain/anonymization';
+import { readCvState } from '../src/documents/cv/domain/cvStateValidation';
 
 test('empty document contains no sample content and uses the default design', () => {
   const empty = readCvState(createEmptyDocument());

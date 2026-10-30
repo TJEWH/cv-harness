@@ -8,7 +8,7 @@ import { createRenderer, h, nextTick, reactive } from 'vue';
 import type { Component } from 'vue';
 import { livingStandardFixture } from './fixtures/livingStandard';
 
-const filename = new URL('../src/components/OpportunityContext.vue', import.meta.url);
+const filename = new URL('../src/features/opportunities/components/OpportunityContext.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'opportunity-context-labels', inlineTemplate: true });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

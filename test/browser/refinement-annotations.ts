@@ -1,10 +1,10 @@
 /** Isolated development fixture: real annotation controls; in-memory writes only. */
 import { computed, createApp, h, nextTick, ref } from 'vue';
-import RefinementAnnotations from '../../src/components/RefinementAnnotations.vue';
-import AppToaster from '../../src/components/AppToaster.vue';
-import type { AnnotationStatus } from '../../src/refinementTypes';
-import type { AnnotationView } from '../../src/composables/refinementAnnotations';
-import { commitPendingTextareas } from '../../src/composables/textareaCommit';
+import RefinementAnnotations from '../../src/features/refinement/components/RefinementAnnotations.vue';
+import AppToaster from '../../src/shared/ui/AppToaster.vue';
+import type { AnnotationStatus } from '../../src/features/refinement/refinementTypes';
+import type { AnnotationView } from '../../src/features/refinement/domain/refinementAnnotations';
+import { commitPendingTextareas } from '../../src/shared/editing/textareaCommit';
 import '../../src/assets/cv.css';
 
 if (!import.meta.env.DEV) throw new Error('Development fixture only.');

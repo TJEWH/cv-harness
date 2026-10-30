@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createAttachmentMetadataRepository, validateAttachmentMetadata } from '../src/composables/attachmentMetadata';
+import { createAttachmentMetadataRepository, validateAttachmentMetadata } from '../src/features/attachments/data/attachmentMetadata';
 
 const id = '923aaa1c-7472-4c63-b01f-601dd972ed50';
 const metadata = { id, name: 'Transcript of records', description: 'Completed university courses and grades.' };

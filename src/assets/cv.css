@@ -20,7 +20,7 @@ html{
     --ui-tooltip-bg:#d8eee3;--ui-tooltip-text:#132c23;
     --ui-score-red:#ffadb7;--ui-score-red-bg:#591f2b;
     --ui-score-yellow:#ffe278;--ui-score-yellow-bg:#4a3c10;
-    /* CV design variables are initialized by applyCvDesign from src/defaults.ts. */
+    /* CV design variables are initialized by applyCvDesign from src/documents/cv/defaults.ts. */
 }
 
 body{margin:0;font:11pt/1.35 var(--font-body);color:var(--ink);background:#0b0f14}

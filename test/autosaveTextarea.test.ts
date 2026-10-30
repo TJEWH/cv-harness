@@ -5,15 +5,15 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, markRaw, nextTick, ref, type Component } from 'vue';
-import * as textareaCommit from '../src/composables/textareaCommit';
+import * as textareaCommit from '../src/shared/editing/textareaCommit';
 
-const filename = new URL('../src/components/AutosaveTextarea.vue', import.meta.url);
+const filename = new URL('../src/shared/ui/AutosaveTextarea.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'autosave-textarea-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exports: { default?: Component } = {};
 const localRequire = createRequire(filename);
-new Function('require', 'exports', code)((name: string) => name === '../composables/textareaCommit' ? textareaCommit : localRequire(name), exports);
+new Function('require', 'exports', code)((name: string) => name === '../editing/textareaCommit' ? textareaCommit : localRequire(name), exports);
 const { commitPendingTextareas } = textareaCommit;
 const component = { ...exports.default, render: () => null };
 const renderer = createRenderer<object, object>({

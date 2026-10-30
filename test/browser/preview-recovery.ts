@@ -3,12 +3,12 @@ import { createApp, h, ref } from 'vue';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { faArrowLeft, faChevronLeft, faChevronRight, faDownload, faSpinner } from '@fortawesome/free-solid-svg-icons';
-import InlineDocumentPreview from '../../src/components/InlineDocumentPreview.vue';
-import FullDocumentPreview from '../../src/components/FullDocumentPreview.vue';
-import PreviewDialog from '../../src/components/PreviewDialog.vue';
-import AppToaster from '../../src/components/AppToaster.vue';
+import InlineDocumentPreview from '../../src/documents/pdf/components/InlineDocumentPreview.vue';
+import FullDocumentPreview from '../../src/documents/pdf/components/FullDocumentPreview.vue';
+import PreviewDialog from '../../src/shared/ui/PreviewDialog.vue';
+import AppToaster from '../../src/shared/ui/AppToaster.vue';
 import { dict } from '../../src/i18n/dict';
-import type { PreviewPage } from '../../src/pdfTypes';
+import type { PreviewPage } from '../../src/documents/pdf/pdfTypes';
 import '../../src/assets/cv.css';
 library.add(faArrowLeft, faChevronLeft, faChevronRight, faDownload, faSpinner);
 const app = createApp({ setup() {

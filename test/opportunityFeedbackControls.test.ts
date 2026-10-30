@@ -6,20 +6,20 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive, watch, type Component } from 'vue';
-import type { OpportunityInterestReason, OpportunityReview } from '../src/cloudTypes';
-import { normalizeOpportunity as readOpportunity } from '../src/composables/useJobWorkspace';
-import { normalizeOpportunityInterestReasons } from '../src/composables/opportunityFeedback';
-import * as textareaCommit from '../src/composables/textareaCommit';
+import type { OpportunityInterestReason, OpportunityReview } from '../src/app/cloudTypes';
+import { normalizeOpportunity as readOpportunity } from '../src/app/composables/useJobWorkspace';
+import { normalizeOpportunityInterestReasons } from '../src/features/opportunities/domain/opportunityFeedback';
+import * as textareaCommit from '../src/shared/editing/textareaCommit';
 const { registerTextareaCommit } = textareaCommit;
 
-const filename = new URL('../src/components/OpportunityFeedbackControls.vue', import.meta.url);
+const filename = new URL('../src/features/opportunities/components/OpportunityFeedbackControls.vue', import.meta.url);
 const source = readFileSync(filename, 'utf8');
 const { descriptor } = parse(source);
 const compiled = compileScript(descriptor, { id: 'opportunity-feedback-controls-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const componentExports: { default?: Component } = {};
 const requireLocal = createRequire(filename);
-new Function('require', 'exports', code)((name: string) => name.endsWith('.vue') ? {} : name === '../composables/textareaCommit' ? textareaCommit : requireLocal(name), componentExports);
+new Function('require', 'exports', code)((name: string) => name.endsWith('.vue') ? {} : name === '../../../shared/editing/textareaCommit' ? textareaCommit : requireLocal(name), componentExports);
 const component = { ...componentExports.default, render: () => null };
 const renderer = createRenderer<object, object>({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}), insert() {}, remove() {}, setText() {},

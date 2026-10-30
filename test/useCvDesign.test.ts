@@ -1,8 +1,8 @@
 import { stub } from './helpers';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyCvDesign } from '../src/composables/useCvDesign.ts';
-import { fontStylesheetUrl } from '../src/composables/webFonts.ts';
+import { applyCvDesign } from '../src/documents/cv/composables/useCvDesign.ts';
+import { fontStylesheetUrl } from '../src/documents/layout/webFonts.ts';
 
 function withDocument(run: (properties: Map<string, string>, links: Map<string, HTMLLinkElement>) => void) {
   const previousDocument = globalThis.document;

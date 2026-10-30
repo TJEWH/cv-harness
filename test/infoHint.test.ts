@@ -6,7 +6,7 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, markRaw, nextTick, type Component } from 'vue';
 
-const filename = new URL('../src/components/InfoHint.vue', import.meta.url);
+const filename = new URL('../src/shared/ui/InfoHint.vue', import.meta.url);
 const compiled = compileScript(parse(readFileSync(filename, 'utf8')).descriptor, { id: 'InfoHintTest', inlineTemplate: true });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exports: { default?: Component } = {};

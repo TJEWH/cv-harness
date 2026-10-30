@@ -1,9 +1,9 @@
-import type { VectorDocument } from '../src/pdfTypes';
+import type { VectorDocument } from '../src/documents/pdf/pdfTypes';
 import { stub } from './helpers';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import PDFDocument from 'pdfkit';
-import { createVectorGraphicsContext, multiplyCanvasMatrices, transformCanvasPoint, parseCanvasColor } from '../src/composables/pdfVectorGraphics.ts';
+import { createVectorGraphicsContext, multiplyCanvasMatrices, transformCanvasPoint, parseCanvasColor } from '../src/documents/pdf/pdfVectorGraphics.ts';
 
 function fixture() {
   const calls: { method: PropertyKey; args: any[] }[] = [];

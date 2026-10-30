@@ -1,9 +1,9 @@
 // Compile-only regressions: removing a contract must make an expect-error fail.
-import type { ItemField } from '../src/types';
-import type SectionList from '../src/components/SectionList.vue';
-import type BackupManager from '../src/components/BackupManager.vue';
-import type FormBuilder from '../src/components/FormBuilder.vue';
-import type PdfPagination from '../src/components/PdfPagination.vue';
+import type { ItemField } from '../src/documents/cv/types';
+import type SectionList from '../src/features/cv-studio/components/SectionList.vue';
+import type BackupManager from '../src/features/cv-studio/components/BackupManager.vue';
+import type FormBuilder from '../src/features/cv-studio/components/FormBuilder.vue';
+import type PdfPagination from '../src/documents/pdf/components/PdfPagination.vue';
 
 export function checkFieldContracts(accept: (field: ItemField) => void) {
   accept({ key: 'title', type: 'text', label: 'Title' });

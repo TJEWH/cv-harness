@@ -1,5 +1,5 @@
-import type { CvState } from '../src/types';
-import { CV_STATE_VERSION } from '../src/types';
+import type { CvState } from '../src/documents/cv/types';
+import { CV_STATE_VERSION } from '../src/documents/cv/types';
 
 export function createTestState(overrides: Partial<CvState> = {}): CvState {
   return {

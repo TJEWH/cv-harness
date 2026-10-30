@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { reactive } from 'vue';
-import { ADAPTIVE_BATCH_CAPABILITIES } from '../src/composables/adaptiveSearchProtocol';
+import { ADAPTIVE_BATCH_CAPABILITIES } from '../src/features/meta-search/domain/adaptiveSearchProtocol';
 import { buildAdaptiveRecurringSearchPrompt, loadAdaptiveSearchRunnerState, readAdaptiveSearchRunnerState, requestAdaptiveSearchRunner,
-  usesAdaptiveSearchRunner, type AdaptiveSearchRunnerState } from '../src/composables/adaptiveSearchTask';
-import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSetupReadSql, buildSearchSystemPrompt, buildSearchUserPrompt } from '../src/composables/searchPrompts';
-import { saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/composables/searchTemplateCloud';
-import { DEFAULT_SEARCH_TEMPLATES, searchTemplateContentKey } from '../src/composables/useSearchTemplates';
+  usesAdaptiveSearchRunner, type AdaptiveSearchRunnerState } from '../src/features/meta-search/domain/adaptiveSearchTask';
+import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSetupReadSql, buildSearchSystemPrompt, buildSearchUserPrompt } from '../src/features/meta-search/domain/searchPrompts';
+import { saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
+import { DEFAULT_SEARCH_TEMPLATES, searchTemplateContentKey } from '../src/features/meta-search/data/useSearchTemplates';
 
 const owner = '91000000-0000-4000-8000-000000000001';
 const search = '91000000-0000-4000-8000-000000000002';

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import test from 'node:test';
-import { cloneCv } from '../src/composables/applicationCv';
-import { reconstructRefinementProposal } from '../src/composables/applicationRefinement';
+import { cloneCv } from '../src/features/applications/applicationCv';
+import { reconstructRefinementProposal } from '../src/features/refinement/applicationRefinement';
 import { createPrivateRefinementCv } from './refinementFixture';
 import { documents, idle, mount, prepare, refinementKey } from './refinementWorkflowHarness';
 
-const { registerTextareaCommit } = createRequire(new URL('../src/components/ApplicationWorkspace.vue', import.meta.url))('../composables/textareaCommit') as typeof import('../src/composables/textareaCommit');
+const { registerTextareaCommit } = createRequire(new URL('../src/features/applications/components/ApplicationWorkspace.vue', import.meta.url))('../../../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
 
 async function pendingCv(t: Parameters<typeof mount>[0]) {
   const fixture = mount(t, createPrivateRefinementCv());

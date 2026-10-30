@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { currentRefinementRequestId, reconstructRefinementProposal, refinementSignature } from '../src/composables/applicationRefinement';
+import { currentRefinementRequestId, reconstructRefinementProposal, refinementSignature } from '../src/features/refinement/applicationRefinement';
 import { createRequire } from 'node:module';
-const { registerTextareaCommit } = createRequire(new URL('../src/components/ApplicationWorkspace.vue', import.meta.url))('../composables/textareaCommit') as typeof import('../src/composables/textareaCommit');
-import { sameRefinementInputs } from '../src/composables/refinementSources';
+const { registerTextareaCommit } = createRequire(new URL('../src/features/applications/components/ApplicationWorkspace.vue', import.meta.url))('../../../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
+import { sameRefinementInputs } from '../src/features/refinement/domain/refinementSources';
 import { idle, mount, prepare, type Workspace } from './refinementWorkflowHarness';
 import { createPrivateRefinementCv } from './refinementFixture';
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { opportunityRecency } from '../src/composables/opportunityRecency';
+import { opportunityRecency } from '../src/features/opportunities/domain/opportunityRecency';
 
 const now = new Date('2026-09-20T12:00:00Z');
 const old = '2026-09-18T12:00:00Z';

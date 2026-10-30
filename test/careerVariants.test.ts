@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applicationRefinementParents, isMainCvVariant, normalizeVariantIndex } from '../src/composables/careerVariants';
+import { applicationRefinementParents, isMainCvVariant, normalizeVariantIndex } from '../src/features/cv-studio/domain/careerVariants';
 
 test('legacy refinements retain provenance even when their parent is missing or invalid', () => {
   const input = [

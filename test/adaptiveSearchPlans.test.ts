@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { opportunityFeedbackTextHash } from '../src/composables/opportunityFeedbackPrivacy';
+import { opportunityFeedbackTextHash } from '../src/features/opportunities/domain/opportunityFeedbackPrivacy';
 import {
   ADAPTIVE_SEARCH_QUERY_CONTRACT_VERSION, adaptiveSearchPlanDocument, createAdaptiveSearchPlan, legacySearchQueriesPayload,
   readSearchQueryPlan, replaceAdaptiveSearchSlice, searchPlanFreshness, validateAdaptiveSearchPlanTransition, validateAdaptiveSearchQueries, validateLegacyCoreQueryAnchor,
   type AdaptiveSearchPlanBasis, type AdaptiveSearchQueryInput,
-} from '../src/composables/adaptiveSearchPlans';
+} from '../src/features/meta-search/domain/adaptiveSearchPlans';
 
 const id = (index: number) => `74000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
 const basis = (patch: Partial<AdaptiveSearchPlanBasis> = {}): AdaptiveSearchPlanBasis => ({ base_revision: 2, feedback_revision: 3,

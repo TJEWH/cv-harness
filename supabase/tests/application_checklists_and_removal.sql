@@ -7,7 +7,7 @@ declare
   opportunity uuid := gen_random_uuid(); app_a uuid := gen_random_uuid(); app_b uuid := gen_random_uuid();
   cv_a uuid := gen_random_uuid();
   retired_table text;
-  saved_context jsonb; saved_source jsonb; got jsonb;
+  saved_context jsonb; saved_source jsonb; saved_review jsonb; got jsonb;
   setup jsonb := '{"template":{"id":"removal","name":"Removal fixture","revision":1,"structure":"Opening, evidence, closing","tone":"Professional","language":"en","maxWords":400,"updatedAt":"2026-10-11T00:00:00Z"},"language":"en","maxWords":400}';
   content jsonb := '{"contact":{"name":"Alex Muster","location":"","role":"","email":"muster-ex@mp.le","phone":"","website":"","linkedin":"","github":""}}';
 begin
@@ -82,14 +82,15 @@ begin
   if not exists(select 1 from public.applications where id = app_a and completed_checklist_keys = array['documents:cv']) then
     raise exception 'FAIL: another account changed/deleted this application';
   end if;
+  select to_jsonb(r) into saved_review from public.opportunity_reviews r where user_id = user_a and opportunity_id = opportunity;
   perform public.remove_job_application(app_a);
   perform public.remove_job_application(app_a);
   if exists(select 1 from public.applications where id = app_a) or exists(select 1 from public.application_refinement_state where application_id = app_a) then
     raise exception 'FAIL: removal or refinement-state cascade';
   end if;
   if not exists(select 1 from public.cv_variants where id = cv_a) then raise exception 'FAIL: removal deleted CV snapshot'; end if;
-  if not exists(select 1 from public.opportunity_reviews where opportunity_id = opportunity and state = 'unreviewed') then
-    raise exception 'FAIL: opportunity not returned to default review list';
+  if (select to_jsonb(r) from public.opportunity_reviews r where user_id = user_a and opportunity_id = opportunity) is distinct from saved_review then
+    raise exception 'FAIL: application removal changed opportunity evaluation';
   end if;
   if (select to_jsonb(o) from public.opportunities o where id = opportunity) <> saved_source then raise exception 'FAIL: shared opportunity changed'; end if;
   perform public.create_job_application(app_a, opportunity);

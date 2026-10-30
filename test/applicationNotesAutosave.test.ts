@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { effectScope, onScopeDispose, ref } from 'vue';
-import { useApplicationNotesAutosave } from '../src/composables/useApplicationNotesAutosave';
+import { useApplicationNotesAutosave } from '../src/shared/editing/useApplicationNotesAutosave';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

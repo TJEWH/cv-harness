@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { SearchCloudTemplate } from '../src/searchTypes';
-import { createSearchTemplate, createSearchTemplateRepository, DEFAULT_SEARCH_TEMPLATES, readSearchTemplate, searchTemplateContentKey } from '../src/composables/useSearchTemplates';
-import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSystemPrompt, buildSearchUserPrompt, isSearchTemplateSaved, splitSearchEntries } from '../src/composables/searchPrompts';
-import { importCloudSearchTemplate, saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/composables/searchTemplateCloud';
+import type { SearchCloudTemplate } from '../src/features/meta-search/searchTypes';
+import { createSearchTemplate, createSearchTemplateRepository, DEFAULT_SEARCH_TEMPLATES, readSearchTemplate, searchTemplateContentKey } from '../src/features/meta-search/data/useSearchTemplates';
+import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSystemPrompt, buildSearchUserPrompt, isSearchTemplateSaved, splitSearchEntries } from '../src/features/meta-search/domain/searchPrompts';
+import { importCloudSearchTemplate, saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 function memory() {

@@ -5,16 +5,16 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, defineComponent, h, nextTick, reactive, type Component } from 'vue';
-import type { PrivacyEditorContext } from '../src/composables/privacyEditorContext';
+import type { PrivacyEditorContext } from '../src/documents/privacy/composables/privacyEditorContext';
 
-const filename = new URL('../src/components/PrivacyField.vue', import.meta.url);
+const filename = new URL('../src/documents/privacy/components/PrivacyField.vue', import.meta.url);
 const requireComponent = createRequire(filename);
 const script = compileScript(parse(readFileSync(filename, 'utf8')).descriptor, { id: 'PrivacyFieldTest', inlineTemplate: true });
 const code = ts.transpileModule(script.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const componentExports: { default?: Component } = {};
 // InfoHint's browser interactions are covered separately; inspect PrivacyField's help contract here.
 const InfoHint = defineComponent({ props: ['id', 'text', 'label', 'lang'], setup: props => () => h('info-hint', { ...props }) });
-new Function('require', 'exports', code)((path: string) => path === './InfoHint.vue' ? { default: InfoHint } : requireComponent(path), componentExports);
+new Function('require', 'exports', code)((path: string) => path === '../../../shared/ui/InfoHint.vue' ? { default: InfoHint } : requireComponent(path), componentExports);
 const PrivacyField = componentExports.default!;
 const { PRIVACY_EDITOR } = requireComponent('../composables/privacyEditorContext');
 

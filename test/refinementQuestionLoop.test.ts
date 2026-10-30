@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { RefinementProposalV2 } from '../src/refinementTypes';
+import type { RefinementProposalV2 } from '../src/features/refinement/refinementTypes';
 import { createPrivateRefinementCv } from './refinementFixture';
 import { documents, idle, mount, prepare } from './refinementWorkflowHarness';
 

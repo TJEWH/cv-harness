@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { LetterSearchProfile } from '../src/letterTypes';
-import { createApplicationLetter, createLetterRepository, DEFAULT_LETTER_TEMPLATES, letterContextVersion, selectApplicationLetterTemplate } from '../src/composables/motivationLetters';
-import { captureMetaSearchInterests, letterTemplateWithSearchProfile, readLetterSearchProfile } from '../src/composables/searchLetterContext';
-import { prepareRefinement, refinementSignature } from '../src/composables/applicationRefinement';
+import type { LetterSearchProfile } from '../src/documents/letter/letterTypes';
+import { createApplicationLetter, createLetterRepository, DEFAULT_LETTER_TEMPLATES, letterContextVersion, selectApplicationLetterTemplate } from '../src/documents/letter/motivationLetters';
+import { captureMetaSearchInterests, letterTemplateWithSearchProfile, readLetterSearchProfile } from '../src/documents/letter/searchLetterContext';
+import { prepareRefinement, refinementSignature } from '../src/features/refinement/applicationRefinement';
 import { createTestState } from './helpers';
 
 const template = { ...DEFAULT_LETTER_TEMPLATES[0]!, useMetaSearchInterests: undefined }; // Frozen pre-checkbox source
@@ -67,7 +67,7 @@ test('invalid or oversized profile snapshots fail explicitly without silently tr
 
 
 test('the default shared source replaces custom interests without publishing the local checkbox', async () => {
-  const { createSearchTemplate } = await import('../src/composables/useSearchTemplates');
+  const { createSearchTemplate } = await import('../src/features/meta-search/data/useSearchTemplates');
   const search = createSearchTemplate(); search.active = false; search.researchInterests = 'Acoustic sensing; BCI; prefer prototyping; avoid routine administration';
   const source = { ...DEFAULT_LETTER_TEMPLATES[0]!, researchInterests: 'Keep this custom draft for opt-out.' };
   const captured = captureMetaSearchInterests(search)!;
@@ -85,7 +85,7 @@ test('the default shared source replaces custom interests without publishing the
 });
 
 test('opting out retains custom interests and long shared interests are never truncated', async () => {
-  const { createSearchTemplate } = await import('../src/composables/useSearchTemplates');
+  const { createSearchTemplate } = await import('../src/features/meta-search/data/useSearchTemplates');
   const source = { ...DEFAULT_LETTER_TEMPLATES[0]!, useMetaSearchInterests: false, researchInterests: 'Custom interests only.' };
   assert.equal(letterTemplateWithSearchProfile(source, profile), source);
   const search = createSearchTemplate(); search.researchInterests = 'A'.repeat(12000);

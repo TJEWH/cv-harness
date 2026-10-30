@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { file, reset, sql } from './db';
-import { adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall, type AdaptiveBatchPayload } from '../../src/composables/adaptiveSearchProtocol';
+import { adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall, type AdaptiveBatchPayload } from '../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
 test('AF-08 atomic intake preserves canonical v5 and returns only safe pending-verification receipts', () => {
   reset({ searchProtocol: true });

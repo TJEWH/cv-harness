@@ -1,7 +1,7 @@
-import type { CallRecord, TextRecord } from '../src/pdfTypes';
+import type { CallRecord, TextRecord } from '../src/documents/pdf/pdfTypes';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSvgDocument, renderVectorPreview } from '../src/composables/pdfVectorPreview.ts';
+import { createSvgDocument, renderVectorPreview } from '../src/documents/pdf/pdfVectorPreview.ts';
 
 const call = (method: string, ...args: unknown[]): CallRecord => ({ type: 'call', method, args });
 const text = (value: string, y: number): TextRecord => ({ ...call('fillText', value, 10, y), font: { family: 'Inter', size: 12, weight: 400, style: 'normal' }, metrics: { width: 40, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 2 } });

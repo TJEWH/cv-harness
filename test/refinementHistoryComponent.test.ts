@@ -5,9 +5,9 @@ import { createRequire } from 'node:module';
 import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive, type Component } from 'vue';
-import type { LocalRefinementRequest, RefinementProposalRow, RefinementRequestRow, RefinementScope } from '../src/refinementTypes';
-import { prepareRefinement, refinementSignature } from '../src/composables/applicationRefinement';
-import { DEFAULT_LETTER_TEMPLATES } from '../src/composables/motivationLetters';
+import type { LocalRefinementRequest, RefinementProposalRow, RefinementRequestRow, RefinementScope } from '../src/features/refinement/refinementTypes';
+import { prepareRefinement, refinementSignature } from '../src/features/refinement/applicationRefinement';
+import { DEFAULT_LETTER_TEMPLATES } from '../src/documents/letter/motivationLetters';
 import { createTestState } from './helpers';
 
 interface Setup {
@@ -20,7 +20,7 @@ interface Setup {
   clearMessage: string;
   emptyMessage: string;
 }
-const filename = new URL('../src/components/RefinementHistory.vue', import.meta.url);
+const filename = new URL('../src/features/refinement/components/RefinementHistory.vue', import.meta.url);
 const compiled = compileScript(parse(readFileSync(filename, 'utf8')).descriptor, { id: 'refinement-history-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const componentExports: { default?: Component } = {};

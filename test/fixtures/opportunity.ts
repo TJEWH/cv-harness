@@ -1,6 +1,6 @@
-import { OPPORTUNITY_SCHEMA_VERSION, type OpportunityAssessment } from '../../src/opportunityTypes';
-import type { Opportunity } from '../../src/cloudTypes';
-import { readOpportunity } from '../../src/composables/readOpportunity';
+import { OPPORTUNITY_SCHEMA_VERSION, type OpportunityAssessment } from '../../src/features/opportunities/opportunityTypes';
+import type { Opportunity } from '../../src/app/cloudTypes';
+import { readOpportunity } from '../../src/features/opportunities/domain/readOpportunity';
 
 export function opportunityAssessmentFixture(score: number | null, summary = 'Synthetic research assessment.'): OpportunityAssessment {
   return { score, scale_min: 0, scale_max: 10, summary: score === null ? null : summary };

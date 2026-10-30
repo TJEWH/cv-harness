@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { ApplicationLetter, LetterFormatting } from '../src/letterTypes';
-import { DEFAULT_LETTER_FORMATTING, readLetterFormatting, resolveLetterFormatting } from '../src/composables/letterFormatting';
-import { contextChanges, createApplicationLetter, createLetterRepository, DEFAULT_LETTER_TEMPLATES, editLetter, finalizedLetterRevision, finalizeLetter, formatLetter, letterContextVersion, selectApplicationLetterTemplate } from '../src/composables/motivationLetters';
+import type { ApplicationLetter, LetterFormatting } from '../src/documents/letter/letterTypes';
+import { DEFAULT_LETTER_FORMATTING, readLetterFormatting, resolveLetterFormatting } from '../src/documents/letter/domain/letterFormatting';
+import { contextChanges, createApplicationLetter, createLetterRepository, DEFAULT_LETTER_TEMPLATES, editLetter, finalizedLetterRevision, finalizeLetter, formatLetter, letterContextVersion, selectApplicationLetterTemplate } from '../src/documents/letter/motivationLetters';
 import { createTestState } from './helpers';
 
 const template = DEFAULT_LETTER_TEMPLATES[0]!;

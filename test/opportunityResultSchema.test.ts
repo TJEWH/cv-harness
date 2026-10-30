@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import storageSchema from '../supabase/opportunity_schema_v6.json';
-import { createOpportunityResultSchema } from '../src/composables/opportunityResultSchema';
+import { createOpportunityResultSchema } from '../src/features/opportunities/domain/opportunityResultSchema';
 
 test('canonical v6 intake requires fresh source evidence but lets the server generate stable entity identities', () => {
   const input = createOpportunityResultSchema();

@@ -8,16 +8,16 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive, ref } from 'vue';
 import type { Component } from 'vue';
-import type { Application, ApplicationStage, Opportunity, OpportunityFeedbackPatch, OpportunityReview, OpportunityReviewState } from '../src/cloudTypes';
-import { normalizeOpportunity as readOpportunity } from '../src/composables/useJobWorkspace';
-import { useSaveStateToast, useToasts, useToastWatch } from '../src/composables/useToasts';
-import { commitPendingTextareas, registerTextareaCommit } from '../src/composables/textareaCommit';
+import type { Application, ApplicationStage, Opportunity, OpportunityFeedbackPatch, OpportunityReview, OpportunityReviewState } from '../src/app/cloudTypes';
+import { normalizeOpportunity as readOpportunity } from '../src/app/composables/useJobWorkspace';
+import { useSaveStateToast, useToasts, useToastWatch } from '../src/shared/ui/useToasts';
+import { commitPendingTextareas, registerTextareaCommit } from '../src/shared/editing/textareaCommit';
 import { livingStandardFixture } from './fixtures/livingStandard';
-import { migrateOpportunityEvaluationDrafts } from '../src/composables/opportunityEvaluation';
+import { migrateOpportunityEvaluationDrafts } from '../src/features/opportunities/domain/opportunityEvaluation';
 
 const normalizeOpportunity = (input: Record<string, unknown> & { id: string }) => readOpportunity(opportunityFixture(input));
 
-const filename = new URL('../src/components/JobWorkspace.vue', import.meta.url);
+const filename = new URL('../src/app/components/JobWorkspace.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'job-workspace-navigation-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -154,8 +154,8 @@ function mount(t: TestContext, options: { restoredOpportunityId?: string; active
   const requireFromComponent = createRequire(filename);
   new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} }
     : path === '../composables/useJobWorkspace' ? { useJobWorkspace: () => workspace }
-    : path === '../composables/textareaCommit' ? { commitPendingTextareas }
-    : path === '../composables/useToasts' ? { useSaveStateToast, useToasts, useToastWatch } : requireFromComponent(path), exports);
+    : path === '../../shared/editing/textareaCommit' ? { commitPendingTextareas }
+    : path === '../../shared/ui/useToasts' ? { useSaveStateToast, useToasts, useToastWatch } : requireFromComponent(path), exports);
   const component = { ...exports.default, render: () => null };
   const props = reactive({ client: null, userId: 'account-one', tab: 'opportunities' as 'opportunities' | 'applications', lang: 'en', configurations: [], selectedId: '', readVersion: () => null, ...(options.active === undefined ? {} : { active: options.active }) });
   let mounted: unknown;

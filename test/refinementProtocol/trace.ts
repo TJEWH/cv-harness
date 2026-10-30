@@ -1,7 +1,7 @@
-import { parseRefinementProposal, refinementSignature } from '../../src/composables/applicationRefinement';
+import { parseRefinementProposal, refinementSignature } from '../../src/features/refinement/applicationRefinement';
 import { parseProtocolSql } from './sql';
 import type { ProtocolCase } from './cases';
-import { REFINEMENT_SQL_DISCOVERY_QUERIES } from '../../src/composables/refinementProtocolContract';
+import { REFINEMENT_SQL_DISCOVERY_QUERIES } from '../../src/features/refinement/domain/refinementProtocolContract';
 
 type ObjectValue = Record<string, unknown>;
 export const object = (value: unknown): value is ObjectValue => !!value && typeof value === 'object' && !Array.isArray(value);

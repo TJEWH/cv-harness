@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { once } from 'node:events';
 import PDFDocument from 'pdfkit';
 import compress from 'wawoff2/compress.js';
-import { decompressVectorFont } from '../src/composables/pdfFontDecompression.ts';
+import { decompressVectorFont } from '../src/documents/pdf/pdfFontDecompression.ts';
 import { makeFontkitVariableSubsetsCompatible, makeWoff2DecoderModule } from '../build/vectorFontDecompression.ts';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { prepareRefinement, parseRefinementProposal, applyRefinementProposal, refinementSignature, buildRefinementPrompt } from '../src/composables/applicationRefinement';
-import { QUESTION_GROUPS, questionPresentation, annotationReferenceChanged, annotationViews, validAnnotationReference, validateAnnotationReview } from '../src/composables/refinementAnnotations';
-import { DEFAULT_LETTER_TEMPLATES } from '../src/composables/motivationLetters';
+import { prepareRefinement, parseRefinementProposal, applyRefinementProposal, refinementSignature, buildRefinementPrompt } from '../src/features/refinement/applicationRefinement';
+import { QUESTION_GROUPS, questionPresentation, annotationReferenceChanged, annotationViews, validAnnotationReference, validateAnnotationReview } from '../src/features/refinement/domain/refinementAnnotations';
+import { DEFAULT_LETTER_TEMPLATES } from '../src/documents/letter/motivationLetters';
 import { createTestState } from './helpers';
-import type { RefinementAnnotation, RefinementProposalRow, RefinementProposalV2, RefinementReviewRow } from '../src/refinementTypes';
+import type { RefinementAnnotation, RefinementProposalRow, RefinementProposalV2, RefinementReviewRow } from '../src/features/refinement/refinementTypes';
 const appId = crypto.randomUUID(), proposalId = crypto.randomUUID();
 const state = createTestState({ about: { text: 'Research experience with reproducible experiments.' } });
 function fixture() {

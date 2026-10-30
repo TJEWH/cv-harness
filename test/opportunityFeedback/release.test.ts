@@ -5,7 +5,7 @@ import { writeFileSync } from 'node:fs';
 import { file, reset, sql } from './db';
 import { runConcurrentRollbackAckRegression } from './rollbackConcurrency';
 import { ADAPTIVE_RELEASE_MIGRATIONS, buildAdaptiveSearchReleaseManifest, checkAdaptiveSearchReleaseManifest } from '../../scripts/adaptiveSearchRelease';
-import { buildAdaptiveSearchSqlCall, type AdaptiveBatchPayload } from '../../src/composables/adaptiveSearchProtocol';
+import { buildAdaptiveSearchSqlCall, type AdaptiveBatchPayload } from '../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
 const legacyRelations = ['public.opportunities','public.opportunity_reviews','public.applications','public.cv_variants',
   'public.application_refinement_state','public.application_refinement_requests','public.application_refinement_proposals',
