@@ -56,6 +56,16 @@ try {
     await page.getByRole('button', { name: 'Retry save', exact: true }).click();
     await page.waitForFunction(() => window.adaptiveFixture.snapshot().row.criteria.topicsAndMethods.includes('RECOVER THIS DRAFT'));
     await page.getByRole('heading', { name: 'Adaptive feedback', exact: true }).scrollIntoViewIfNeeded();
+    assert.equal(await page.getByRole('button', { name: 'Information: Search breadth', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('button', { name: 'Information: Exploration allocation', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Information: When changes apply', exact: true }).count(), 0);
+    const automationSummary = page.locator('summary').filter({ hasText: 'Automation authorization' });
+    await automationSummary.click();
+    assert.equal(await page.getByRole('button', { name: 'Information: Automation authorization', exact: true }).count(), 1);
+    for (const name of ['Runner authorization', 'Task setup', 'Runner readiness']) {
+      assert.equal(await page.getByRole('button', { name: `Information: ${name}`, exact: true }).count(), 0);
+    }
+    await automationSummary.click();
     const checkboxLayout = await page.locator('.adaptive-settings .adaptive-check').evaluateAll(labels => labels.map(label => {
       const input = label.querySelector('input'), text = document.createRange(); text.selectNodeContents(label);
       return { name: label.textContent.trim(), checkboxWidth: input.getBoundingClientRect().width, height: label.getBoundingClientRect().height,
@@ -75,7 +85,7 @@ try {
     await breadth.evaluate(element => { element.value = '60'; element.dispatchEvent(new Event('input', { bubbles: true })); });
     assert.equal(await breadth.getAttribute('aria-valuetext'), '60% · Adventurous');
     assert.equal(await page.evaluate(() => window.adaptiveFixture.snapshot().calls.length), beforeBreadth.calls.length, 'Dragging only changes a local draft');
-    const allocationInfo = page.getByRole('button', { name: 'Information: Exploration allocation', exact: true });
+    const allocationInfo = page.getByRole('button', { name: 'Information: Search breadth', exact: true });
     await allocationInfo.focus(); await allocationInfo.press('Enter');
     const allocationTooltip = page.getByRole('tooltip');
     await allocationTooltip.waitFor({ state: 'visible' });
@@ -103,6 +113,8 @@ try {
     await page.getByLabel('Pause adaptation', { exact: true }).check();
     await page.waitForFunction(() => window.adaptiveFixture.snapshot().dashboard.settings.adaptation_paused);
     await page.locator('summary').filter({ hasText: 'Outgoing feedback preview' }).click();
+    assert.equal(await page.getByRole('button', { name: 'Information: Interest metric and privacy', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('button', { name: 'Information: Exact outgoing packet', exact: true }).count(), 0);
     const packet = JSON.parse(await page.getByLabel('Exact outgoing packet', { exact: true }).inputValue());
     assert.deepEqual(packet, await page.evaluate(() => window.adaptiveFixture.snapshot().dashboard.feedback_preview));
     await page.locator('summary').filter({ hasText: 'Reusable sources' }).click();
@@ -152,11 +164,11 @@ try {
   await legacyPage.goto('http://127.0.0.1:5177/cv-builder/test/browser/adaptive-search.html?breadthUpgradeMissing=1', { waitUntil: 'networkidle' });
   await legacyPage.getByRole('heading', { name: 'Adaptive feedback', exact: true }).waitFor();
   assert.equal(await legacyPage.getByRole('slider', { name: 'Search breadth', exact: true }).isDisabled(), true);
-  const upgradeInfo = legacyPage.getByRole('button', { name: 'Information: Exploration allocation', exact: true });
+  const upgradeInfo = legacyPage.getByRole('button', { name: 'Information: Search breadth', exact: true });
   await upgradeInfo.focus(); await upgradeInfo.press('Enter');
   const upgradeTooltip = legacyPage.getByRole('tooltip');
   await upgradeTooltip.waitFor({ state: 'visible' });
-  assert.equal(await upgradeTooltip.innerText(), 'Install the search-breadth database update to enable this control.');
+  assert.match(await upgradeTooltip.innerText(), /Install the search-breadth database update to enable this control\./u);
   await legacyPage.keyboard.press('Escape'); await upgradeTooltip.waitFor({ state: 'hidden' });
   assert.equal(await legacyPage.getByLabel('Use structured feedback for this search', { exact: true }).count(), 0);
   assert.equal(await legacyPage.getByLabel('Adapt query priorities', { exact: true }).isDisabled(), false);

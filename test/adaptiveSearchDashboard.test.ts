@@ -96,6 +96,36 @@ test('AF-10 owner dashboard retains exact outgoing packet, honest unknowns and s
   assert.doesNotMatch(JSON.stringify(projected),/private@example|PRIVATE_CONTEXT|PRIVATE_COMMENT|Private Person|contacts|context_json/);
 });
 
+test('dashboard loads historical protocol identifiers containing dates in runs and saved plans', async () => {
+  const raw = await fixture();
+  const historicalProtocol = 'opportunity-search-v1-2026-10-12-normalization-3';
+  raw.runs.push({ ...clone(raw.runs[0]!), run_id: id(14) });
+  raw.runs[0]!.basis.protocol_version = historicalProtocol;
+  raw.queries.plan.basis.protocol_version = historicalProtocol;
+  const service = mock(raw), controller = createAdaptiveSearchDashboardController(service.client, scope, service);
+  try {
+    assert.equal(await controller.load(), true);
+    assert.equal(controller.state.error, '');
+    assert.equal(controller.state.data!.runs[0]!.basis.protocol_version, historicalProtocol);
+    assert.equal(controller.state.data!.runs[1]!.basis.protocol_version, 'opportunity-search-v1-canonical-6');
+    assert.equal(controller.state.data!.queries.plan!.basis.protocol_version, historicalProtocol);
+    assert.deepEqual(controller.state.data!.feedback_preview, raw.feedback_preview);
+    assert.deepEqual(service.calls.map(call => call.name), ['read_opportunity_search_dashboard']);
+  } finally { controller.dispose(); }
+});
+
+test('dashboard protocol identifiers reject prose, contacts, URLs, controls and oversized values', async () => {
+  const raw = await fixture();
+  for (const protocol of [null, 123, '', 'private@example.invalid', 'https://example.invalid/protocol',
+    ' opportunity-search-v1', 'opportunity-search-v1 private context', 'opportunity-search-v1\ncanonical-6',
+    'opportunity-search-v1-"contacts":{}', '<script>private</script>', 'a'.repeat(201)]) {
+    const invalidRun = clone(raw); Object.assign(invalidRun.runs[0]!.basis, { protocol_version: protocol });
+    await assert.rejects(readAdaptiveSearchDashboard(invalidRun, scope));
+    const invalidPlan = clone(raw); Object.assign(invalidPlan.queries.plan.basis, { protocol_version: protocol });
+    await assert.rejects(readAdaptiveSearchDashboard(invalidPlan, scope));
+  }
+});
+
 test('AF-10 exact packet validation rejects hidden extra/private fields and malformed or foreign scope', async () => {
   const raw = await fixture();
   for (const patch of [{ user_id: id(99) },{ search_id: id(99) },{ project_ref: 'zyxwvutsrqponmlkjihg' },{ dashboard_version: 2 }]) {

@@ -83,6 +83,10 @@ function integer(value: unknown, minimum = 0, maximum = Number.MAX_SAFE_INTEGER)
 function bool(value: unknown): boolean { return typeof value === 'boolean' ? value : fail(); }
 function id(value: unknown): string { return typeof value === 'string' && uuidPattern.test(value) ? value.toLowerCase() : fail(); }
 function text(value: unknown, maximum = 200): string { return opportunityFeedbackTextIsSafe(value, maximum) ? value : fail(); }
+function protocolVersion(value: unknown): string {
+  // Historical protocol IDs contain dates; prose privacy checks mistake them for phone numbers.
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/u.test(value) ? value : fail();
+}
 function time(value: unknown, nullable = true): string | null {
   return nullable && value === null ? null : typeof value === 'string' && opportunityFeedbackTimestamp(value) !== null ? value : fail();
 }
@@ -160,7 +164,7 @@ export async function readAdaptiveSearchDashboard(value: unknown, inputScope: Ad
   let plan: AdaptiveDashboardPlan | null = null;
   if (queries.plan !== null) {
     const row = object(queries.plan), basisRaw = object(row.basis);
-    const basis = { base_revision: integer(basisRaw.base_revision, 1), feedback_revision: integer(basisRaw.feedback_revision), preference_revision: integer(basisRaw.preference_revision), protocol_version: text(basisRaw.protocol_version, 100) };
+    const basis = { base_revision: integer(basisRaw.base_revision, 1), feedback_revision: integer(basisRaw.feedback_revision), preference_revision: integer(basisRaw.preference_revision), protocol_version: protocolVersion(basisRaw.protocol_version) };
     plan = { id: id(row.id), revision: integer(row.revision, 1), plan_hash: typeof row.plan_hash === 'string' && hashPattern.test(row.plan_hash) ? row.plan_hash : fail(), created_at: time(row.created_at, false)!, basis,
       queries: list(row.queries, 30).map(value => { const query = object(value), withheld = bool(query.withheld);
         return { query_id: id(query.query_id), query: withheld ? query.query === null ? null : fail() : queryText(query.query),
@@ -198,7 +202,7 @@ export async function readAdaptiveSearchDashboard(value: unknown, inputScope: Ad
     }) }, runs: list(raw.runs, 10).map(value => {
       const row = object(value), basis = object(row.basis), counts = object(row.counts), deadline = object(row.deadline);
       return { run_id: id(row.run_id), status: enumeration(row.status, ['running','complete','failed']), started_at: time(row.started_at, false)!, completed_at: time(row.completed_at),
-        basis: { base_revision: integer(basis.base_revision, 1), feedback_revision: basis.feedback_revision === null ? null : integer(basis.feedback_revision), preference_revision: basis.preference_revision === null ? null : integer(basis.preference_revision), protocol_version: text(basis.protocol_version, 100) },
+        basis: { base_revision: integer(basis.base_revision, 1), feedback_revision: basis.feedback_revision === null ? null : integer(basis.feedback_revision), preference_revision: basis.preference_revision === null ? null : integer(basis.preference_revision), protocol_version: protocolVersion(basis.protocol_version) },
         query_plan_id: row.query_plan_id === null ? null : id(row.query_plan_id), adaptive_contract_version: row.adaptive_contract_version === null ? null : integer(row.adaptive_contract_version,1),
         execution_report_status: enumeration(row.execution_report_status, ['unreported','complete','partial','failed']),
         backlog_candidates: row.backlog_candidates === null ? null : integer(row.backlog_candidates), backlog_omitted: row.backlog_omitted === null ? null : integer(row.backlog_omitted),
