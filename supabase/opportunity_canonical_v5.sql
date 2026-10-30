@@ -159,14 +159,14 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
         "string",
         "null"
       ],
-      "pattern": "^https?://+$"
+      "pattern": "^https?://[^\\s]+$"
     },
     "source_url": {
       "type": [
         "string",
         "null"
       ],
-      "pattern": "^https?://+$"
+      "pattern": "^https?://[^\\s]+$"
     },
     "application_url": {
       "type": [
@@ -318,7 +318,7 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         }
       },
@@ -408,7 +408,7 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -489,7 +489,7 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -531,7 +531,7 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
             "string",
             "null"
           ],
-          "pattern": "^https?://+$"
+          "pattern": "^https?://[^\\s]+$"
         },
         "year": {
           "type": [
@@ -581,7 +581,7 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -641,7 +641,7 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -828,7 +828,7 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -940,7 +940,7 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -1003,7 +1003,7 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
         },
         "url": {
           "type": "string",
-          "pattern": "^https?://+$"
+          "pattern": "^https?://[^\\s]+$"
         },
         "kind": {
           "type": "string",
@@ -1275,7 +1275,7 @@ create function private.opportunity_storage_schema() returns jsonb language sql 
               },
               "url": {
                 "type": "string",
-                "pattern": "^https?://+$"
+                "pattern": "^https?://[^\\s]+$"
               }
             },
             "required": [

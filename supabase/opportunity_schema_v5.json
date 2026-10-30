@@ -94,14 +94,14 @@
         "string",
         "null"
       ],
-      "pattern": "^https?://+$"
+      "pattern": "^https?://[^\\s]+$"
     },
     "source_url": {
       "type": [
         "string",
         "null"
       ],
-      "pattern": "^https?://+$"
+      "pattern": "^https?://[^\\s]+$"
     },
     "application_url": {
       "type": [
@@ -253,7 +253,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         }
       },
@@ -343,7 +343,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -424,7 +424,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -466,7 +466,7 @@
             "string",
             "null"
           ],
-          "pattern": "^https?://+$"
+          "pattern": "^https?://[^\\s]+$"
         },
         "year": {
           "type": [
@@ -516,7 +516,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -576,7 +576,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -763,7 +763,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -875,7 +875,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^https?://+$"
+            "pattern": "^https?://[^\\s]+$"
           }
         },
         "notes": {
@@ -938,7 +938,7 @@
         },
         "url": {
           "type": "string",
-          "pattern": "^https?://+$"
+          "pattern": "^https?://[^\\s]+$"
         },
         "kind": {
           "type": "string",
@@ -1210,7 +1210,7 @@
               },
               "url": {
                 "type": "string",
-                "pattern": "^https?://+$"
+                "pattern": "^https?://[^\\s]+$"
               }
             },
             "required": [
