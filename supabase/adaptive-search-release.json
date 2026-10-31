@@ -388,15 +388,15 @@
     },
     {
       "path": "src/features/meta-search/components/AdaptiveSearchDashboard.vue",
-      "sha256": "db9950cf89afd25867c42d0226cad0e29e8cb355c6aeb690aaccf7c126dfa08f"
+      "sha256": "4e9203b15d90d4427122c4d1b1c536a68597856a086f1c42277b6d1f5006f95b"
     },
     {
       "path": "src/features/meta-search/components/AdaptiveSearchPolicyHint.vue",
-      "sha256": "01dc51497c61118dfcae3d8f8d669ce791f3633d9d2e7a98c8b5cedf99a3e182"
+      "sha256": "4f989ce9aa310a2ab5d8cea026cdfa04fc37bf3f0a5ec965f682c0383a0b928b"
     },
     {
       "path": "src/features/meta-search/components/SearchTemplates.vue",
-      "sha256": "0c260935fb753f8f5c8ee5b0d5d3d393dab38279f738315cc8af4ff131f6a008"
+      "sha256": "917d01182aa403d0df34995f4363f158c3658628a8bfc7b9c4e03636186312cb"
     },
     {
       "path": "src/app/components/JobWorkspace.vue",

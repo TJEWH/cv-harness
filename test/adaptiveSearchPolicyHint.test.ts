@@ -35,19 +35,16 @@ function mount(t: TestContext) {
     label: () => descendants(root).find(value => value.tag === 'button')!.props['aria-label'], root };
 }
 
-test('initial policy help uses shared defaults and makes uncertainty, capacity and actual allocation explicit', t => {
+test('policy help keeps the rating thresholds and query limits concise', t => {
   const view = mount(t), policy = DEFAULT_ADAPTIVE_SEARCH_POLICY, help = view.help();
   assert.equal(view.label(), 'Information: Adaptive search policy');
-  assert.match(help, new RegExp(`at least ${policy.minimum_observations} distinct relevant observations`));
+  assert.match(help, new RegExp(`at least ${policy.minimum_observations} distinct reviewed opportunities`));
   assert.ok(help.includes(new Intl.NumberFormat('en', { style: 'percent' }).format(policy.exploration_ratio)));
-  assert.ok(help.includes(`at least ${policy.minimum_exploration_queries} when capacity permits`));
-  assert.ok(help.includes(`${policy.maximum_queries}-query limit`));
-  assert.ok(help.includes(`mean interest of at least ${policy.positive_interest_threshold} is the initial positive-priority convention`));
-  assert.match(help, /Configurable initial defaults/);
-  assert.match(help, /Smaller or contradictory groups remain provisional/);
-  assert.match(help, /Without discretionary capacity there is no exploration allocation/);
-  assert.match(help, /Each run records its actual allocation/);
-  assert.match(help, /Due-source checks use no query slots/);
+  assert.ok(help.includes(`at least ${policy.minimum_exploration_queries} when space allows`));
+  assert.ok(help.includes(`${policy.maximum_queries} queries per run`));
+  assert.ok(help.includes(`average ${policy.positive_interest_threshold}/10`));
+  assert.match(help, /smaller or conflicting samples remain provisional/);
+  assert.ok(help.length < 400, 'keep the policy hint short enough to scan');
   assert.deepEqual(descendants(view.root).filter(value => ['textarea', 'input', 'select'].includes(value.tag ?? '')), [], 'policy help does not add editor or workflow controls');
 });
 
@@ -56,24 +53,24 @@ test('German policy help updates in place and reflects supplied policy values in
   view.props.policy = { minimum_observations: 5, exploration_ratio: 0.25, maximum_queries: 18, minimum_exploration_queries: 2, positive_interest_threshold: 7.5 };
   await nextTick();
   assert.equal(view.label(), 'Informationen: Adaptive Suchstrategie');
-  assert.match(view.help(), /mindestens 5 unterschiedliche relevante Beobachtungen/);
+  assert.match(view.help(), /mindestens 5 unterschiedliche Stellen/);
   assert.match(view.help(), /25\s*%/);
-  assert.match(view.help(), /mindestens 2 bei ausreichender Kapazität/);
+  assert.match(view.help(), /mindestens 2 bei freier Kapazität/);
   assert.match(view.help(), /höchstens 18 Abfragen/);
-  assert.match(view.help(), /mittleres Interesse ab 7,5.*anfänglichen Produktkonvention/);
-  assert.match(view.help(), /vorläufig|tatsächliche Aufteilung/);
+  assert.match(view.help(), /im Mittel 7,5\/10/);
+  assert.match(view.help(), /vorläufig/);
   assert.doesNotMatch(view.help(), /automatic priority|30-query|20%/);
-  assert.match(view.help(), /^Aktuelle Strategie:/);
+  assert.match(view.help(), /^Deine Bewertungen/);
 });
 
 test('zero breadth explicitly turns exploration off without inventing a minimum query', async t => {
   const view = mount(t);
   view.props.policy = { ...DEFAULT_ADAPTIVE_SEARCH_POLICY, exploration_ratio: 0, minimum_exploration_queries: 0 };
   await nextTick();
-  assert.match(view.help(), /^Current policy:/); assert.match(view.help(), /Exploration is off\./);
+  assert.match(view.help(), /Exploration is off;/);
   assert.doesNotMatch(view.help(), /at least 0 when capacity|reserve 0%/);
   view.props.lang = 'de'; await nextTick();
-  assert.match(view.help(), /Erkundung neuer Suchrichtungen ist ausgeschaltet/);
+  assert.match(view.help(), /Neue Suchrichtungen sind ausgeschaltet/);
   assert.doesNotMatch(view.help(), /mindestens 0/);
 });
 
@@ -81,6 +78,6 @@ test('a supplied policy without the newer threshold retains the shared positive-
   const view = mount(t);
   view.props.policy = { minimum_observations: 4, exploration_ratio: 0.1, maximum_queries: 20, minimum_exploration_queries: 1 };
   await nextTick();
-  assert.ok(view.help().includes(`mean interest of at least ${DEFAULT_ADAPTIVE_SEARCH_POLICY.positive_interest_threshold} is the initial positive-priority convention`));
+  assert.ok(view.help().includes(`average ${DEFAULT_ADAPTIVE_SEARCH_POLICY.positive_interest_threshold}/10`));
   assert.doesNotMatch(view.help(), /undefined|NaN/);
 });
