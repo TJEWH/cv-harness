@@ -35,8 +35,8 @@ const letter = (overrides: Partial<LetterContent> = {}): LetterContent => ({
   body: 'My research addresses the reliability of interactive systems.', closing: 'Yours sincerely,', ...overrides,
 });
 type PreviewInput = Parameters<typeof useDocumentPdfPreview>[0];
-const sourceUrl = new URL('../src/documents/letter/components/MotivationLetterPreview.vue', import.meta.url);
-const compiled = compileScript(parse(readFileSync(sourceUrl, 'utf8')).descriptor, { id: 'MotivationLetterPreview.vue', inlineTemplate: true });
+const sourceUrl = new URL('../src/documents/letter/components/LetterDocumentPreview.vue', import.meta.url);
+const compiled = compileScript(parse(readFileSync(sourceUrl, 'utf8')).descriptor, { id: 'LetterDocumentPreview.vue', inlineTemplate: true });
 const source = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const require = createRequire(sourceUrl);
 

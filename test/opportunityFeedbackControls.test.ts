@@ -7,7 +7,7 @@ import { compileScript, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive, watch, type Component } from 'vue';
 import type { OpportunityInterestReason, OpportunityReview } from '../src/app/cloudTypes';
-import { normalizeOpportunity as readOpportunity } from '../src/app/composables/useJobWorkspace';
+import { normalizeOpportunity as readOpportunity } from '../src/app/composables/useCloudWorkspace';
 import { normalizeOpportunityInterestReasons } from '../src/features/opportunities/domain/opportunityFeedback';
 import * as textareaCommit from '../src/shared/editing/textareaCommit';
 import * as editorSession from '../src/shared/editing/editorSession';

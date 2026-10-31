@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLetterRepository, DEFAULT_LETTER_TEMPLATES, readLetterTemplate } from '../src/documents/letter/motivationLetters';
-import { createSearchTemplateRepository, DEFAULT_SEARCH_TEMPLATES, readSearchTemplate, searchTemplateStorageKey } from '../src/features/meta-search/data/useSearchTemplates';
+import { createSearchTemplateRepository, DEFAULT_SEARCH_TEMPLATES, readSearchTemplate, searchTemplateStorageKey } from '../src/features/meta-search/data/searchTemplateRepository';
 
 const owner = 'merge-owner';
 const initialDate = '2026-10-01T10:00:00.000Z';

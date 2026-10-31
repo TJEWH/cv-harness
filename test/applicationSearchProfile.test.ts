@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { LetterTemplate } from '../src/documents/letter/letterTypes';
-import { createSearchTemplate, createSearchTemplateRepository } from '../src/features/meta-search/data/useSearchTemplates';
+import { createSearchTemplate, createSearchTemplateRepository } from '../src/features/meta-search/data/searchTemplateRepository';
 import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
 import { createLetterRepository, DEFAULT_LETTER_TEMPLATES } from '../src/documents/letter/motivationLetters';
 import { idle, mount, prepare, type Workspace } from './refinementWorkflowHarness';

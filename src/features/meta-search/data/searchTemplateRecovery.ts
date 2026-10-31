@@ -1,5 +1,5 @@
 import type { SearchTemplate } from '../searchTypes';
-import { readSearchTemplate, searchTemplateContentKey } from './useSearchTemplates';
+import { readSearchTemplate, searchTemplateContentKey } from './searchTemplateRepository';
 
 interface Draft { form: SearchTemplate; baseline: SearchTemplate | null }
 const drafts = new Map<string, Draft>();

@@ -348,11 +348,11 @@
     },
     {
       "path": "src/features/meta-search/data/searchTemplateCloud.ts",
-      "sha256": "21b480b8abe963737229070632aa824fdd7273922ba277ad1a91581f303fe222"
+      "sha256": "e650cec12b264e00ca723a1615d5d3eb9114f0ec4a823a1587e658df84fd59ed"
     },
     {
       "path": "src/documents/letter/searchLetterContext.ts",
-      "sha256": "b13713d122f1bca34108411f1988094d6f58991c7fcfd0439926dd6ebe072298"
+      "sha256": "4571e1126a94ffb842bfc31645bcdac7ce2518424529e5d4c97af3830427e000"
     },
     {
       "path": "src/features/meta-search/components/AdaptiveSearchDashboard.vue",
@@ -363,12 +363,12 @@
       "sha256": "01dc51497c61118dfcae3d8f8d669ce791f3633d9d2e7a98c8b5cedf99a3e182"
     },
     {
-      "path": "src/features/meta-search/components/SearchTemplates.vue",
-      "sha256": "0c260935fb753f8f5c8ee5b0d5d3d393dab38279f738315cc8af4ff131f6a008"
+      "path": "src/features/meta-search/components/MetaSearchEditor.vue",
+      "sha256": "037c7253a3215f3d9ef305abb9f0a489dc5e26136284b9ad5cce1869dbcdfb21"
     },
     {
-      "path": "src/app/components/JobWorkspace.vue",
-      "sha256": "ec902feda841d44c6f14259f6e6897a400660a9bb9845b9babf9812d414fd135"
+      "path": "src/app/components/CloudWorkspace.vue",
+      "sha256": "97818ebc8fbc6e321a9a21c67ab51b2b91dde865e08d775e50191c4e39120f68"
     },
     {
       "path": "src/features/opportunities/components/OpportunityFeedbackControls.vue",

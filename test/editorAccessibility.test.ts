@@ -13,11 +13,11 @@ import type { CustomSection, CvItem } from '../src/documents/cv/types';
 const { PRIVACY_EDITOR } = createRequire(import.meta.url)('../src/documents/privacy/composables/privacyEditorContext');
 
 const componentPaths = {
-  FormBuilder: '../src/features/cv-studio/components/FormBuilder.vue',
+  CvContentEditor: '../src/features/cv-studio/components/CvContentEditor.vue',
   SectionHeading: '../src/shared/ui/SectionHeading.vue',
   SectionList: '../src/features/cv-studio/components/SectionList.vue',
   SectionItems: '../src/features/cv-studio/components/SectionItems.vue',
-  CvPreview: '../src/documents/cv/components/CvPreview.vue',
+  CvDocument: '../src/documents/cv/components/CvDocument.vue',
   PrivacySectionHeading: '../src/documents/privacy/components/PrivacySectionHeading.vue',
 } as const;
 function loadComponent(name: keyof typeof componentPaths, inlineTemplate = false): Component {
@@ -40,11 +40,11 @@ const renderer = createRenderer<Node, Node>({
   patchProp(node, key, _previous, value) { node.props[key] = value; },
   parentNode: node => node.parent || null, nextSibling: () => null,
 });
-const FormBuilder = loadComponent('FormBuilder');
+const CvContentEditor = loadComponent('CvContentEditor');
 const SectionHeading = loadComponent('SectionHeading', true);
 const SectionList = loadComponent('SectionList');
 const SectionItems = loadComponent('SectionItems');
-const CvPreview = loadComponent('CvPreview');
+const CvDocument = loadComponent('CvDocument');
 const PrivacySectionHeading = loadComponent('PrivacySectionHeading');
 
 test('inline privacy headings display defaults without storing them and preserve intentionally empty edits', t => {
@@ -95,7 +95,7 @@ function mountEditor(t: TestContext) {
   Object.defineProperty(globalThis, 'window', { configurable: true, value: { addEventListener() {}, removeEventListener() {} } });
   let mounted: unknown;
   const state = createSampleDocument();
-  const app = renderer.createApp({ render: () => h(FormBuilder, {
+  const app = renderer.createApp({ render: () => h(CvContentEditor, {
     state, readVersion: () => null, saveVersion: () => true,
     ref: (value: unknown) => { mounted = value; },
   }) });
@@ -120,7 +120,7 @@ test('CV preview preserves intentionally blank privacy headings while missing he
   draft.customSections[0].name = '';
   applyPrivacyEditorChanges(state, draft);
   let mounted: unknown;
-  const app = renderer.createApp({ render: () => h(CvPreview, {
+  const app = renderer.createApp({ render: () => h(CvDocument, {
     state: createAnonymizedState(state), exportSource: true, ref: (value: unknown) => { mounted = value; },
   }) });
   app.mount(node('root'));
@@ -187,7 +187,7 @@ test('touch reordering uses dedicated grips while keyboard moves preserve data a
   const original: CvItem[] = [{ id: 'first', title: 'First role' }, { id: 'second', title: 'Second role' }];
   const model = reactive({ items: original, reorderMode: true });
   const app = renderer.createApp({ render: () => h('div', [
-    h(FormBuilder, { state: createSampleDocument(), readVersion: () => null, saveVersion: () => true, ref: (value: unknown) => { editorInstance = value; } }),
+    h(CvContentEditor, { state: createSampleDocument(), readVersion: () => null, saveVersion: () => true, ref: (value: unknown) => { editorInstance = value; } }),
     h(SectionItems, {
       modelValue: model.items, reorderMode: model.reorderMode, lang: 'en',
       'onUpdate:modelValue': (items: CvItem[]) => { model.items = items; updates++; },

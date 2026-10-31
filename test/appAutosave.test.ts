@@ -60,12 +60,12 @@ test('CV Studio reports pending edits immediately, updates the saved time, and f
   const app = renderer.createApp(component);
   const instance = app.mount({}) as unknown as { $: { setupState: {
     state: CvState; saveStatus: SaveStatus; saveStatusLabel: string; sectionSaveStatus: SaveStatus; combinedSaveStatus: SaveStatus;
-    backupManager: unknown; formBuilder: unknown; pdfRenderSource: unknown; onPreviewSliderPointerDown(event: PointerEvent): void;
+    cvVariantManager: unknown; cvContentEditor: unknown; pdfRenderSource: unknown; onPreviewSliderPointerDown(event: PointerEvent): void;
     activeBuilderGroup: string; selectBuilderGroup(group: string): void;
   } } };
   const setup = instance.$.setupState;
   setup.pdfRenderSource = { querySelector: () => ({}) };
-  setup.backupManager = { saveCurrent: () => {
+  setup.cvVariantManager = { saveCurrent: () => {
     if (throwOnSave) throw new Error('Local storage is unavailable');
     snapshots.push(JSON.parse(JSON.stringify(setup.state))); return saved;
   } };
@@ -114,7 +114,7 @@ test('CV Studio reports pending edits immediately, updates the saved time, and f
     let sectionsSaved = false;
     let sectionFlushes = 0;
     setup.sectionSaveStatus = 'error';
-    setup.formBuilder = { flushSectionSaves: () => {
+    setup.cvContentEditor = { flushSectionSaves: () => {
       sectionFlushes++;
       setup.sectionSaveStatus = sectionsSaved ? 'saved' : 'error';
       return sectionsSaved;
@@ -174,8 +174,8 @@ interface SessionApp {
   state: CvState; activeWorkspace: string; activeBuilderGroup: string; previewMode: boolean;
   selectedConfigurationId: string; cloudUser: { id: string } | null;
   letterTemplates: { flush(): boolean } | null; localAttachments: { flush(): boolean } | null;
-  jobWorkspace: { flush(): Promise<boolean>; openList(kind: string): Promise<boolean> } | null;
-  backupManager: unknown; formBuilder: unknown;
+  cloudWorkspace: { flush(): Promise<boolean>; openList(kind: string): Promise<boolean> } | null;
+  cvVariantManager: unknown; cvContentEditor: unknown;
   selectBuilderGroup(group: string): void; selectWorkspace(workspace: string): Promise<void>;
   selectWorkspaceList(workspace: string): Promise<void>; openFullPreview(): void;
   prepareConfigurationChange(): boolean; readCloudVersion(id: string): CvState | null;
@@ -199,8 +199,8 @@ function sessionApp(t: TestContext) {
   const app = renderer.createApp(component);
   const instance = app.mount({}) as unknown as { $: { setupState: SessionApp } };
   const setup = instance.$.setupState;
-  setup.backupManager = { saveCurrent: () => true };
-  setup.formBuilder = { flushSectionSaves: () => true, resetSectionVersions: () => true };
+  setup.cvVariantManager = { saveCurrent: () => true };
+  setup.cvContentEditor = { flushSectionSaves: () => true, resetSectionVersions: () => true };
   t.after(() => { app.unmount(); useToasts().clear(); restores.forEach(restore => restore()); });
   return setup;
 }
@@ -251,7 +251,7 @@ test('App retains newer uncommitted typing and rejects an account A–B–A tran
   const unregister = registerTextareaCommit(() => { if (pending) { published = pending; pending = ''; } });
   t.after(unregister);
   let save = pendingSave();
-  setup.jobWorkspace = { flush: () => save.promise, openList: () => save.promise };
+  setup.cloudWorkspace = { flush: () => save.promise, openList: () => save.promise };
   const leaving = setup.selectWorkspace('cv-studio');
   await nextTick();
   pending = 'Typing after the exit snapshot';
@@ -269,7 +269,7 @@ test('App retains newer uncommitted typing and rejects an account A–B–A tran
   setup.cloudUser = { id: 'owner-b' }; setup.cloudUser = { id: 'owner-a' };
   save.resolve(true); await oldOwner;
   assert.equal(setup.activeWorkspace, 'opportunities', 'matching final owner IDs cannot revive an obsolete exit');
-  setup.jobWorkspace = { flush: async () => true, openList: async () => true };
+  setup.cloudWorkspace = { flush: async () => true, openList: async () => true };
   await setup.selectWorkspace('cv-studio');
   assert.equal(setup.activeWorkspace, 'cv-studio');
 });
@@ -280,8 +280,8 @@ test('opening a Studio variant waits for the cloud editor and retains it after a
   setup.activeWorkspace = 'applications';
   let saved = false;
   const selected: string[] = [];
-  setup.backupManager = { saveCurrent: () => true, selectConfiguration: (id: string) => { selected.push(id); return true; } };
-  setup.jobWorkspace = { flush: async () => saved, openList: async () => saved };
+  setup.cvVariantManager = { saveCurrent: () => true, selectConfiguration: (id: string) => { selected.push(id); return true; } };
+  setup.cloudWorkspace = { flush: async () => saved, openList: async () => saved };
   await setup.openStudioVariant('target');
   assert.deepEqual(selected, []);
   assert.equal(setup.activeWorkspace, 'applications');

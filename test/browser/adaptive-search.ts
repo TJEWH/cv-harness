@@ -1,7 +1,7 @@
 import { createApp, h, ref } from 'vue';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import SearchTemplates from '../../src/features/meta-search/components/SearchTemplates.vue';
-import { DEFAULT_SEARCH_TEMPLATES, searchTemplateContentKey } from '../../src/features/meta-search/data/useSearchTemplates';
+import MetaSearchEditor from '../../src/features/meta-search/components/MetaSearchEditor.vue';
+import { DEFAULT_SEARCH_TEMPLATES, searchTemplateContentKey } from '../../src/features/meta-search/data/searchTemplateRepository';
 import { buildRecurringSearchPrompt, buildSearchSystemPrompt, buildSearchUserPrompt } from '../../src/features/meta-search/domain/searchPrompts';
 import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../../src/features/meta-search/data/searchTemplateCloud';
 import type { SearchCloudTemplate } from '../../src/features/meta-search/searchTypes';
@@ -115,5 +115,5 @@ createApp({ setup() { return () => h('main', { style: 'height:100vh;display:flex
   h('p', { style: 'padding:8px;color:var(--ui-muted);font:13px system-ui' }, 'Synthetic fixture — no production connection or scheduled task operations.'),
   h('output', { 'data-testid': 'fixture-events', style: 'padding:8px;color:var(--ui-muted);font:13px system-ui' }, `Saves: ${saveCount.value}; requests: ${requestCount.value}`),
   h('button', { type: 'button', onClick: () => { lang.value = lang.value === 'en' ? 'de' : 'en'; } }, 'English / Deutsch'),
-  h(SearchTemplates, { userId: owner, projectId: project, client, lang: lang.value, sidebarActive: false, style: 'flex:1;min-height:0' }),
+  h(MetaSearchEditor, { userId: owner, projectId: project, client, lang: lang.value, sidebarActive: false, style: 'flex:1;min-height:0' }),
 ]); } }).mount('#app');

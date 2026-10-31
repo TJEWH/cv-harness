@@ -1,4 +1,4 @@
-/** Real JobWorkspace regression using an isolated, memory-only fixture. */
+/** Real CloudWorkspace regression using an isolated, memory-only fixture. */
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);

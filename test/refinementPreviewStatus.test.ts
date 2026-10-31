@@ -28,8 +28,8 @@ const content = (root: Node): string => root.tag === '#comment' ? '' : root.text
 const componentPaths = {
   'RefinementPreviewStatus.vue': '../src/features/refinement/components/RefinementPreviewStatus.vue',
   'RefinementComparisonToggle.vue': '../src/features/refinement/components/RefinementComparisonToggle.vue',
-  'DocumentCvPreview.vue': '../src/documents/cv/components/DocumentCvPreview.vue',
-  'MotivationLetterPreview.vue': '../src/documents/letter/components/MotivationLetterPreview.vue',
+  'CvDocumentPreview.vue': '../src/documents/cv/components/CvDocumentPreview.vue',
+  'LetterDocumentPreview.vue': '../src/documents/letter/components/LetterDocumentPreview.vue',
 } as const;
 function compile(filename: keyof typeof componentPaths, replacements: Record<string, unknown> = {}) {
   const url = new URL(componentPaths[filename], import.meta.url);
@@ -52,7 +52,7 @@ const Preview = {
 };
 
 for (const document of ['CV', 'letter'] as const) test(`${document} inline and expanded surfaces synchronize Previous/Current controls`, async t => {
-  const Document = compile(document === 'CV' ? 'DocumentCvPreview.vue' : 'MotivationLetterPreview.vue', {
+  const Document = compile(document === 'CV' ? 'CvDocumentPreview.vue' : 'LetterDocumentPreview.vue', {
     '../../pdf/components/InlineDocumentPreview.vue': surface('inline'), '../../pdf/components/FullDocumentPreview.vue': surface('expanded'),
     '../../pdf/composables/useDocumentPdfPreview': Preview,
     '../../cv/composables/useCvDesign': { applyCvDesign() {} },

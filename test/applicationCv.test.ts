@@ -58,11 +58,11 @@ test('failed writes preserve previous stored CV and corrupt or foreign backups a
   assert.throws(() => loadApplicationCv('u', 'a', { ...store, getItem: () => JSON.stringify({ ...record, userId: 'someone-else' }) }), /invalid/);
 });
 
-test('mounting FormBuilder adds no adjustments before a single role edit', () => {
+test('mounting CvContentEditor adds no adjustments before a single role edit', () => {
   const source = createSampleDocument();
   const original = structuredClone(source);
   const record = createApplicationCv('owner', 'app', 'career', 'Career', source);
-  normalizeContentState(record.state); // The same normalization executed by FormBuilder on mount.
+  normalizeContentState(record.state); // The same normalization executed by CvContentEditor on mount.
   assert.deepEqual(cvDifferences(record.baseState, record.state), []);
   assert.deepEqual(source, original);
   record.state.contact.role = 'Research engineer';

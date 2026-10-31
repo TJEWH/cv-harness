@@ -3,7 +3,7 @@ import InfoHint from '../../../shared/ui/InfoHint.vue';
 import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { faAlignLeft, faCheck, faChevronDown, faComments, faDownload, faEnvelopeOpenText, faFeatherPointed, faPlus, faUpload } from '@fortawesome/free-solid-svg-icons';
-import { debounce } from '../../../documents/cv/data/useStorage';
+import { debounce } from '../../../documents/cv/data/cvStorage';
 import type { LetterFormatting, LetterTemplate } from '../../../documents/letter/letterTypes';
 import { createLetterRepository, DEFAULT_LETTER_TEMPLATES, DEFAULT_QUESTION_GUIDANCE, DEFAULT_REFINEMENT_SYSTEM_PROMPT, LETTER_TEMPLATE_CONTEXT_MAX_LENGTH } from '../../../documents/letter/motivationLetters';
 import { useToasts, useToastWatch } from '../../../shared/ui/useToasts';
@@ -12,7 +12,7 @@ import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import { flushEditorSessionSync } from '../../../shared/editing/editorSession';
 import LetterFormattingControls from '../../../documents/letter/components/LetterFormattingControls.vue';
 import { useDesktopSidebar } from '../../../shared/ui/desktopSidebar';
-import { SEARCH_TEMPLATES_UPDATED_EVENT } from '../../meta-search/data/useSearchTemplates';
+import { SEARCH_TEMPLATES_UPDATED_EVENT } from '../../meta-search/data/searchTemplateRepository';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useSharedSearchSource } from '../../meta-search/composables/useSharedSearchSource';
 

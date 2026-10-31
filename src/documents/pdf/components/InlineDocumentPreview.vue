@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import type { DocumentPreviewPage } from '../pdfTypes';
 import { makeT } from '../../../i18n/dict';
-import PdfPreview from './PdfPreview.vue';
+import PdfPageViewer from './PdfPageViewer.vue';
 import PdfPagination from './PdfPagination.vue';
 
 const props = withDefaults(defineProps<{
@@ -28,7 +28,7 @@ const t = makeT(computed(() => props.lang));
       </div>
     </div>
     <div class="document-inline-preview__viewport">
-      <PdfPreview :pages="pages" :page="page" :is-updating="isUpdating" :error="error" :lang="lang" gesture-navigation @retry="emit('retry')" @update:page="emit('update:page', $event)" />
+      <PdfPageViewer :pages="pages" :page="page" :is-updating="isUpdating" :error="error" :lang="lang" gesture-navigation @retry="emit('retry')" @update:page="emit('update:page', $event)" />
       <PdfPagination v-if="pages.length && !error" class="document-inline-preview__pagination" :pages="pages" :page="page" :lang="lang" @update:page="emit('update:page', $event)" />
     </div>
   </aside>

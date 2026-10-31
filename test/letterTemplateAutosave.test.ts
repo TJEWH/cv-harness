@@ -9,12 +9,12 @@ import { createLetterRepository, DEFAULT_LETTER_TEMPLATES, DEFAULT_REFINEMENT_SY
 import type { LetterFormatting, LetterTemplate } from '../src/documents/letter/letterTypes';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { useSharedSearchSource } from '../src/features/meta-search/composables/useSharedSearchSource';
-import { createSearchTemplate, createSearchTemplateRepository } from '../src/features/meta-search/data/useSearchTemplates';
+import { createSearchTemplate, createSearchTemplateRepository } from '../src/features/meta-search/data/searchTemplateRepository';
 import { useToasts, useToastWatch } from '../src/shared/ui/useToasts';
 import * as textareaCommit from '../src/shared/editing/textareaCommit';
 import * as editorSession from '../src/shared/editing/editorSession';
 
-const filename = new URL('../src/features/letter-templates/components/LetterTemplates.vue', import.meta.url);
+const filename = new URL('../src/features/letter-templates/components/LetterTemplateEditor.vue', import.meta.url);
 const compiled = compileScript(parse(readFileSync(filename, 'utf8')).descriptor, { id: 'letter-template-autosave' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exports: { default?: Component } = {};

@@ -1,5 +1,5 @@
 import type { SearchTemplate } from '../searchTypes';
-import { readSearchTemplate, searchTemplateContentKey } from '../data/useSearchTemplates';
+import { readSearchTemplate, searchTemplateContentKey } from '../data/searchTemplateRepository';
 import { buildAdaptiveRecurringSearchPrompt, requireSearchTaskScope, SEARCH_DEADLINE_RULE, usesAdaptiveSearchRunner, type AdaptiveSearchRunnerState } from './adaptiveSearchTask';
 export { SEARCH_DEADLINE_RULE } from './adaptiveSearchTask';
 

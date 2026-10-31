@@ -19,7 +19,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { faGithub, faLinkedin } from '@fortawesome/free-brands-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-import JobWorkspace from '../../src/app/components/JobWorkspace.vue';
+import CloudWorkspace from '../../src/app/components/CloudWorkspace.vue';
 import AppToaster from '../../src/shared/ui/AppToaster.vue';
 import DesktopSidebar from '../../src/shared/ui/DesktopSidebar.vue';
 import { provideDesktopSidebar } from '../../src/shared/ui/desktopSidebar';
@@ -343,7 +343,7 @@ const Fixture = defineComponent({
     const lang = ref('en');
     const draftStatus = ref('');
     const workspaceKey = ref(0);
-    const workspace = ref<InstanceType<typeof JobWorkspace> | null>(null);
+    const workspace = ref<InstanceType<typeof CloudWorkspace> | null>(null);
     async function openWorkspaceList(value: 'opportunities' | 'applications') {
       if (workspace.value && !await workspace.value.openList(value)) return;
       tab.value = value;
@@ -883,7 +883,7 @@ const Fixture = defineComponent({
         h('button', { class: 'btn', onClick: () => returnRefinementProposal(true) }, 'Return over-limit proposal'),
         draftStatus.value ? h('span', { role: 'status', style: 'font-size:12px' }, draftStatus.value) : null,
       ]),
-      h(JobWorkspace, { ref: workspace, key: workspaceKey.value, client, userId: account, tab: tab.value, lang: lang.value, projectId: fixtureFlow === 'meta-research' ? 'fixtureproject000000' : 'fixture',
+      h(CloudWorkspace, { ref: workspace, key: workspaceKey.value, client, userId: account, tab: tab.value, lang: lang.value, projectId: fixtureFlow === 'meta-research' ? 'fixtureproject000000' : 'fixture',
         configurations: fixtureVariants.value, selectedId: 'sample-cv',
         readVersion: (id: string) => fixtureStates.has(id) ? structuredClone(fixtureStates.get(id)!) : null,
         createVariant: (name: string, state: CvState) => {

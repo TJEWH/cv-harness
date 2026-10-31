@@ -5,7 +5,7 @@ import { effectScope, ref, watch } from 'vue';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Application, OpportunityReview } from '../src/app/cloudTypes';
 import { createCloudCvSnapshot } from '../src/documents/privacy/domain/cloudCvPrivacy';
-import { normalizeOpportunity as readOpportunity, useJobWorkspace } from '../src/app/composables/useJobWorkspace';
+import { normalizeOpportunity as readOpportunity, useCloudWorkspace } from '../src/app/composables/useCloudWorkspace';
 import { opportunityRecency } from '../src/features/opportunities/domain/opportunityRecency';
 import { createTestState, stub } from './helpers';
 
@@ -100,7 +100,7 @@ test('workspace loading migrates local recovery once before publishing saved eva
       : [], error: null }));
   const scope = effectScope(); t.after(() => scope.stop());
   const account = ref('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   const published: { saved: string | null | undefined; draft: string | undefined }[] = [];
   scope.run(() => watch(workspace.opportunities, opportunities => {
     if (opportunities.length) published.push({ saved: workspace.reviews.value[0]?.comment, draft: values.get(evaluationDraft(account.value)) });
@@ -128,7 +128,7 @@ test('a stale account load cannot migrate or clear that account’s pending eval
     ? staleReviews.promise : { data: query.table === 'opportunities' ? [{ id: 'opportunity-1' }] : query.table === 'opportunity_reviews'
       ? [{ ...review(), user_id: 'account-b', comment: 'Owner B saved evaluation.' }] : [], error: null });
   const scope = effectScope(); t.after(() => scope.stop());
-  const account = ref('account-a'), workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const account = ref('account-a'), workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => queries.some(query => query.table === 'opportunity_reviews' && query.filters.user_id === 'account-a'));
   account.value = 'account-b'; await settleUntil(() => !workspace.loading.value);
   staleReviews.resolve({ data: [{ ...review(), comment: 'Owner A saved evaluation.' }], error: null });
@@ -171,7 +171,7 @@ test('standalone mode performs no cloud calls and pagination loads all shared op
     ? Array.from({ length: query.range?.[0] === 0 ? 500 : 2 }, (_, index) => ({ id: String((query.range?.[0] ?? 0) + index), title: 'Researcher' })) : [], error: null }));
   const scope = effectScope();
   const account = ref<string | null>(null);
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   assert.equal(await workspace.refresh(), false);
   assert.equal(queries.length, 0);
   account.value = 'account-a';
@@ -195,7 +195,7 @@ test('account changes clear old rows immediately and discard late network replie
     ? [{ id: 'job-a', title: 'Old catalogue row' }] : query.table === 'applications' ? [application()] : query.table === 'opportunity_reviews' ? [review()] : [], error: null });
   const scope = effectScope();
   const account = ref<string | null>('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal(workspace.applications.value.length, 1);
   assert.equal(workspace.reviews.value.length, 1);
@@ -219,7 +219,7 @@ test('pagination also honors projects with an API row limit below the requested 
     ? Array.from({ length: Math.min(100, 230 - (query.range?.[0] ?? 0)) }, (_, index) => ({ id: String((query.range?.[0] ?? 0) + index), title: 'Researcher' })) : [],
   count: query.table === 'opportunities' ? 230 : 0, error: null }));
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal(workspace.opportunities.value.length, 230);
   assert.deepEqual(queries.filter(({ table }) => table === 'opportunities').map(({ range }) => range?.[0]), [0, 100, 200]);
@@ -238,7 +238,7 @@ test('one-click create retries reuse RPC IDs, preserve server context, and never
     return { data: query.single ? persisted : [], error: null };
   });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const input = { opportunityId: 'opportunity-1' };
   assert.equal(await workspace.createApplication(input), null);
@@ -268,7 +268,7 @@ test('server application codes survive list, create, and update roundtrips witho
     return { data: query.table === 'applications' ? query.single ? persisted : [persisted] : [], error: null };
   });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal(workspace.applications.value[0].application_code, 'PHD-ServerAssigned_7A');
   const created = await workspace.createApplication({ opportunityId: 'opportunity-1' });
@@ -288,7 +288,7 @@ test('logout during a write prevents follow-up reads and stale local rows; refre
   const { client, queries } = fakeClient((query) => query.operation === 'rpc' ? writing.promise : { data: [], error: null });
   const scope = effectScope();
   const account = ref<string | null>('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   const pending = workspace.createApplication({ opportunityId: 'job' });
   await settleUntil(() => queries.some(({ operation }) => operation === 'rpc'));
@@ -315,7 +315,7 @@ test('reassigning a CV sends metadata in the same atomic RPC and never overwrite
     return { data: query.single ? persisted : [], error: null };
   });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const updated = await workspace.updateApplication('application-1', { cvState: createTestState(), status: 'submitted', contactEmail: 'employer@example.org', notes: ' Follow up ' });
   assert.ok(updated);
@@ -332,7 +332,7 @@ test('repeated one-click creates use the existing application ID returned by the
   const { client, queries } = fakeClient((query) => query.operation === 'rpc'
     ? { data: existing.id, error: null } : { data: query.single ? existing : [], error: null });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal((await workspace.createApplication({ opportunityId: 'opportunity-1' }))?.id, existing.id);
   assert.equal((await workspace.createApplication({ opportunityId: 'opportunity-1' }))?.id, existing.id);
@@ -345,7 +345,7 @@ test('opportunity review RPC updates the current user’s choice without writing
   const { client, queries } = fakeClient((query) => ({ data: query.operation === 'rpc'
     ? { ...review(), state: query.payload?.p_state } : query.table === 'opportunity_reviews' ? [review('other-opportunity')] : [], error: null }));
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal((await workspace.setOpportunityReview('opportunity-1', 'not_interested'))?.state, 'not_interested');
   assert.equal((await workspace.setOpportunityReview('opportunity-1', 'unreviewed'))?.state, 'unreviewed');
@@ -367,7 +367,7 @@ test('interest saves identify their activity while preserving application order 
     return { data: query.table === 'applications' && query.single ? application() : [], error: null };
   });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const interest = workspace.setOpportunityReview('opportunity-1', 'strong_interest');
   await settleUntil(() => queries.some(query => query.table === 'review_job_opportunity'));
@@ -401,7 +401,7 @@ test('interest activity and queued work cannot cross account changes or disposal
     : { data: [], error: null });
   const scope = effectScope();
   const account = ref('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   const oldInterest = workspace.setOpportunityReview('old-opportunity', 'strong_interest');
   await settleUntil(() => queries.some(query => query.table === 'review_job_opportunity'));
@@ -437,7 +437,7 @@ test('late strong-interest writes cannot restore a previous user’s choices aft
   const { client } = fakeClient((query) => query.operation === 'rpc' ? saving.promise : { data: [], error: null });
   const scope = effectScope();
   const account = ref<string | null>('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   const pending = workspace.setOpportunityReview('opportunity-1', 'strong_interest');
   account.value = 'account-b';
@@ -466,7 +466,7 @@ test('opportunity comments persist across reloads, interest choices and receipts
       : query.table === 'opportunity_reviews' ? [{ ...stored }] : [], error: null };
   });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const saved = await workspace.setOpportunityComment(source.id, '  Excellent research fit.\nDiscuss funding.  ');
   assert.equal(saved?.comment, '  Excellent research fit.\nDiscuss funding.  ');
@@ -477,7 +477,7 @@ test('opportunity comments persist across reloads, interest choices and receipts
   scope.stop();
 
   const nextScope = effectScope(); t.after(() => nextScope.stop());
-  const reloaded = nextScope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const reloaded = nextScope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !reloaded.loading.value);
   assert.equal(reloaded.reviews.value[0].comment, '  Excellent research fit.\nDiscuss funding.  ');
   assert.equal(reloaded.reviews.value[0].state, 'strong_interest');
@@ -502,7 +502,7 @@ test('invalid or failed comment saves preserve the saved comment and report a us
   const { client, queries } = fakeClient(query => query.operation === 'rpc' ? response
     : { data: query.table === 'opportunity_reviews' ? [original] : [], error: null });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal(await workspace.setOpportunityComment(original.opportunity_id, '🧪'.repeat(12001)), null);
   assert.match(workspace.opportunityCommentError.value, /12,000 characters/);
@@ -540,7 +540,7 @@ test('review, comment and application failures stay separate and clear on retry 
       : { data: null, error: { message: 'Offline' } } : { data: [], error: null });
   const scope = effectScope(); t.after(() => scope.stop());
   const account = ref<string | null>('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal(await workspace.createApplication({ opportunityId: 'opportunity-1' }), null);
   assert.match(workspace.error.value, /Could not save the application/);
@@ -582,7 +582,7 @@ test('comment saves and interest changes share user order without sending unrela
     return { data: query.table === 'opportunity_reviews' ? [{ ...stored }] : [], error: null };
   });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const comment = workspace.setOpportunityComment(stored.opportunity_id, 'Earlier thought');
   await settleUntil(() => queries.some(({ operation }) => operation === 'rpc'));
@@ -602,7 +602,7 @@ test('late and queued comment saves cannot cross account changes', async (t) => 
   const { client, queries } = fakeClient(query => query.operation === 'rpc' ? writing.promise : { data: [], error: null });
   const scope = effectScope(); t.after(() => scope.stop());
   const account = ref<string | null>('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   const comment = workspace.setOpportunityComment('opportunity-1', 'Private reason');
   await settleUntil(() => queries.some(({ operation }) => operation === 'rpc'));
@@ -629,7 +629,7 @@ test('comments and concurrent receipts preserve both changes in either response 
       : { data: query.table === 'opportunity_reviews' ? [original] : [], error: null });
     const scope = effectScope();
     try {
-      const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+      const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
       await settleUntil(() => !workspace.loading.value);
       const pendingReceipt = workspace.markOpportunityReviewed(source);
       const pendingComment = workspace.setOpportunityComment(source.id, 'Funding confirmed.');
@@ -670,7 +670,7 @@ test('strong interest survives a fresh workspace, updated-source receipt, and ap
         : query.table === 'applications' ? query.single ? created : created ? [created] : [] : [], error: null };
   });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal((await workspace.setOpportunityReview(source.id, 'strong_interest'))?.state, 'strong_interest');
   assert.deepEqual(queries.at(-1)?.payload,
@@ -678,7 +678,7 @@ test('strong interest survives a fresh workspace, updated-source receipt, and ap
   scope.stop();
 
   const nextScope = effectScope(); t.after(() => nextScope.stop());
-  const reloaded = nextScope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const reloaded = nextScope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !reloaded.loading.value);
   assert.equal(reloaded.reviews.value[0].state, 'strong_interest');
   assert.equal(reloaded.reviews.value[0].reviewed_updated_at, source.updated_at);
@@ -711,7 +711,7 @@ test('opening and changing review state persist the viewed source version across
     return { data: query.table === 'opportunities' ? [source] : query.table === 'opportunity_reviews' ? [{ ...stored }] : [], error: null };
   });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal((await workspace.markOpportunityReviewed(source))?.state, 'not_interested');
   assert.equal(workspace.reviews.value[0].reviewed_updated_at, source.updated_at);
@@ -721,7 +721,7 @@ test('opening and changing review state persist the viewed source version across
   assert.deepEqual(queries.at(-1)?.payload, { p_opportunity_id: source.id, p_observed_updated_at: source.updated_at, p_state: 'interested' });
   scope.stop();
   const nextScope = effectScope();
-  const reloaded = nextScope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const reloaded = nextScope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !reloaded.loading.value);
   assert.equal(opportunityRecency(reloaded.opportunities.value[0], new Date('2026-09-20T12:00:00Z'), reloaded.reviews.value[0].reviewed_updated_at), null);
   assert.equal(reloaded.reviews.value[0].state, 'interested');
@@ -744,7 +744,7 @@ test('parallel row receipts do not block state changes or overwrite a newer stro
       : { data: { ...feedback, reviewed_updated_at: source.updated_at }, error: null }
     : { data: [], error: null });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const pending = workspace.markOpportunityReviewed(source);
   assert.equal(workspace.saving.value, false);
@@ -773,7 +773,7 @@ test('failed receipts keep highlights and old receipts cannot cross account chan
     : { data: [], error: null });
   const scope = effectScope();
   const account = ref<string | null>('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal(await workspace.markOpportunityReviewed(source), null);
   assert.equal(workspace.reviews.value.length, 0);
@@ -800,7 +800,7 @@ test('rapidly opening different rows saves both receipts and an older refresh ca
     ? query.payload?.p_opportunity_id === 'first' ? first.promise : second.promise
     : holdReads ? reading.promise : { data: [], error: null });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const pendingFirst = workspace.markOpportunityReviewed(normalizeOpportunity({ id: 'first', updated_at: version }));
   const pendingSecond = workspace.markOpportunityReviewed(normalizeOpportunity({ id: 'second', updated_at: version }));
@@ -822,7 +822,7 @@ test('metadata can be saved before CV assignment and employer contact email is o
   const { client, queries } = fakeClient((query) => ({ data: query.operation === 'update'
     ? { ...application('application-1', null), ...query.payload } : [], error: null }));
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const updated = await workspace.updateApplication('application-1', { status: 'contacted', notes: 'Asked about supervision', contactEmail: '' });
   assert.ok(updated);
@@ -847,7 +847,7 @@ test('checklist mutations save only one task and retain owned application contex
     return { data: query.table === 'applications' ? [stored] : [], error: null };
   });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   await workspace.setApplicationChecklistItem(stored.id, 'requirements:degree', true);
   await workspace.setApplicationChecklistItem(stored.id, 'documents:cv', true);
@@ -870,7 +870,7 @@ test('removal changes only the confirmed application and keeps its review and CV
       : query.table === 'opportunity_reviews' ? [review('opportunity-1', 'not_interested')]
         : query.table === 'cv_variants' ? [{ id: 'cv-1', user_id: 'account-a', name: 'Snapshot' }] : [], error: null });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const cachedReviews = workspace.reviews.value;
   const cachedCvs = workspace.cvVariants.value;
@@ -904,7 +904,7 @@ test('removal preserves every cached evaluation field and never rereads feedback
         : query.table === 'opportunity_reviews' ? [previous] : [], error: null };
     });
     const scope = effectScope();
-    const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+    const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
     await settleUntil(() => !workspace.loading.value);
     const cachedReviews = workspace.reviews.value;
     const cachedReview = workspace.reviews.value[0];
@@ -925,7 +925,7 @@ test('unconfirmed or unavailable application removal preserves all cached record
     : { data: query.table === 'applications' ? [application()]
       : query.table === 'opportunity_reviews' ? [review('opportunity-1', 'not_interested')] : [], error: null });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const cachedApplications = workspace.applications.value, cachedReviews = workspace.reviews.value;
   assert.equal(await workspace.removeApplication('missing-application'), null);
@@ -947,7 +947,7 @@ test('removal never follows an old response with a feedback read under the next 
   });
   const scope = effectScope();
   const account = ref('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   const pending = workspace.removeApplication('application-1');
   await settleUntil(() => queries.some(query => query.operation === 'rpc'));
@@ -968,7 +968,7 @@ test('late checklist and removal results cannot affect another signed-in account
       : { data: query.table === 'applications' ? [application()] : [], error: null });
     const scope = effectScope();
     const account = ref<string | null>('account-a');
-    const workspace = scope.run(() => useJobWorkspace(client, account))!;
+    const workspace = scope.run(() => useCloudWorkspace(client, account))!;
     await settleUntil(() => !workspace.loading.value);
     const pending = operation === 'checklist' ? workspace.setApplicationChecklistItem('application-1', 'documents:cv', true) : workspace.removeApplication('application-1');
     await settleUntil(() => queries.some(({ operation }) => operation === 'rpc'));
@@ -987,7 +987,7 @@ test('application context loads the exact saved privacy CV from a fresh owned ap
     ? query.table === 'applications' ? fresh : { ...stored, user_id: 'account-a' }
     : query.table === 'applications' ? [application('application-1', 'old-cv')] : [], error: null }));
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal(queries.some(({ fields }) => fields?.includes('content_json')), false);
   const context = await workspace.getApplicationContext('application-1');
@@ -1005,7 +1005,7 @@ test('unassigned CV is an explicit valid context while missing assigned CV preve
     ? query.table === 'applications' ? application('application-1', assigned ? 'missing-cv' : null) : null
     : [], error: null }));
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const context = await workspace.getApplicationContext('application-1');
   assert.ok(context);
@@ -1026,7 +1026,7 @@ test('context loading rejects non-private CVs and cross-user responses', async (
     ? query.table === 'applications' ? { ...application('application-1', stored.id), user_id: owner } : { ...stored, user_id: owner }
     : [], error: null }));
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal(await workspace.getApplicationContext('application-1'), null);
   assert.match(workspace.error.value, /not a privacy snapshot/);
@@ -1044,7 +1044,7 @@ test('logout while a saved CV is loading discards the complete application conte
     : { data: [], error: null });
   const scope = effectScope();
   const account = ref<string | null>('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   const reading = workspace.getApplicationContext('application-1');
   await settleUntil(() => queries.some(({ table, single }) => table === 'cv_variants' && single));
@@ -1062,7 +1062,7 @@ test('explicit research refresh uses only the application ID and preserves its s
   const { client, queries } = fakeClient((query) => query.operation === 'rpc' ? { data: original.id, error: null }
     : { data: query.single ? updated : query.table === 'applications' ? [original] : [], error: null });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.deepEqual(workspace.applications.value[0].context_json, original.context_json);
   const result = await workspace.refreshApplicationContext(original.id);
@@ -1084,7 +1084,7 @@ test('logout during research refresh prevents follow-up reads and stale applicat
   const { client, queries } = fakeClient((query) => query.operation === 'rpc' ? updating.promise : { data: [], error: null });
   const scope = effectScope();
   const account = ref<string | null>('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   const pending = workspace.refreshApplicationContext('application-1');
   await settleUntil(() => queries.some(({ operation }) => operation === 'rpc'));
@@ -1117,7 +1117,7 @@ test('stage saves queue with explicit tracking choices and preserve the server l
     return { data: query.table === 'applications' ? [stored] : [], error: null };
   });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const stage = workspace.setApplicationStage(stored.id, 'tracking');
   await settleUntil(() => queries.some(query => query.operation === 'rpc'));
@@ -1153,7 +1153,7 @@ test('opening Tracking and resetting history keep the preparation status until a
     return { data: query.table === 'applications' ? [stored] : [], error: null };
   });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const opened = await workspace.setApplicationStage(stored.id, 'tracking');
   assert.equal(opened?.workflow_stage, 'tracking');
@@ -1185,7 +1185,7 @@ test('history reset accepts the server baseline and preserves application detail
   const { client, queries } = fakeClient(query => query.operation === 'rpc' ? { data: reset, error: null }
     : { data: query.table === 'applications' ? [original, other] : [], error: null });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.deepEqual(await workspace.resetApplicationHistory(original.id), reset);
   assert.deepEqual(workspace.applications.value, [reset, other]);
@@ -1201,7 +1201,7 @@ test('failed history resets retain the visible history and report the failure', 
   const { client } = fakeClient(query => query.operation === 'rpc' ? { data: null, error: { message: 'Connection failed' } }
     : { data: query.table === 'applications' ? [original] : [], error: null });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal(await workspace.resetApplicationHistory(original.id), null);
   assert.deepEqual(workspace.applications.value, [original]);
@@ -1226,7 +1226,7 @@ test('history reset rejects another owner, another application, and malformed ba
   const { client } = fakeClient(query => query.operation === 'rpc' ? { data: invalidRows.shift(), error: null }
     : { data: query.table === 'applications' ? [original] : [], error: null });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   while (invalidRows.length) {
     assert.equal(await workspace.resetApplicationHistory(original.id), null);
@@ -1243,7 +1243,7 @@ test('account changes discard an in-flight history reset without overwriting the
     : { data: query.table === 'applications' ? query.filters.user_id === 'account-b' ? [next] : [original] : [], error: null });
   const scope = effectScope(); t.after(() => scope.stop());
   const account = ref('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   const pending = workspace.resetApplicationHistory(original.id);
   await settleUntil(() => queries.some(query => query.operation === 'rpc'));
@@ -1273,7 +1273,7 @@ test('history reset runs after preceding note and tracking saves and preserves t
     return { data: query.table === 'applications' ? [stored] : [], error: null };
   });
   const scope = effectScope(); t.after(() => scope.stop());
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const save = workspace.updateApplication(stored.id, { notes: 'New note', status: 'contacted' });
   await settleUntil(() => queries.some(query => query.operation === 'update'));
@@ -1295,7 +1295,7 @@ test('queued application writes cannot run under the next account', async () => 
   const { client, queries } = fakeClient(query => query.operation === 'rpc' ? writing.promise : { data: [], error: null });
   const scope = effectScope();
   const account = ref<string | null>('account-a');
-  const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   const stage = workspace.setApplicationStage('application-1', 'refinement');
   await settleUntil(() => queries.some(query => query.operation === 'rpc'));
@@ -1314,7 +1314,7 @@ test('missing workflow RPC reports setup failure without inventing a saved stage
   const { client } = fakeClient(query => query.operation === 'rpc' ? { data: null, error: { code: 'PGRST202' } }
     : { data: query.table === 'applications' ? [original] : [], error: null });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   assert.equal(await workspace.setApplicationStage(original.id, 'refinement'), null);
   assert.match(workspace.error.value, /database setup is incomplete/);
@@ -1327,7 +1327,7 @@ test('disposed workspaces discard queued writes and reject new writes', async ()
   const writing = deferred<Result>();
   const { client, queries } = fakeClient(query => query.operation === 'rpc' ? writing.promise : { data: [], error: null });
   const scope = effectScope();
-  const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const stage = workspace.setApplicationStage('application-1', 'review');
   await settleUntil(() => queries.some(query => query.operation === 'rpc'));
@@ -1352,7 +1352,7 @@ test('evaluation commits use one comment RPC and preserve independent interest a
       evaluation_revision: stored.evaluation_revision + 1 };
     return { data: stored, error: null };
   });
-  const scope = effectScope(); const workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const scope = effectScope(); const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   await workspace.saveOpportunityFeedback('opportunity-1', { interest_rating: 0 });
   assert.equal(workspace.reviews.value[0].interest_rating, 0);
@@ -1373,7 +1373,7 @@ test('evaluation commits use one comment RPC and preserve independent interest a
 
 test('invalid feedback patches never reach storage and the workspace has no search-sharing state or mutation', async () => {
   const { client, queries } = fakeClient(() => ({ data: [], error: null }));
-  const scope = effectScope(); const account = ref('account-a'); const workspace = scope.run(() => useJobWorkspace(client, account))!;
+  const scope = effectScope(); const account = ref('account-a'); const workspace = scope.run(() => useCloudWorkspace(client, account))!;
   await settleUntil(() => !workspace.loading.value);
   for (const patch of [{ interest_rating: '2' }, { interest_rating: NaN }, { comment: 'not an allowed patch' }, { search_feedback_summary:'Retired second source.' }, { feedback_excluded: 'yes' }]) {
     assert.equal(await workspace.saveOpportunityFeedback('opportunity-1', patch as never), null);
@@ -1404,7 +1404,7 @@ test('manual disposition saves one owner-scoped partial patch without changing i
     if (query.table === 'save_opportunity_feedback') stored = { ...stored, ...query.payload?.p_patch as object };
     return { data: stored, error: null };
   });
-  const scope = effectScope(), workspace = scope.run(() => useJobWorkspace(client, ref('account-a')))!;
+  const scope = effectScope(), workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   const saved = await workspace.saveOpportunityDisposition('opportunity-1', { manually_archived: true, technical_issue_category: 'requirements', technical_issue_note: 'Degree requirement not met.' });
   assert.equal(saved?.manually_archived, true); assert.equal(saved?.interest_rating, 8);

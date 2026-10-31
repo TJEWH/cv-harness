@@ -46,7 +46,7 @@ docker run --detach --name cv-adaptive-feedback-test \
   --label cv-builder.test-suite=adaptive-feedback --network none \
   -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=adaptive_feedback_test postgres:17.6
 npm run test:opportunity-feedback
-node --import tsx --test test/opportunityFeedback.test.ts test/useJobWorkspace.test.ts
+node --import tsx --test test/opportunityFeedback.test.ts test/useCloudWorkspace.test.ts
 npm run typecheck
 npm test
 npm run build
@@ -84,3 +84,5 @@ node --import tsx --test \
 The baseline failures concern shared-interest revision 1 versus 7, iteration review count 2 versus 1, missing resolved question text, and feedback count 3 versus 2. They are outside AF-01 and remain unchanged. The broad suite started before the final account-switch regression was added; the final focused run includes that regression. Existing merge/canonical database suites were not run because AF-01 does not change their contract and those suites reference historical captured fixtures; this ticket uses synthetic data only.
 
 Changed files: `package.json`; `src/app/cloudTypes.ts`; `src/features/opportunities/domain/opportunityFeedback.ts`; `src/app/composables/useJobWorkspace.ts`; `supabase/opportunity_feedback_signals.sql`; `supabase/tests/opportunity_feedback_signals.sql`; `test/opportunityFeedback.test.ts`; `test/useJobWorkspace.test.ts`; `test/opportunityFeedback/database.test.ts`; `test/opportunityFeedback/db.ts`; `test/opportunityFeedback/fixtures/prerequisites.sql`; this document. The supplied untracked ticket package was left unchanged.
+
+The historical results above retain their original filenames. The workspace module and regression suite are now `src/app/composables/useCloudWorkspace.ts` and `test/useCloudWorkspace.test.ts`.

@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CvState, SavedConfiguration } from '../../documents/cv/types';
 import type { Application, Opportunity, OpportunityReviewState } from '../cloudTypes';
 import { APPLICATION_STATUSES, TRACKING_STATUSES, OPPORTUNITY_REVIEW_STATES } from '../cloudTypes';
-import { useJobWorkspace } from '../composables/useJobWorkspace';
+import { useCloudWorkspace } from '../composables/useCloudWorkspace';
 import { safeEmailUrl } from '../../shared/lib/safeUrl';
 import { isOpportunityDeadlinePassed, opportunityDeadlineSortKey, formatOpportunityDeadline } from '../../features/opportunities/domain/opportunityDeadline';
 import { hasReviewedOpportunity, opportunityRecency } from '../../features/opportunities/domain/opportunityRecency';
@@ -20,7 +20,7 @@ import OpportunityDispositionControls from '../../features/opportunities/compone
 import { isOpportunityInPast } from '../../features/opportunities/domain/opportunityDisposition';
 import OpportunityContext from '../../features/opportunities/components/OpportunityContext.vue';
 import ApplicationWorkspace from '../../features/applications/components/ApplicationWorkspace.vue';
-import SearchTemplates from '../../features/meta-search/components/SearchTemplates.vue';
+import MetaSearchEditor from '../../features/meta-search/components/MetaSearchEditor.vue';
 import ApplicationIdentifier from '../../features/applications/components/ApplicationIdentifier.vue';
 import ApplicationDeadlineCalendar from '../../features/applications/components/ApplicationDeadlineCalendar.vue';
 import WorkspaceDetailHeader from '../../shared/ui/WorkspaceDetailHeader.vue';
@@ -46,7 +46,7 @@ const sidebarActive = computed(() => desktopSidebar.value && props.active);
 const emit = defineEmits<{ navigate: [tab: 'opportunities' | 'applications']; 'save-career-variant': [name: string, state: CvState]; 'edit-variant': [id: string] }>();
 const { opportunities, applications, reviews, loading, saving, savingReview, error, opportunityReviewError, opportunityCommentError, createApplication,
   updateApplication, setApplicationStage, setApplicationChecklistItem, resetApplicationHistory, removeApplication, setOpportunityReview, setOpportunityComment, markOpportunityReviewed,
-  saveOpportunityFeedback, saveOpportunityDisposition } = useJobWorkspace(props.client, () => props.userId);
+  saveOpportunityFeedback, saveOpportunityDisposition } = useCloudWorkspace(props.client, () => props.userId);
 const blockingSave = computed(() => saving.value && !savingReview.value);
 const startingApplication = shallowRef<{ opportunityId: string } | null>(null);
 watch(() => props.userId, () => { startingApplication.value = null; }, { flush: 'sync' });
@@ -83,7 +83,7 @@ const tableScroll = ref<HTMLElement | null>(null);
 const workspaceElement = ref<HTMLElement | null>(null);
 const opportunityDetail = ref<HTMLElement | null>(null);
 const applicationWorkspace = ref<InstanceType<typeof ApplicationWorkspace> | null>(null);
-const searchTemplates = ref<InstanceType<typeof SearchTemplates> | null>(null);
+const searchTemplates = ref<InstanceType<typeof MetaSearchEditor> | null>(null);
 const opportunityFeedback = ref<{ flush(): Promise<boolean> } | null>(null);
 const applicationFeedback = ref<{ flush(): Promise<boolean> } | null>(null);
 const opportunityDisposition = ref<{ flush(): Promise<boolean> } | null>(null);
@@ -639,7 +639,7 @@ useToastWatch(() => notice.value, () => {
         </nav>
       </div>
     </DesktopSidebarPortal>
-    <SearchTemplates v-if="showingSearchTemplates" ref="searchTemplates" :client="client" :user-id="userId" :lang="lang" :sidebar-active="props.active" :project-id="projectId" />
+    <MetaSearchEditor v-if="showingSearchTemplates" ref="searchTemplates" :client="client" :user-id="userId" :lang="lang" :sidebar-active="props.active" :project-id="projectId" />
     <template v-else>
     <DesktopSidebarPortal area="major" :active="props.active !== false && !showingDetail">
     <div v-show="!showingDetail" class="jobs-toolbar jobs-sidebar-controls" :class="{ 'jobs-toolbar--sidebar': sidebarActive }" @keydown.esc="closeFilters">
