@@ -177,6 +177,9 @@ function mount(t: TestContext, options: { restoredOpportunityId?: string; active
     notes: string; notesStatus: string; notesError: string; flushNotes(): Promise<boolean>;
     applicationWorkspace: { flush(): Promise<boolean> } | null; flushTextareas(): Promise<boolean>; flush(): Promise<boolean>;
     searchTemplates: { flush(): Promise<boolean> } | null;
+    opportunityView: 'catalogue' | 'searches' | 'insights'; showingInsights: boolean; showingOpportunitySubview: boolean;
+    selectOpportunityView(view: 'catalogue' | 'searches' | 'insights'): Promise<boolean>;
+    openInsightOpportunity(id: string): Promise<boolean>;
     opportunityFeedback: { flush(): Promise<boolean> } | null; applicationFeedback: { flush(): Promise<boolean> } | null;
     opportunityDisposition: { flush(): Promise<boolean> } | null;
     applicationDisposition: { flush(): Promise<boolean> } | null;
@@ -1626,4 +1629,114 @@ test('workspace replacement and disposal cannot flush a later child from an obso
     saving.resolve(true);
     assert.equal(await pending, false); assert.equal(laterFlushes, 0);
   });
+});
+
+test('Insights navigation commits pending textareas and awaits the current editor persistence', async t => {
+  const f = mount(t), saved = deferred<boolean>();
+  let commits = 0, started = 0;
+  const unregister = registerTextareaCommit(() => { commits++; });
+  t.after(unregister);
+  f.setup.searchTemplates = { flush: () => { started++; return saved.promise; } };
+  const navigation = f.setup.selectOpportunityView('insights');
+  await settleUntil(() => started === 1);
+  assert.equal(commits, 1);
+  assert.equal(f.setup.opportunityView, 'catalogue');
+  saved.resolve(true);
+  assert.equal(await navigation, true);
+  assert.equal(f.setup.opportunityView, 'insights');
+  assert.equal(f.setup.showingInsights, true);
+  assert.equal(f.setup.showingOpportunitySubview, true);
+});
+
+test('failed feedback persistence keeps the existing view instead of opening Insights', async t => {
+  const f = mount(t);
+  f.setup.opportunityFeedback = { flush: async () => false };
+  assert.equal(await f.setup.selectOpportunityView('insights'), false);
+  assert.equal(f.setup.opportunityView, 'catalogue');
+  assert.equal(f.setup.showingInsights, false);
+});
+
+test('Insights navigation rejects an obsolete account save and clears the view on account changes', async t => {
+  const f = mount(t), saved = deferred<boolean>();
+  let started = false;
+  f.setup.searchTemplates = { flush: () => { started = true; return saved.promise; } };
+  const navigation = f.setup.selectOpportunityView('insights');
+  await settleUntil(() => started);
+  f.props.userId = 'account-two'; await nextTick();
+  saved.resolve(true);
+  assert.equal(await navigation, false);
+  assert.equal(f.setup.opportunityView, 'catalogue');
+  f.setup.searchTemplates = null;
+  assert.equal(await f.setup.selectOpportunityView('insights'), true);
+  f.props.userId = 'account-three'; await nextTick();
+  assert.equal(f.setup.opportunityView, 'catalogue');
+  assert.equal(f.setup.showingInsights, false);
+});
+
+test('opening an Insights job flushes drafts and opens its complete opportunity despite Results filters', async t => {
+  const f = mount(t), saved = deferred<boolean>();
+  assert.equal(await f.setup.selectOpportunityView('insights'), true);
+  f.setup.query = 'A different opportunity';
+  assert.equal(f.setup.filteredOpportunities.length, 0);
+  let started = 0;
+  const progress: string[] = [];
+  const unregister = registerTextareaCommit(() => { progress.push('commit'); });
+  t.after(unregister);
+  f.setup.opportunityFeedback = { flush: () => { started++; progress.push('feedback'); return saved.promise; } };
+  const navigation = f.setup.openInsightOpportunity(f.opportunity.id);
+  await settleUntil(() => started === 1);
+  assert(progress.indexOf('commit') >= 0 && progress.indexOf('commit') < progress.indexOf('feedback'));
+  assert.equal(f.setup.opportunityView, 'insights');
+  assert.equal(f.setup.showingDetail, false);
+  saved.resolve(true);
+  assert.equal(await navigation, true);
+  await nextTick();
+  assert.equal(f.setup.opportunityView, 'catalogue');
+  assert.equal(f.setup.selectedOpportunity?.id, f.opportunity.id);
+  assert.equal(f.setup.showingDetail, true);
+  assert.equal(f.setup.query, 'A different opportunity', 'opening a selected job preserves Results filters');
+  assert.equal(f.receipts.at(-1)?.id, f.opportunity.id, 'the standard opportunity visit path is retained');
+});
+
+test('failed persistence or missing records cannot leave Insights through its opportunity action', async t => {
+  const f = mount(t);
+  assert.equal(await f.setup.selectOpportunityView('insights'), true);
+  let flushed = 0;
+  f.setup.opportunityFeedback = { flush: async () => { flushed++; return false; } };
+  assert.equal(await f.setup.openInsightOpportunity('not-in-this-catalogue'), false);
+  assert.equal(flushed, 0, 'an unknown record cannot trigger navigation persistence');
+  assert.equal(await f.setup.openInsightOpportunity(f.opportunity.id), false);
+  assert.equal(flushed, 1);
+  assert.equal(f.setup.opportunityView, 'insights');
+  assert.equal(f.setup.selectedOpportunity, undefined);
+  assert.equal(f.receipts.length, 0);
+});
+
+test('pending Insights opportunity navigation cannot outlive its account, view, or record', async t => {
+  for (const changed of ['account', 'tab', 'active', 'record', 'newer navigation'] as const) {
+    await t.test(changed, async current => {
+      const f = mount(current), saved = deferred<boolean>();
+      assert.equal(await f.setup.selectOpportunityView('insights'), true);
+      let started = 0;
+      f.setup.opportunityFeedback = { flush: () => { started++; return saved.promise; } };
+      const navigation = f.setup.openInsightOpportunity(f.opportunity.id);
+      await settleUntil(() => started === 1);
+      let replacement: Promise<boolean> | undefined;
+      if (changed === 'account') f.props.userId = 'account-two';
+      else if (changed === 'tab') f.props.tab = 'applications';
+      else if (changed === 'active') f.props.active = false;
+      else if (changed === 'record') f.opportunities.value = [];
+      else {
+        replacement = f.setup.selectOpportunityView('searches');
+        await settleUntil(() => started === 2);
+      }
+      await nextTick();
+      saved.resolve(true);
+      assert.equal(await navigation, false);
+      if (replacement) assert.equal(await replacement, true);
+      assert.equal(f.setup.selectedOpportunity, undefined);
+      assert.equal(f.receipts.length, 0);
+      assert.equal(f.setup.opportunityView, changed === 'account' ? 'catalogue' : changed === 'newer navigation' ? 'searches' : 'insights');
+    });
+  }
 });

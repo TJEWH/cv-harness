@@ -372,7 +372,7 @@
     },
     {
       "path": "src/app/components/JobWorkspace.vue",
-      "sha256": "ec902feda841d44c6f14259f6e6897a400660a9bb9845b9babf9812d414fd135"
+      "sha256": "2f01d491967edfa7b95aa6c6e5bb464b7588308d5a9c07aa4ccb92678315b9db"
     },
     {
       "path": "src/features/opportunities/components/OpportunityFeedbackControls.vue",

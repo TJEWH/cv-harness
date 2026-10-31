@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import InfoHint from '../../shared/ui/InfoHint.vue';
 import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowReactive, shallowRef, watch } from 'vue';
-import { faFilter, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
+import { faChartSimple, faFilter, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CvState, SavedConfiguration } from '../../documents/cv/types';
 import type { Application, Opportunity, OpportunityReviewState } from '../cloudTypes';
@@ -21,6 +21,7 @@ import { isOpportunityInPast } from '../../features/opportunities/domain/opportu
 import OpportunityContext from '../../features/opportunities/components/OpportunityContext.vue';
 import ApplicationWorkspace from '../../features/applications/components/ApplicationWorkspace.vue';
 import SearchTemplates from '../../features/meta-search/components/SearchTemplates.vue';
+import OpportunityInsights from '../../features/opportunities/components/OpportunityInsights.vue';
 import ApplicationIdentifier from '../../features/applications/components/ApplicationIdentifier.vue';
 import ApplicationDeadlineCalendar from '../../features/applications/components/ApplicationDeadlineCalendar.vue';
 import WorkspaceDetailHeader from '../../shared/ui/WorkspaceDetailHeader.vue';
@@ -88,11 +89,28 @@ const opportunityFeedback = ref<{ flush(): Promise<boolean> } | null>(null);
 const applicationFeedback = ref<{ flush(): Promise<boolean> } | null>(null);
 const opportunityDisposition = ref<{ flush(): Promise<boolean> } | null>(null);
 const applicationDisposition = ref<{ flush(): Promise<boolean> } | null>(null);
-const opportunityView = ref<'catalogue' | 'searches'>('catalogue');
+const opportunityView = ref<'catalogue' | 'searches' | 'insights'>('catalogue');
 const showingSearchTemplates = computed(() => props.tab === 'opportunities' && opportunityView.value === 'searches');
-async function selectOpportunityView(view: 'catalogue' | 'searches') {
-  if (!await flushTextareas()) return;
+const showingInsights = computed(() => props.tab === 'opportunities' && opportunityView.value === 'insights');
+const showingOpportunitySubview = computed(() => showingSearchTemplates.value || showingInsights.value);
+let opportunityViewRequest = 0;
+function opportunityNavigationCurrent(request: number, owner: string): boolean {
+  return request === opportunityViewRequest && props.userId === owner && props.tab === 'opportunities' && props.active;
+}
+async function selectOpportunityView(view: 'catalogue' | 'searches' | 'insights'): Promise<boolean> {
+  const request = ++opportunityViewRequest, owner = props.userId;
+  if (!await flushTextareas() || !opportunityNavigationCurrent(request, owner)) return false;
   opportunityView.value = view;
+  return true;
+}
+async function openInsightOpportunity(id: string): Promise<boolean> {
+  if (!showingInsights.value || !opportunityById.value.has(id)) return false;
+  const request = ++opportunityViewRequest, owner = props.userId;
+  if (!await flushTextareas() || !opportunityNavigationCurrent(request, owner)
+    || !showingInsights.value || !opportunityById.value.has(id)) return false;
+  opportunityView.value = 'catalogue';
+  openOpportunity(id);
+  return true;
 }
 const opportunityNavigationIds = ref<string[]>([]);
 const applicationNavigationIds = ref<string[]>([]);
@@ -260,7 +278,7 @@ watch([() => props.userId, evaluationOpportunityId, () => props.tab, () => props
   });
 onBeforeUnmount(clearCommentToast);
 const showingDetail = computed(() => props.tab === 'opportunities' ? Boolean(selectedOpportunity.value) : Boolean(editingApplication.value));
-useJobCardTrackHeight(tableScroll, () => props.active && !showingDetail.value);
+useJobCardTrackHeight(tableScroll, () => props.active && !showingOpportunitySubview.value && !showingDetail.value);
 const statusNames: Record<string, [string, string]> = {
   unreviewed: ['Not reviewed', 'Ungeprüft'], not_interested: ['Low', 'Gering'], interested: ['Medium', 'Mittel'], strong_interest: ['High', 'Hoch'],
 };
@@ -283,7 +301,7 @@ function timestampLabel(value: string) {
   return new Intl.DateTimeFormat(props.lang === 'de' ? 'de-DE' : 'en-GB', { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value));
 }
 watch(() => props.tab, () => { filtersOpen.value = false; notice.value = ''; cancelRemoval(); removedOpportunityId.value = null; });
-watch(() => props.userId, () => { filtersOpen.value = false; editingId.value = null; selectedOpportunityId.value = null; cancelRemoval(); removedOpportunityId.value = null; visitedOpportunityVersions.value = new Map(); });
+watch(() => props.userId, () => { filtersOpen.value = false; editingId.value = null; selectedOpportunityId.value = null; opportunityView.value = 'catalogue'; cancelRemoval(); removedOpportunityId.value = null; visitedOpportunityVersions.value = new Map(); });
 watch(() => props.active, active => { if (!active) filtersOpen.value = false; });
 function closeFilters(event: KeyboardEvent) {
   if (!filtersOpen.value) return;
@@ -508,16 +526,16 @@ async function navigateDetail(direction: -1 | 1) {
   } finally { detailNavigationPending = false; }
 }
 const swipe = createJobSwipe({
-  enabled: () => props.active && !showingSearchTemplates.value && showingDetail.value && !blockingSave.value && !startingApplication.value && !removingId.value
+  enabled: () => props.active && !showingOpportunitySubview.value && showingDetail.value && !blockingSave.value && !startingApplication.value && !removingId.value
     && window.matchMedia('(max-width: 760px)').matches,
   onSwipe: direction => { void navigateDetail(direction); },
 });
 const cardSwipe = createJobCardSwipe({
-  enabled: () => props.active && !showingSearchTemplates.value && !showingDetail.value && !filtersOpen.value
+  enabled: () => props.active && !showingOpportunitySubview.value && !showingDetail.value && !filtersOpen.value
     && window.matchMedia('(max-width: 760px)').matches,
   root: () => tableScroll.value,
 });
-watch([() => props.tab, () => props.active, () => props.userId, selectedOpportunityId, editingId], () => { swipe.cancel(); cardSwipe.cancel(); cancelSwipeTransition(); });
+watch([() => props.tab, () => props.active, () => props.userId, selectedOpportunityId, editingId, opportunityView], () => { swipe.cancel(); cardSwipe.cancel(); cancelSwipeTransition(); });
 onBeforeUnmount(() => { swipe.cancel(); cardSwipe.cancel(); cancelSwipeTransition(); });
 async function toggleApplication(application: Application) {
   if (saving.value) return;
@@ -631,15 +649,17 @@ useToastWatch(() => notice.value, () => {
 <template>
   <section :id="`builder-group-${tab}`" ref="workspaceElement" class="jobs-workspace" :aria-busy="loading || blockingSave" :aria-label="tab === 'opportunities' ? text('Opportunities', 'Stellenangebote') : text('Applications', 'Bewerbungen')"
     @touchstart.passive="swipe.onTouchStart" @touchmove="swipe.onTouchMove" @touchend.passive="swipe.onTouchEnd" @touchcancel.passive="swipe.cancel" @click.capture="swipe.onClickCapture">
-    <DesktopSidebarPortal area="subtabs" :active="props.active && tab === 'opportunities' && (!showingDetail || showingSearchTemplates)">
-      <div v-if="tab === 'opportunities' && (!showingDetail || showingSearchTemplates)" class="opportunity-navigation">
+    <DesktopSidebarPortal area="subtabs" :active="props.active && tab === 'opportunities' && (!showingDetail || showingOpportunitySubview)">
+      <div v-if="tab === 'opportunities' && (!showingDetail || showingOpportunitySubview)" class="opportunity-navigation">
         <nav class="opportunity-subtabs workspace-subtabs" :aria-label="text('Opportunity sections', 'Bereiche für Stellenangebote')">
           <button class="btn" :class="{ 'is-active': opportunityView === 'catalogue' }" type="button" :aria-pressed="opportunityView === 'catalogue'" @click="selectOpportunityView('catalogue')"><font-awesome-icon :icon="['fas', 'briefcase']" aria-hidden="true" /><span>{{ text('Results', 'Ergebnisse') }}</span></button>
           <button class="btn" :class="{ 'is-active': opportunityView === 'searches' }" type="button" :aria-pressed="opportunityView === 'searches'" @click="selectOpportunityView('searches')"><font-awesome-icon :icon="faMagnifyingGlass" aria-hidden="true" /><span>{{ text('Meta research', 'Metasuche') }}</span></button>
+          <button class="btn" :class="{ 'is-active': opportunityView === 'insights' }" type="button" :aria-pressed="opportunityView === 'insights'" @click="selectOpportunityView('insights')"><font-awesome-icon :icon="faChartSimple" aria-hidden="true" /><span>{{ text('Insights', 'Einblicke') }}</span></button>
         </nav>
       </div>
     </DesktopSidebarPortal>
     <SearchTemplates v-if="showingSearchTemplates" ref="searchTemplates" :client="client" :user-id="userId" :lang="lang" :sidebar-active="props.active" :project-id="projectId" />
+    <OpportunityInsights v-else-if="showingInsights" :sidebar-active="props.active" :owner-id="userId" :client="client" :project-ref="projectId" :opportunities="opportunities" :reviews="reviews" :applications="applications" :lang="lang" :loading="loading" :current-time="now" @open-opportunity="openInsightOpportunity" />
     <template v-else>
     <DesktopSidebarPortal area="major" :active="props.active !== false && !showingDetail">
     <div v-show="!showingDetail" class="jobs-toolbar jobs-sidebar-controls" :class="{ 'jobs-toolbar--sidebar': sidebarActive }" @keydown.esc="closeFilters">
@@ -792,7 +812,7 @@ useToastWatch(() => notice.value, () => {
 .opportunity-navigation { flex: 0 0 auto; }
 
 .jobs-workspace > :not(.jobs-table-scroll) { flex-shrink: 0; }
-.jobs-workspace > .search-templates, .jobs-workspace > .application-workspace, .jobs-workspace > .opportunity-detail { flex: 1 1 auto; min-height: 0; }
+.jobs-workspace > .search-templates, .jobs-workspace > .opportunity-insights, .jobs-workspace > .application-workspace, .jobs-workspace > .opportunity-detail { flex: 1 1 auto; min-height: 0; }
 .jobs-workspace > .application-workspace:focus, .opportunity-detail:focus { outline: none; }
 .opportunity-detail { display: flex; flex-direction: column; min-width: 0; padding: 32px; overflow: hidden;}
 .opportunity-detail__body { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; }

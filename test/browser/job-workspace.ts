@@ -7,6 +7,7 @@ import InputNumber from 'primevue/inputnumber';
 import Select from 'primevue/select';
 import Textarea from 'primevue/textarea';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { OpportunityInterestReason, OpportunityReviewState } from '../../src/app/cloudTypes';
 import type { CvState, SavedConfiguration } from '../../src/documents/cv/types';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import {
@@ -29,6 +30,11 @@ import { createRefinementFixture, REFINEMENT_TABLES } from '../refinementFixture
 import { livingStandardFixture } from '../fixtures/livingStandard';
 import { canonicalOpportunityFixture } from '../fixtures/canonicalOpportunity';
 import { opportunityFixture } from '../fixtures/opportunity';
+import { createSearchTemplate, searchTemplateContentKey } from '../../src/features/meta-search/data/useSearchTemplates';
+import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../../src/features/meta-search/data/searchTemplateCloud';
+import { createSearchBreadthPolicy } from '../../src/features/meta-search/domain/adaptiveSearchPlanner';
+import type { AdaptiveSearchDashboardData } from '../../src/features/meta-search/composables/adaptiveSearchDashboard';
+import dashboardFixture from './adaptive-dashboard.fixture.json';
 import '../../src/assets/cv.css';
 
 if (!import.meta.env.DEV) throw new Error('The browser fixture is available only on the development server.');
@@ -36,7 +42,13 @@ if (!import.meta.env.DEV) throw new Error('The browser fixture is available only
 type Row = Record<string, unknown>;
 const account = '90000000-0000-4000-8000-000000000001';
 const fixtureFlow = new URLSearchParams(location.search).get('flow');
-if (['job-navigation', 'application-groups', 'canonical-data', 'manual-past'].includes(fixtureFlow || '')) {
+if (fixtureFlow === 'insights' && new URLSearchParams(location.search).get('webgl') === 'disabled') {
+  const originalGetContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, contextId: string, ...args: unknown[]) {
+    return contextId.startsWith('webgl') ? null : Reflect.apply(originalGetContext, this, [contextId, ...args]);
+  } as typeof originalGetContext;
+}
+if (['job-navigation', 'application-groups', 'canonical-data', 'manual-past', 'insights'].includes(fixtureFlow || '')) {
   for (const key of ['CV_SELECTED_OPPORTUNITY', 'CV_SELECTED_APPLICATION']) sessionStorage.removeItem(`${key}:${account}`);
 }
 const now = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
@@ -98,6 +110,128 @@ const database: Record<string, Row[]> = {
     { user_id: account, opportunity_id: '10000000-0000-4000-8000-000000000008', state: 'interested', reviewed_updated_at: recent, created_at: now, updated_at: recent },
   ],
 };
+let insightsDashboard: AdaptiveSearchDashboardData | null = null;
+if (fixtureFlow === 'insights') {
+  // Distinct current/previous feedback windows support descriptive alignment comparisons.
+  database.opportunities.push(
+    opportunityFixture({ id: '10000000-0000-4000-8000-000000000010', opportunity_key: 'insights-embodied-interaction', title: 'Embodied Interaction PhD',
+      institution: 'Northbridge Technical University', country: 'Netherlands', topics: ['Human–robot interaction', 'Prototyping'],
+      personal_fit: { scale_min: 0, scale_max: 10, summary: 'Synthetic current catalogue assessment.', score: 7.2 }, created_at: now, updated_at: now }),
+    opportunityFixture({ id: '10000000-0000-4000-8000-000000000011', opportunity_key: 'insights-computational-materials', title: 'Computational Materials Fellowship',
+      institution: 'Example Institute', country: 'France', topics: ['Materials simulation'],
+      personal_fit: { scale_min: 0, scale_max: 10, summary: 'Synthetic current catalogue assessment.', score: 8.5 }, created_at: now, updated_at: now }),
+    opportunityFixture({ id: '10000000-0000-4000-8000-000000000012', opportunity_key: 'insights-acoustic-measurement', title: 'Acoustic Measurement Researcher',
+      institution: 'Research University', country: 'Denmark', topics: ['Acoustics', 'Experiments'],
+      personal_fit: { scale_min: 0, scale_max: 10, summary: 'Synthetic current catalogue assessment.', score: 6.8 }, created_at: now, updated_at: now }),
+    opportunityFixture({ id: '10000000-0000-4000-8000-000000000013', opportunity_key: 'insights-robot-sensing', title: 'Human–Robot Sensing Fellowship',
+      institution: 'Northbridge Technical University', country: 'Sweden', topics: ['Robotics', 'Sensing'],
+      personal_fit: { scale_min: 0, scale_max: 10, summary: 'Synthetic current catalogue assessment.', score: 9.1 }, created_at: now, updated_at: now }),
+  );
+  const evaluations: { state: OpportunityReviewState; rating: number | null; reasons: OpportunityInterestReason[]; comment: string | null; excluded?: boolean }[] = [
+    { state: 'strong_interest', rating: 9.2, reasons: [{ category: 'topic', polarity: 'positive', target: 'Robotics' }, { category: 'method', polarity: 'positive', target: 'Physical experiments' }], comment: 'Strong interest in hands-on robot learning and experiments with people.' },
+    { state: 'strong_interest', rating: 8.6, reasons: [{ category: 'hardware', polarity: 'positive' }, { category: 'funding', polarity: 'positive' }], comment: 'Embedded prototypes and a funded contract make this a useful applied research direction.' },
+    { state: 'not_interested', rating: 3.1, reasons: [{ category: 'topic', polarity: 'negative', target: 'Materials discovery' }], comment: 'The advertised research tasks have little connection to my preferred sensing and robotics work.' },
+    { state: 'interested', rating: 7, reasons: [{ category: 'funding', polarity: 'positive' }], comment: 'Promising fellowship, but I need clearer evidence of the daily research tasks.', excluded: true },
+    { state: 'strong_interest', rating: 9.4, reasons: [{ category: 'topic', polarity: 'positive', target: 'Learning systems' }, { category: 'method', polarity: 'positive', target: 'Prototyping' }], comment: 'The combination of learning methods and physical prototypes is especially appealing.' },
+    { state: 'interested', rating: 7.6, reasons: [{ category: 'topic', polarity: 'positive', target: 'Robotics' }], comment: 'Interesting robotics research; verify funding and the amount of experimental work.' },
+    { state: 'not_interested', rating: 2.8, reasons: [{ category: 'hardware', polarity: 'negative' }, { category: 'method', polarity: 'negative', target: 'Simulation-only work' }], comment: 'The role appears dominated by simulation, with little opportunity to build or test hardware.' },
+    { state: 'interested', rating: null, reasons: [{ category: 'topic', polarity: 'positive', target: 'Learning systems' }], comment: 'A relevant topic, although the application requirements need closer inspection.' },
+    { state: 'unreviewed', rating: null, reasons: [], comment: null },
+    { state: 'strong_interest', rating: 8.4, reasons: [{ category: 'method', polarity: 'positive', target: 'Physical experiments' }], comment: 'Human interaction experiments and tangible prototypes match the work I want to pursue.' },
+    { state: 'not_interested', rating: 2.5, reasons: [{ category: 'topic', polarity: 'negative', target: 'Materials simulation' }], comment: 'The computational materials focus does not match my preferred sensing and physical interaction tasks.' },
+    { state: 'interested', rating: 7.8, reasons: [{ category: 'topic', polarity: 'positive', target: 'Acoustics' }], comment: 'Acoustic measurement and reproducible experiments are relevant; check the balance of field and desk work.' },
+    { state: 'strong_interest', rating: 8.3, reasons: [{ category: 'topic', polarity: 'positive', target: 'Robotics' }], comment: 'The sensing fellowship combines robot experiments with the practical research methods I prefer.' },
+  ];
+  const feedbackAges = [2, 5, 44, 50, 8, 38, 12, 47, 1, 18, 35, 42, 55];
+  database.opportunities.forEach((opportunity, index) => {
+    opportunity.created_at = new Date(Date.now() - feedbackAges[index]! * 24 * 60 * 60 * 1000).toISOString();
+  });
+  database.opportunities[6]!.topics = ['Control', 'Robotics', 'Human–robot interaction', 'Simulation'];
+  evaluations[6]!.reasons = [...evaluations[6]!.reasons, { category: 'topic', polarity: 'negative', target: 'Simulation' }];
+  database.opportunity_reviews = database.opportunities.map((opportunity, index) => {
+    const example = evaluations[index]!;
+    const feedbackTime = new Date(Date.now() - feedbackAges[index]! * 24 * 60 * 60 * 1000).toISOString();
+    return { user_id: account, opportunity_id: opportunity.id, state: example.state, interest_rating: example.rating,
+      interest_reasons: example.reasons, feedback_excluded: example.excluded ?? false, feedback_revision: 1,
+      // One legacy rating has no meaningful timestamp, despite ordinary row timestamps.
+      feedback_updated_at: example.comment && index !== 7 ? feedbackTime : null, evaluation_revision: example.comment ? 1 : 0,
+      comment: example.comment, reviewed_updated_at: opportunity.updated_at, created_at: feedbackTime, updated_at: feedbackTime };
+  });
+  const topicBundles = [
+    ['Robotics', 'Human–robot interaction', 'Prototyping'], ['Sensing', 'Acoustics', 'Experiments'],
+    ['Machine learning', 'Embedded systems', 'Efficient AI'], ['Control', 'Robotics', 'Simulation'],
+    ['Acoustics', 'Human–robot interaction', 'Physical computing'], ['Embedded systems', 'Sensing', 'Robotics'],
+  ];
+  for (let index = 0; index < 24; index++) {
+    const topics = topicBundles[index % topicBundles.length]!;
+    const mismatch = index % 6 === 3, high = !mismatch && index % 6 !== 1 && index % 6 !== 4;
+    const added = new Date(Date.now() - (index * 3 + 3) * 86_400_000).toISOString();
+    const opportunity = opportunityFixture({ id: `10000000-0000-4000-8000-${String(index + 14).padStart(12, '0')}`,
+      opportunity_key: `insights-history-${index}`, title: `Synthetic ${topics[0]} research ${index + 1}`,
+      institution: index % 2 ? 'Northbridge Technical University' : 'Research University', country: ['Netherlands', 'Germany', 'Denmark'][index % 3],
+      topics: [...topics], personal_fit: { scale_min: 0, scale_max: 10, score: mismatch ? 9.3 : index % 7 === 0 ? 7.1 : 8.3 + index % 4 * .2, summary: 'Synthetic current catalogue fit.' },
+      created_at: added, updated_at: recent });
+    database.opportunities.push(opportunity);
+    database.opportunity_reviews.push({ user_id: account, opportunity_id: opportunity.id,
+      state: mismatch ? 'not_interested' : high ? 'strong_interest' : 'interested', interest_rating: mismatch ? 2.5 : high ? 8.5 + index % 3 * .3 : 6.4,
+      interest_reasons: mismatch ? [{ category: 'topic', polarity: 'negative', target: 'Simulation' }, { category: 'method', polarity: 'negative', target: 'Simulation-only work' }]
+        : [{ category: 'topic', polarity: 'positive', target: topics[0] }],
+      feedback_revision: 1, feedback_updated_at: now, evaluation_revision: 1,
+      comment: mismatch ? 'A familiar robotics topic appears alongside simulation-only tasks that I want to avoid.' : 'Synthetic evidence of interest in the advertised research topic bundle.',
+      reviewed_updated_at: recent, created_at: added, updated_at: now });
+  }
+  const acousticExamples = [
+    { title: 'Acoustic Array Sensing Fellowship', topics: ['ACOUSTIC_SENSING', 'acoustic sensing', 'Acoustics', 'Array signal processing'], rating: 9.1, fit: 8.9, age: 7, avoidedTopic: null },
+    { title: 'Robot Audition Researcher', topics: ['Robot_Audition', 'AUDIO_SENSING', 'Embedded_AI', 'Acoustic perception'], rating: 8.7, fit: 8.6, age: 20, avoidedTopic: null },
+    { title: 'Acoustic Measurement PhD', topics: ['Acoustic_measurement', 'ACOUSTIC sensing', 'Signal processing'], rating: 8.5, fit: 8.4, age: 27, avoidedTopic: null },
+    { title: 'Computational Acoustics Fellowship', topics: ['Computational_acoustics', 'ACOUSTICS', 'Simulation'], rating: 2.1, fit: 8.8, age: 35, avoidedTopic: 'COMPUTATIONAL_ACOUSTICS' },
+    { title: 'Ultrasound Simulation Researcher', topics: ['Ultrasound', 'Acoustic_simulation', 'Simulation'], rating: 3, fit: 8.7, age: 50, avoidedTopic: 'Acoustic_simulation' },
+    { title: 'Bioacoustics Field Recording Fellowship', topics: ['BIOACOUSTICS', 'Field_recording', 'Acoustic monitoring'], rating: 3.7, fit: 7.4, age: 65, avoidedTopic: null },
+  ];
+  acousticExamples.forEach((example, index) => {
+    const added = new Date(Date.now() - example.age * 86_400_000).toISOString();
+    const opportunity = opportunityFixture({ id: `10000000-0000-4000-8000-${String(index + 38).padStart(12, '0')}`,
+      opportunity_key: `insights-acoustic-${index}`, title: example.title,
+      institution: index % 2 ? 'Northbridge Technical University' : 'Research University', country: index % 2 ? 'Netherlands' : 'Denmark',
+      topics: example.topics, personal_fit: { scale_min: 0, scale_max: 10, score: example.fit, summary: 'Synthetic current catalogue fit.' },
+      created_at: added, updated_at: recent });
+    // Keep legacy variants in the mock database so the real catalogue read boundary cleans them.
+    opportunity.topics = [...example.topics];
+    database.opportunities.push(opportunity);
+    const high = example.rating >= 8;
+    database.opportunity_reviews.push({ user_id: account, opportunity_id: opportunity.id,
+      state: high ? 'strong_interest' : 'not_interested', interest_rating: example.rating,
+      interest_reasons: example.avoidedTopic ? [{ category: 'topic', polarity: 'negative', target: example.avoidedTopic }]
+        : high ? [{ category: 'topic', polarity: 'positive', target: example.topics[0] }] : [],
+      feedback_revision: 1, feedback_updated_at: now, evaluation_revision: 1,
+      comment: high ? 'Synthetic interest in acoustic research supported by hands-on sensing tasks.'
+        : example.avoidedTopic ? 'Synthetic feedback explicitly avoids the named topic in this research context.'
+          : 'Synthetic low job interest without an explicit negative topic reason.',
+      reviewed_updated_at: recent, created_at: added, updated_at: now });
+  });
+  database.applications = [0, 1].map((index) => {
+    const opportunity = database.opportunities[index]!;
+    return { id: `20000000-0000-4000-8000-${String(index + 100).padStart(12, '0')}`, user_id: account,
+      opportunity_id: opportunity.id, cv_variant_id: null, contact_email: null, context_json: structuredClone(opportunity),
+      context_captured_at: recent, completed_checklist_keys: [], status: index === 0 ? 'submitted' : 'preparation',
+      workflow_stage: index === 0 ? 'tracking' : 'preparation', tracking_started: index === 0,
+      status_history: [{ status: index === 0 ? 'submitted' : 'preparation', changedAt: recent }],
+      notes: 'PRIVATE_APPLICATION_NOTES_CANARY', contacted_at: null, submitted_at: index === 0 ? recent : null,
+      created_at: now, updated_at: recent };
+  });
+  // Reuse only the isolated synthetic SQL capture, scoped to this fixture owner.
+  insightsDashboard = JSON.parse(JSON.stringify(dashboardFixture).replaceAll(dashboardFixture.user_id, account)) as AdaptiveSearchDashboardData;
+  Object.assign(insightsDashboard.settings, { search_breadth_percent: 20, breadth_revision: 0 });
+  insightsDashboard.policy = createSearchBreadthPolicy(20);
+  insightsDashboard.planning_capacity = { core_queries: 20, discretionary: 10 };
+  const template = createSearchTemplate('Synthetic research search', 'Europe/Tirane');
+  template.researchInterests = 'Robotics; acoustic sensing; embedded learning systems; hands-on experiments';
+  template.cloud = { id: insightsDashboard.search_id, revision: 1, contentKey: searchTemplateContentKey(template) };
+  database.opportunity_search_templates = [{ id: insightsDashboard.search_id, user_id: account, name: template.name,
+    revision: 1, criteria: searchTemplateCloudCriteria(template), schedule: searchTemplateCloudSchedule(template),
+    created_at: now, updated_at: recent,
+    meta_search: { version: 1, active: true, editor: template, systemPrompt: '', userPrompt: '', recurringPrompt: '' } }];
+}
 if (fixtureFlow === 'canonical-data') {
   database.opportunities = [canonicalOpportunityFixture()];
   database.opportunity_reviews = [];
@@ -208,6 +342,12 @@ const client = {
     let signal: AbortSignal | undefined;
     const execute = () => {
       if (signal?.aborted) return { data: null, error: new Error('Aborted') };
+      if (insightsDashboard && name === 'read_opportunity_search_dashboard') {
+        return parameters.p_search_id === insightsDashboard.search_id && parameters.p_project_ref === insightsDashboard.project_ref
+          ? { data: structuredClone(insightsDashboard), error: null }
+          : { data: null, error: { code: '42501', message: 'Synthetic search scope mismatch' } };
+      }
+      if (insightsDashboard && name === 'read_adaptive_search_readiness') return { data: structuredClone(insightsDashboard.readiness), error: null };
       if (fixtureFlow === 'manual-past' && name === 'save_opportunity_feedback') {
         const review = database.opportunity_reviews.find(row => row.user_id === account && row.opportunity_id === parameters.p_opportunity_id);
         if (!review) return { data: null, error: new Error('Missing fixture review') };
@@ -883,7 +1023,7 @@ const Fixture = defineComponent({
         h('button', { class: 'btn', onClick: () => returnRefinementProposal(true) }, 'Return over-limit proposal'),
         draftStatus.value ? h('span', { role: 'status', style: 'font-size:12px' }, draftStatus.value) : null,
       ]),
-      h(JobWorkspace, { ref: workspace, key: workspaceKey.value, client, userId: account, tab: tab.value, lang: lang.value, projectId: fixtureFlow === 'meta-research' ? 'fixtureproject000000' : 'fixture',
+      h(JobWorkspace, { ref: workspace, key: workspaceKey.value, client, userId: account, tab: tab.value, lang: lang.value, projectId: insightsDashboard?.project_ref ?? (fixtureFlow === 'meta-research' ? 'fixtureproject000000' : 'fixture'),
         configurations: fixtureVariants.value, selectedId: 'sample-cv',
         readVersion: (id: string) => fixtureStates.has(id) ? structuredClone(fixtureStates.get(id)!) : null,
         createVariant: (name: string, state: CvState) => {
