@@ -5,9 +5,9 @@ export const APPLICATION_STATUSES = ['preparation', 'refinement', 'attachments',
 export type ApplicationStatus = typeof APPLICATION_STATUSES[number];
 export const APPLICATION_STAGES = ['preparation', 'refinement', 'review', 'tracking'] as const;
 export type ApplicationStage = typeof APPLICATION_STAGES[number];
-export const OPPORTUNITY_REVIEW_STATES = ['unreviewed', 'not_interested', 'interested', 'strong_interest'] as const;
+export const OPPORTUNITY_REVIEW_STATES = ['unreviewed', 'not_interested', 'interested', 'strong_interest', 'very_high_interest'] as const;
 export type OpportunityReviewState = typeof OPPORTUNITY_REVIEW_STATES[number];
-export const OPPORTUNITY_INTEREST_REASON_CATEGORIES = ['topic', 'method', 'hardware', 'location', 'funding', 'timing', 'other'] as const;
+export const OPPORTUNITY_INTEREST_REASON_CATEGORIES = ['topic', 'method', 'background_fit', 'project_context', 'hardware', 'location', 'funding', 'timing', 'requirements', 'availability', 'other'] as const;
 export type OpportunityInterestReasonCategory = typeof OPPORTUNITY_INTEREST_REASON_CATEGORIES[number];
 export const OPPORTUNITY_TECHNICAL_ISSUES = ['closed', 'requirements', 'application_problem', 'other'] as const;
 export type OpportunityTechnicalIssue = typeof OPPORTUNITY_TECHNICAL_ISSUES[number];
@@ -44,7 +44,7 @@ export interface OpportunityReview {
   comment?: string | null;
   /** Server-maintained evaluation revision, independent of numeric interest. */
   evaluation_revision?: number;
-  /** AF-01 fields are optional while an installation is awaiting its additive migration. */
+  /** Legacy numeric override, retained for record compatibility; current feedback uses review/application state. */
   interest_rating?: number | null;
   interest_reasons?: OpportunityInterestReason[];
   feedback_excluded?: boolean;

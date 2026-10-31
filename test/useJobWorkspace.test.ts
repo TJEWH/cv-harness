@@ -890,7 +890,7 @@ test('removal changes only the confirmed application and keeps its review and CV
 });
 
 test('removal preserves every cached evaluation field and never rereads feedback, including zero interest', async () => {
-  for (const state of ['not_interested', 'unreviewed', 'interested', 'strong_interest'] as const) {
+  for (const state of ['not_interested', 'unreviewed', 'interested', 'strong_interest', 'very_high_interest'] as const) {
     const previous: OpportunityReview = { ...review('opportunity-1', state), interest_rating: 0,
       comment: 'Keep my complete private evaluation.', interest_reasons: [{ category: 'topic', polarity: 'negative', target: 'Robotics' }],
       feedback_excluded: true, feedback_revision: 3, feedback_updated_at: '2026-09-19T16:00:00Z',

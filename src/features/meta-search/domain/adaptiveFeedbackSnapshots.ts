@@ -24,8 +24,31 @@ export interface AdaptiveFeedbackGroup {
   score_sum: number;
   mean_interest: number | null;
 }
+export type OpportunityInterestMetricVersion = 'opportunity-interest-v1' | 'opportunity-interest-v2';
+export const isSupportedOpportunityInterestMetric = (value: unknown): value is OpportunityInterestMetricVersion =>
+  value === 'opportunity-interest-v1' || value === 'opportunity-interest-v2';
+
+/** Historical packets retain their original conventions; current evidence uses categorical/application decisions. */
+export function validOpportunityInterestEvidence(value: Pick<AdaptiveFeedbackExample, 'metric_version' | 'interest_origin' | 'interest_score' | 'review_state' | 'confirmed_submission'>): boolean {
+  if (!isSupportedOpportunityInterestMetric(value.metric_version) || !OPPORTUNITY_REVIEW_STATES.includes(value.review_state)
+    || typeof value.confirmed_submission !== 'boolean' || !(value.interest_score === null || isOpportunityInterestRating(value.interest_score))) return false;
+  const { interest_origin: origin, interest_score: score, review_state: state, confirmed_submission: submitted } = value;
+  const legacy = value.metric_version === 'opportunity-interest-v1';
+  if (legacy && state === 'very_high_interest') return false;
+  if (origin === 'excluded') return score === null;
+  if (origin === 'none') return score === null && state === 'unreviewed' && !submitted;
+  if (origin === 'explicit_rating') return legacy && score !== null;
+  if (origin === 'confirmed_submission') return submitted && score === (legacy ? 9 : 9.5) && (!legacy || state === 'unreviewed');
+  if (origin === 'application') return !legacy && !submitted && score === 9;
+  if (origin === 'categorical_review') {
+    const categorical = { strong_interest: 8, interested: 6, not_interested: 2, very_high_interest: 9, unreviewed: null }[state];
+    return categorical !== null && score === categorical && (legacy || !submitted);
+  }
+  return false;
+}
+
 export interface AdaptiveFeedbackSnapshot {
-  metric_version: typeof OPPORTUNITY_INTEREST_METRIC_VERSION;
+  metric_version: OpportunityInterestMetricVersion;
   selection_policy_version: typeof ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION;
   fingerprint_encoding: typeof ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING;
   feedback_revision: number;
@@ -33,7 +56,7 @@ export interface AdaptiveFeedbackSnapshot {
   preference_revision: number;
   counts: {
     eligible: number; scored: number; confirmed_submissions: number; explicit_rating: number; categorical_review: number;
-    submission_fallback: number; baseline_available: number; approved_summaries: number; selected: number;
+    application?: number; submission_fallback: number; baseline_available: number; approved_summaries: number; selected: number;
     omitted_limit: number; omitted_bytes: number; omitted_groups: number;
   };
   aggregates: { score_sum: number; mean_interest: number | null; groups: AdaptiveFeedbackGroup[] };
@@ -46,6 +69,8 @@ export interface CompileAdaptiveFeedbackInput {
   search_id: string;
   /** Assigned by the server after comparing semantic fingerprints; excluded from the fingerprint. */
   feedback_revision: number;
+  /** Set only when reproducing a historical packet; new snapshots use the current metric. */
+  metric_version?: OpportunityInterestMetricVersion;
   preference_revision?: number;
   /** Owner-filtered, authorized AF-02 projections only, never raw catalogue or application records. */
   examples: readonly (AdaptiveFeedbackExample | null)[];
@@ -116,24 +141,18 @@ function originalPrediction(value: unknown, owner: string, id: string): Opportun
 async function safeExample(value: unknown, owner: string, search: string): Promise<AdaptiveFeedbackExample | null> {
   if (!record(value) || typeof value.opportunity_id !== 'string' || !uuid.test(value.opportunity_id)
     || value.user_id !== undefined && value.user_id !== owner || value.search_id !== undefined && value.search_id !== search
-    || value.metric_version !== OPPORTUNITY_INTEREST_METRIC_VERSION || !revision(value.feedback_revision)
+    || !isSupportedOpportunityInterestMetric(value.metric_version) || !revision(value.feedback_revision)
     || !OPPORTUNITY_REVIEW_STATES.includes(value.review_state as typeof OPPORTUNITY_REVIEW_STATES[number])
-    || typeof value.confirmed_submission !== 'boolean' || !['explicit_rating', 'categorical_review', 'confirmed_submission', 'none'].includes(value.interest_origin as string)
+    || typeof value.confirmed_submission !== 'boolean' || !['explicit_rating', 'categorical_review', 'application', 'confirmed_submission', 'none'].includes(value.interest_origin as string)
     || !(value.interest_score === null || isOpportunityInterestRating(value.interest_score))) return null;
   const result: AdaptiveFeedbackExample = {
-    opportunity_id: value.opportunity_id.toLowerCase(), topics: [], metric_version: OPPORTUNITY_INTEREST_METRIC_VERSION,
+    opportunity_id: value.opportunity_id.toLowerCase(), topics: [], metric_version: value.metric_version,
     interest_score: value.interest_score as number | null, interest_origin: value.interest_origin as AdaptiveFeedbackExample['interest_origin'],
     interest_gap: null, baseline_status: 'unavailable', feedback_revision: value.feedback_revision,
     feedback_updated_at: timestamp(value.feedback_updated_at), review_state: value.review_state as AdaptiveFeedbackExample['review_state'],
     confirmed_submission: value.confirmed_submission, submission_at: value.confirmed_submission ? timestamp(value.submission_at) : null, reasons: [],
   };
-  if (result.interest_origin === 'none' && result.interest_score !== null || result.interest_origin !== 'none' && result.interest_score === null) return null;
-  if (result.interest_origin === 'none' && (result.review_state !== 'unreviewed' || result.confirmed_submission)) return null;
-  if (result.interest_origin === 'confirmed_submission' && (!result.confirmed_submission || result.interest_score !== 9 || result.review_state !== 'unreviewed')) return null;
-  if (result.interest_origin === 'categorical_review') {
-    const expected = { strong_interest: 8, interested: 6, not_interested: 2, unreviewed: null }[result.review_state];
-    if (result.interest_score !== expected || expected === null) return null;
-  }
+  if (!validOpportunityInterestEvidence(result)) return null;
   for (const [key, limit] of Object.entries({ opportunity_key: 200, title: 240, institution: 200, research_summary: 1000 })) {
     if (opportunityFeedbackTextIsSafe(value[key], limit)) Object.assign(result, { [key]: value[key] });
   }
@@ -144,7 +163,8 @@ async function safeExample(value: unknown, owner: string, search: string): Promi
   if (Array.isArray(value.topics)) result.topics = [...new Set(value.topics.filter(topic => opportunityFeedbackTextIsSafe(topic, 120)))].sort(compare).slice(0, 16);
   try { result.reasons = normalizeOpportunityInterestReasons(value.reasons).filter(reason => !reason.target || opportunityFeedbackTextIsSafe(reason.target, 120)); } catch { /* Malformed tags are withheld. */ }
   const prediction = value.baseline_status === 'available' ? originalPrediction(value.original_prediction, owner, result.opportunity_id) : undefined;
-  const observedAt = opportunityFeedbackTimestamp(result.interest_origin === 'confirmed_submission' ? result.submission_at : result.feedback_updated_at);
+  const observedAt = result.interest_origin === 'application' ? null
+    : opportunityFeedbackTimestamp(result.interest_origin === 'confirmed_submission' ? result.submission_at : result.feedback_updated_at);
   if (prediction && result.interest_score !== null && observedAt !== null && opportunityFeedbackTimestamp(prediction.predicted_at)! <= observedAt
     && typeof value.interest_gap === 'number' && Number.isFinite(value.interest_gap) && value.interest_gap >= -10 && value.interest_gap <= 10
     && Math.abs(result.interest_score - prediction.score - value.interest_gap) < 1e-12) {
@@ -172,6 +192,7 @@ function preferences(values: readonly ApprovedAdaptivePreference[]): ApprovedAda
     if (!record(item) || typeof item.preference_id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/u.test(item.preference_id)
       || typeof item.category !== 'string' || !(OPPORTUNITY_INTEREST_REASON_CATEGORIES as readonly string[]).includes(item.category)
       || typeof item.polarity !== 'string' || !['positive', 'negative'].includes(item.polarity)
+      || ['requirements', 'availability'].includes(item.category) && item.polarity !== 'negative'
       || !opportunityFeedbackTextIsSafe(item.target, 120)) throw new TypeError('Invalid approved structured preference.');
     const normalized: ApprovedAdaptivePreference = { preference_id: item.preference_id, category: item.category as ApprovedAdaptivePreference['category'],
       polarity: item.polarity as ApprovedAdaptivePreference['polarity'], target: item.target };
@@ -201,7 +222,7 @@ function groups(examples: readonly AdaptiveFeedbackExample[]): AdaptiveFeedbackG
 
 function selectExamples(examples: readonly AdaptiveFeedbackExample[]): AdaptiveFeedbackExample[] {
   const selected: AdaptiveFeedbackExample[] = [], ids = new Set<string>(), institutions = new Set<string>(), topics = new Set<string>();
-  const rank = (example: AdaptiveFeedbackExample) => ({ explicit_rating: 0, categorical_review: 1, confirmed_submission: 2, none: 3, excluded: 4 })[example.interest_origin];
+  const rank = (example: AdaptiveFeedbackExample) => ({ explicit_rating: 0, categorical_review: 1, application: 2, confirmed_submission: 3, none: 4, excluded: 5 })[example.interest_origin];
   const best = (candidates: readonly AdaptiveFeedbackExample[]) => candidates.filter(example => !ids.has(example.opportunity_id)).sort((a, b) => rank(a) - rank(b)
     || Number(Boolean(b.institution && !institutions.has(textKey(b.institution)))) - Number(Boolean(a.institution && !institutions.has(textKey(a.institution))))
     || Number(b.topics.some(topic => !topics.has(textKey(topic)))) - Number(a.topics.some(topic => !topics.has(textKey(topic))))
@@ -212,7 +233,7 @@ function selectExamples(examples: readonly AdaptiveFeedbackExample[]): AdaptiveF
     for (const topic of example.topics) topics.add(textKey(topic));
   };
   const buckets = [examples.filter(example => example.confirmed_submission),
-    examples.filter(example => ['explicit_rating', 'categorical_review'].includes(example.interest_origin) && (example.interest_score ?? -1) >= 8),
+    examples.filter(example => (['explicit_rating', 'categorical_review'].includes(example.interest_origin) || example.metric_version === 'opportunity-interest-v2' && ['application', 'confirmed_submission'].includes(example.interest_origin)) && (example.interest_score ?? -1) >= 8),
     examples.filter(example => example.interest_gap !== null && example.interest_gap <= -2),
     examples.filter(example => example.interest_gap !== null && example.interest_gap >= 2)];
   while (selected.length < ADAPTIVE_FEEDBACK_MAX_EXAMPLES) {
@@ -233,11 +254,13 @@ export async function compileAdaptiveFeedbackSnapshot(input: CompileAdaptiveFeed
     || !revision(input.feedback_revision) || !revision(input.preference_revision ?? 0)) throw new TypeError('Invalid feedback snapshot scope or revision.');
   const owner = input.user_id.toLowerCase(), search = input.search_id.toLowerCase(), preferenceRevision = input.preference_revision ?? 0;
   const assignedRevision = input.feedback_revision;
+  const metricVersion = input.metric_version ?? OPPORTUNITY_INTEREST_METRIC_VERSION;
+  if (!isSupportedOpportunityInterestMetric(metricVersion)) throw new TypeError('Unsupported feedback metric version.');
   const approved = preferences(input.approved_preferences ?? []);
   const safe = await Promise.all(input.examples.map(example => safeExample(example, owner, search)));
   const unique = new Map<string, AdaptiveFeedbackExample>();
   for (const example of safe) {
-    if (!example) continue;
+    if (!example || example.metric_version !== metricVersion) continue;
     const previous = unique.get(example.opportunity_id);
     if (!previous || example.feedback_revision > previous.feedback_revision) unique.set(example.opportunity_id, example);
     else if (example.feedback_revision === previous.feedback_revision && canonicalJson(example) !== canonicalJson(previous)) throw new TypeError('Conflicting current feedback observations.');
@@ -246,17 +269,18 @@ export async function compileAdaptiveFeedbackSnapshot(input: CompileAdaptiveFeed
   const allGroups = groups(eligible);
   const selected = selectExamples(eligible);
   const inputFingerprint = await opportunityFeedbackTextHash(canonicalJson({ user_id: owner, search_id: search,
-    metric_version: OPPORTUNITY_INTEREST_METRIC_VERSION, selection_policy_version: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
+    metric_version: metricVersion, selection_policy_version: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
     fingerprint_encoding: ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING,
     preference_revision: preferenceRevision, examples: eligible, approved_preferences: approved }));
   const total = statistics(eligible.flatMap(example => example.interest_score === null ? [] : [example.interest_score]));
   const packet: AdaptiveFeedbackSnapshot = {
-    metric_version: OPPORTUNITY_INTEREST_METRIC_VERSION, selection_policy_version: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
+    metric_version: metricVersion, selection_policy_version: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
     fingerprint_encoding: ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING, feedback_revision: assignedRevision, input_fingerprint: inputFingerprint,
     preference_revision: preferenceRevision,
     counts: { eligible: eligible.length, scored: total.scored, confirmed_submissions: eligible.filter(example => example.confirmed_submission).length,
       explicit_rating: eligible.filter(example => example.interest_origin === 'explicit_rating').length,
       categorical_review: eligible.filter(example => example.interest_origin === 'categorical_review').length,
+      ...(metricVersion === 'opportunity-interest-v2' ? { application: eligible.filter(example => example.interest_origin === 'application').length } : {}),
       submission_fallback: eligible.filter(example => example.interest_origin === 'confirmed_submission').length,
       baseline_available: eligible.filter(example => example.baseline_status === 'available').length,
       approved_summaries: eligible.filter(example => example.search_feedback_summary !== undefined).length,

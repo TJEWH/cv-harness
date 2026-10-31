@@ -92,3 +92,12 @@ test('AF-08 completion uses a complete sorted manifest and a stable completion i
     assert.throws(() => validateAdaptiveCompletionEnvelope(invalid));
   }
 });
+
+test('current payload guidance includes v2 evidence and reason restrictions while preserving the old full pin', async () => {
+  const { ADAPTIVE_BATCH_PROTOCOL_TEXT, ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT } = await import('../src/features/meta-search/domain/adaptiveSearchProtocol');
+  assert.match(ADAPTIVE_BATCH_PROTOCOL_TEXT, /background_fit, project_context, requirements, availability/u);
+  assert.match(ADAPTIVE_BATCH_PROTOCOL_TEXT, /requirements and availability allow only negative/u);
+  assert.match(ADAPTIVE_BATCH_PROTOCOL_TEXT, /Current v2 application and confirmed-submission decisions are substantive evidence/u);
+  assert.match(ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT, /never a submission-only score fallback/u);
+  assert.notEqual(ADAPTIVE_BATCH_PROTOCOL_TEXT, ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT);
+});

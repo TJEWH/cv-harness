@@ -3,7 +3,7 @@ import { SEARCH_CRITERIA_KEYS, type SearchCriteria } from '../searchTypes';
 import { OPPORTUNITY_INTEREST_REASON_CATEGORIES } from '../../../app/cloudTypes';
 import { opportunityFeedbackTimestamp } from '../../opportunities/domain/opportunityFeedback';
 import {
-  ADAPTIVE_FEEDBACK_MAX_BYTES, ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION, projectSafeAdaptiveFeedbackExample,
+  ADAPTIVE_FEEDBACK_MAX_BYTES, ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION, projectSafeAdaptiveFeedbackExample, isSupportedOpportunityInterestMetric,
   type AdaptiveFeedbackSnapshot, type AdaptiveFeedbackGroup, type ApprovedAdaptivePreference,
 } from './adaptiveFeedbackSnapshots';
 import { opportunityFeedbackTextIsSafe, sanitizeOpportunityFeedbackUrl, validateAdaptiveSummaryInclusion, type AdaptiveSummaryInclusion } from '../../opportunities/domain/opportunityFeedbackPrivacy';
@@ -13,7 +13,7 @@ import {
   type AdaptiveSearchPolicy, type ApprovedAdaptiveRule,
 } from './adaptiveSearchPlanner';
 import { ADAPTIVE_SOURCE_KINDS, ADAPTIVE_SOURCE_STATUSES } from './adaptiveSearchSources';
-import { ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT, ADAPTIVE_BATCH_PROTOCOL_PREFIX, ADAPTIVE_BATCH_PROTOCOL_TEXT,
+import { ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT, ADAPTIVE_BATCH_PROTOCOL_PREFIX, ADAPTIVE_BATCH_PROTOCOL_TEXT, ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT,
   ADAPTIVE_MAX_BUNDLE_BYTES, ADAPTIVE_MAX_SOURCES, ADAPTIVE_PROTOCOL_STARTUP_CAPABILITIES,
   ADAPTIVE_PROTOCOL_STARTUP_EXECUTION_CONTRACT } from './adaptiveSearchProtocol';
 
@@ -195,10 +195,11 @@ function nullableScore(value: unknown): number | null {
 function sum(value: unknown): number { return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fail('invalid_bundle'); }
 async function feedback(value: unknown, owner: string, search: string): Promise<AdaptiveStartupFeedback> {
   const raw = object(value), counts = object(raw.counts), aggregates = object(raw.aggregates);
-  if (raw.metric_version !== 'opportunity-interest-v1' || raw.selection_policy_version !== ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION
+  if (!isSupportedOpportunityInterestMetric(raw.metric_version) || raw.selection_policy_version !== ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION
     || !['sha256-canonical-json-v1', 'sha256-pg-jsonb-v1'].includes(raw.fingerprint_encoding as string)) fail('incompatible_release');
   if (!Array.isArray(raw.examples) || raw.examples.length > 16 || !Array.isArray(aggregates.groups) || aggregates.groups.length > 64) fail('scope_oversized');
   const cleanCounts = Object.fromEntries(countFields.map(field => [field, integer(counts[field])])) as AdaptiveStartupFeedback['counts'];
+  if (raw.metric_version === 'opportunity-interest-v2') cleanCounts.application = integer(counts.application);
   const groups: AdaptiveFeedbackGroup[] = aggregates.groups.map(value => {
     const row = object(value);
     if (![...OPPORTUNITY_INTEREST_REASON_CATEGORIES, 'institution'].includes(row.kind as string)
@@ -207,7 +208,7 @@ async function feedback(value: unknown, owner: string, search: string): Promise<
     return { kind: row.kind as AdaptiveFeedbackGroup['kind'], key: row.key, count, scored, score_sum: sum(row.score_sum), mean_interest: nullableScore(row.mean_interest),
       ...(row.polarity === undefined ? {} : { polarity: row.polarity as 'positive' | 'negative' }) };
   });
-  const result: AdaptiveStartupFeedback = { metric_version: 'opportunity-interest-v1', selection_policy_version: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
+  const result: AdaptiveStartupFeedback = { metric_version: raw.metric_version, selection_policy_version: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
     fingerprint_encoding: raw.fingerprint_encoding as AdaptiveStartupFeedback['fingerprint_encoding'], feedback_revision: integer(raw.feedback_revision),
     input_fingerprint: digest(raw.input_fingerprint), preference_revision: integer(raw.preference_revision),
     counts: cleanCounts, aggregates: { score_sum: sum(aggregates.score_sum), mean_interest: nullableScore(aggregates.mean_interest), groups },
@@ -217,7 +218,8 @@ async function feedback(value: unknown, owner: string, search: string): Promise<
   result.approved_preferences = preferenceRows.map(value => {
     const row = object(value);
     if (!OPPORTUNITY_INTEREST_REASON_CATEGORIES.includes(row.category as typeof OPPORTUNITY_INTEREST_REASON_CATEGORIES[number])
-      || !['positive', 'negative'].includes(row.polarity as string) || !opportunityFeedbackTextIsSafe(row.target, 120)) fail('invalid_bundle');
+      || !['positive', 'negative'].includes(row.polarity as string)
+      || ['requirements', 'availability'].includes(row.category as string) && row.polarity !== 'negative' || !opportunityFeedbackTextIsSafe(row.target, 120)) fail('invalid_bundle');
     return { preference_id: identity(row.preference_id), category: row.category as ApprovedAdaptivePreference['category'], polarity: row.polarity as 'positive' | 'negative', target: row.target };
   });
   const examples = await Promise.all(raw.examples.map(value => {
@@ -225,7 +227,7 @@ async function feedback(value: unknown, owner: string, search: string): Promise<
     if (row.user_id !== undefined && identity(row.user_id) !== owner || row.search_id !== undefined && identity(row.search_id) !== search) fail('scope_unavailable');
     return projectSafeAdaptiveFeedbackExample(row, owner, search);
   }));
-  result.examples = examples.filter(value => value !== null);
+  result.examples = examples.filter((value): value is NonNullable<typeof value> => value !== null && value.metric_version === result.metric_version);
   result.counts.selected = result.examples.length;
   if (new Set(result.examples.map(row => row.opportunity_id)).size !== result.examples.length) fail('invalid_bundle');
   if (bytes(result) > ADAPTIVE_FEEDBACK_MAX_BYTES) fail('scope_oversized');
@@ -344,7 +346,7 @@ function redactFeedback(packet: AdaptiveStartupFeedback, current: AdaptiveStartu
   const clear = current.privacy_scope_changed || examples.length < packet.examples.length;
   const removedApproved = packet.examples.filter(row => row.search_feedback_summary).length - examples.filter(row => row.search_feedback_summary).length;
   const counts = { ...packet.counts, selected: examples.length, approved_summaries: Math.max(0, packet.counts.approved_summaries - removedApproved) };
-  if (clear) for (const field of countFields) counts[field] = 0;
+  if (clear) { for (const field of countFields) counts[field] = 0; if (counts.application !== undefined) counts.application = 0; }
   counts.selected = clear ? 0 : examples.length;
   return { changed, packet: { ...packet, counts, examples: clear ? [] : examples,
     aggregates: clear ? { score_sum: 0, mean_interest: null, groups: [] } : packet.aggregates,
@@ -372,10 +374,11 @@ export async function projectAdaptiveSearchStartup(value: unknown, context: {
     const batchContract = same(raw.capabilities, ADAPTIVE_BATCH_CAPABILITIES);
     const expectedCapabilities = batchContract ? ADAPTIVE_BATCH_CAPABILITIES : ADAPTIVE_STARTUP_CAPABILITIES;
     const expectedExecution = batchContract ? ADAPTIVE_BATCH_EXECUTION_CONTRACT : ADAPTIVE_STARTUP_EXECUTION_CONTRACT;
-    // Historical pins retain their exact reviewed text. Accept only these two
-    // complete literals, matching the server's narrow payload-contract upgrade.
+    // Historical pins retain their exact reviewed text. Accept only the complete
+    // reviewed literals, matching the server's narrow protocol upgrades.
     const expectedProtocol = batchContract
-      ? raw.protocol_text === ADAPTIVE_BATCH_PROTOCOL_PREFIX ? ADAPTIVE_BATCH_PROTOCOL_PREFIX : ADAPTIVE_BATCH_PROTOCOL_TEXT
+      ? raw.protocol_text === ADAPTIVE_BATCH_PROTOCOL_PREFIX ? ADAPTIVE_BATCH_PROTOCOL_PREFIX
+        : raw.protocol_text === ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT ? ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT : ADAPTIVE_BATCH_PROTOCOL_TEXT
       : ADAPTIVE_STARTUP_PROTOCOL_TEXT;
     if (raw.adaptive_contract_version !== 1 || raw.bootstrap_version !== 1 || raw.compatible !== true
       || release.schema_version !== 6 || release.protocol_version !== authorized.protocol_version || release.protocol_hash !== authorized.protocol_hash

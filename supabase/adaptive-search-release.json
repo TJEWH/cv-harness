@@ -10,7 +10,7 @@
     "meta_search": 1,
     "adaptive_contract": 1,
     "capability": "adaptive-batch-v1",
-    "metric": "opportunity-interest-v1",
+    "metric": "opportunity-interest-v2",
     "selection_policy": "opportunity-feedback-selection-v2",
     "query_policy": "adaptive-query-v3",
     "summary_inclusion": "included-unless-excluded-v1",
@@ -44,7 +44,7 @@
   "local_prerequisites_only": [
     {
       "path": "supabase/schema.sql",
-      "sha256": "da6b062cfc70866cc7cc07909b0d92d978b472346803ce4878a21ca8299a39c8",
+      "sha256": "397dc53fbbcbfa6c0d8127da22a248bfb55aedd9e4dddd4e7005e1bb61835b32",
       "stage": "fresh_schema",
       "replay_on_existing_workspace": false
     },
@@ -257,6 +257,12 @@
       "sha256": "ef42accfbf3f8b785c4c9941b484af775a300e63e5d872b617094986ea914c5c",
       "migration_only": true,
       "scheduler_operations": false
+    },
+    {
+      "path": "supabase/opportunity_interest_v2.sql",
+      "sha256": "952865023a86db5ef8be97a35fb2811d542cec94737a055d25e87add19acf7e6",
+      "migration_only": true,
+      "scheduler_operations": false
     }
   ],
   "installed_definition_prerequisites": {
@@ -308,7 +314,7 @@
   "runner_artifacts": [
     {
       "path": "src/features/meta-search/domain/adaptiveSearchProtocol.ts",
-      "sha256": "e36989eb2b2ea561cd293e25ef703c90843013fcca8e183129118dbdb83f41bf"
+      "sha256": "61f3c375e2f9cb49f551bd02aeacb300c778077d5566b6f7688778f8836913d7"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
@@ -316,7 +322,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchStartup.ts",
-      "sha256": "360993a9c8e347562312713a5a991c4ecc1c2835439346536e41c0fcc20453c9"
+      "sha256": "8c99c44ad97be071c9ca35dc29617e22758f22f3927b45320dcdf7398d511e4e"
     },
     {
       "path": "src/features/meta-search/domain/searchSchedule.ts",
@@ -344,7 +350,7 @@
     },
     {
       "path": "src/features/opportunities/domain/opportunityFeedback.ts",
-      "sha256": "08458ba3324d468bc55737d8db570c968b23cd34b4d4229d7d2bf8bcebb7842c"
+      "sha256": "111fda3ac0cb16b5a57d5b5763c6eae297df11fbba6ff446e7b7b1876a4ba406"
     },
     {
       "path": "src/features/opportunities/domain/opportunityFeedbackPrivacy.ts",
@@ -356,7 +362,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveFeedbackSnapshots.ts",
-      "sha256": "4f307fd09b2975e59921355be787cc92f25553747a012caef13cb1327df22025"
+      "sha256": "5c6249920ecafbea411742cdb8e45185d05c6befc117eb9d8c93013f662dbc70"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchPlans.ts",
@@ -364,15 +370,15 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchPlanner.ts",
-      "sha256": "7b45adc62d5a7c1b2f45fe316ccb894fb5c42215401fa8eebf447e26657a38d4"
+      "sha256": "c4577af15c734df36f5690f653369afaf24157761e6cb91bf4abf225c4fb2081"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchSources.ts",
-      "sha256": "0d2f5cf0eb75f85b97a6b7a60d4f124a150956468deec5bb2c145cd6a54bb02a"
+      "sha256": "b49840a59f8489e28dabd060bf968bd358fcfacb53724357e191e9876cf4329a"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchQuality.ts",
-      "sha256": "87b406b0120fe8837bd8a4332ea68537f1911b02cda8b37317d2f3aa132db2fa"
+      "sha256": "2d8dc0221517d3fb5b2c14e00ebac5bd206e3483e4368b2ab1bdabf8c85216e2"
     },
     {
       "path": "src/features/meta-search/composables/adaptiveSearchDashboard.ts",
@@ -400,11 +406,11 @@
     },
     {
       "path": "src/app/components/JobWorkspace.vue",
-      "sha256": "094226ff5d5c49e3050d57ff6195b6d3bb68c40ed8d619ea3bfac29bcb311b86"
+      "sha256": "8c998ce4149821e912e74de1d451de0bb77178caadb635e17bfcf39b2cb232d7"
     },
     {
       "path": "src/features/opportunities/components/OpportunityFeedbackControls.vue",
-      "sha256": "829def602a65849eef5427af6b3662500721c54e885cfeba777b822bb68e301e"
+      "sha256": "610819d46d1dc8fa4f112fd1cda869137ad82e421271f5e1262eaa5353de598c"
     },
     {
       "path": "src/features/opportunities/components/OpportunityDispositionControls.vue",

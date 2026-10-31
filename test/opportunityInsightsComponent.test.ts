@@ -111,8 +111,9 @@ const fixtureId = (index: number) => `92000000-0000-4000-8000-${String(index).pa
 function job(index: number, title: string, topics: string[], daysAgo: number, fit = 9): Opportunity {
   return opportunityFixture({ id: fixtureId(index), title, topics, created_at: startOfDay(localDay(daysAgo)), updated_at: new Date().toISOString(), personal_fit: opportunityAssessmentFixture(fit) });
 }
-function jobReview(index: number, rating: number, reasons: OpportunityReview['interest_reasons'] = []): OpportunityReview {
-  return { user_id: owner, opportunity_id: fixtureId(index), state: 'interested', interest_rating: rating, interest_reasons: reasons, feedback_revision: 1,
+function jobReview(index: number, rating: 2 | 6 | 8 | 9, reasons: OpportunityReview['interest_reasons'] = []): OpportunityReview {
+  const state: OpportunityReview['state'] = ({ 2: 'not_interested', 6: 'interested', 8: 'strong_interest', 9: 'very_high_interest' } as const)[rating];
+  return { user_id: owner, opportunity_id: fixtureId(index), state, interest_rating: rating, interest_reasons: reasons, feedback_revision: 1,
     feedback_updated_at: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), reviewed_updated_at: null };
 }
 
@@ -531,8 +532,8 @@ test('low-interest filtering uses only maximum interest and preserves complete e
     job(14, 'Medium acoustics', ['Acoustics'], 10),
     job(15, 'Unknown interest job', ['Unrated topic'], 8),
     job(16, 'Second low simulation', ['acoustic simulation'], 6),
-  ], reviews: [jobReview(10, 9.5), jobReview(11, 8), jobReview(12, 2, [{ category: 'topic', polarity: 'negative', target: 'acoustic_simulation' }]),
-    jobReview(13, 3.5), jobReview(14, 6), jobReview(16, 1.5)] });
+  ], reviews: [jobReview(10, 9), jobReview(11, 8), jobReview(12, 2, [{ category: 'topic', polarity: 'negative', target: 'acoustic_simulation' }]),
+    jobReview(13, 2), jobReview(14, 6), jobReview(16, 2)] });
   await view.showBody('Clusters');
   await view.showTopicClusters();
   const setMode = async (value: 'all' | 'high' | 'low') => { (view.control('Interest')!.props['onUpdate:modelValue'] as (value: string) => void)(value); await nextTick(); };
@@ -552,7 +553,7 @@ test('low-interest filtering uses only maximum interest and preserves complete e
   assert.deepEqual([...view.network()!.visibleTopicIds].sort(), ['acoustic simulation', 'experiments'], 'topics seen in any above-maximum job are excluded while rare low-only topics remain');
   assert.equal(view.network()!.matchingJobCounts['acoustic simulation'], 2, 'case and underscores do not split the occurrence count');
   changeControl(view.control('Maximum interest'), 'onInput', '2'); await nextTick();
-  assert.deepEqual([...view.network()!.visibleTopicIds].sort(), ['acoustic simulation']);
+  assert.deepEqual([...view.network()!.visibleTopicIds].sort(), ['acoustic simulation', 'experiments'], 'all low choices have score 2');
   view.networkEmit('selectJob', fixtureId(12)); await nextTick();
   assert.equal(view.network()!.selectedJobId, fixtureId(12));
   const selected = view.network()!.graph.jobs.find((value: { id: string }) => value.id === fixtureId(12));
@@ -569,7 +570,7 @@ test('low-interest filtering uses only maximum interest and preserves complete e
 
 test('topic filter changes invalidate pending and prepared analyses and project the current filter into copying', async t => {
   const view = mount(t, { opportunities: [job(10, 'Acoustic research', ['Acoustics'], 10), job(11, 'Acoustic robotics', ['Acoustics', 'Robotics'], 8)],
-    reviews: [jobReview(10, 9), jobReview(11, 9.5)] }), pending = deferred<OpportunityInsightsAnalysis>();
+    reviews: [jobReview(10, 9), jobReview(11, 9)] }), pending = deferred<OpportunityInsightsAnalysis>();
   await view.showBody('Clusters');
   await view.showTopicClusters();
   (view.control('Minimum matching jobs')!.props['onUpdate:modelValue'] as (value: number) => void)(1); await nextTick();
@@ -602,7 +603,7 @@ test('matching-job maximum follows interest and date cohorts and clamps copied f
     job(12, 'Third acoustic research', ['Acoustics'], 8),
     job(13, 'Medium acoustic research', ['acoustics'], 4),
     job(14, 'Unrated acoustic research', ['Acoustics'], 2),
-  ], reviews: [jobReview(10, 9.5), jobReview(11, 9), jobReview(12, 8), jobReview(13, 6)] });
+  ], reviews: [jobReview(10, 9), jobReview(11, 9), jobReview(12, 8), jobReview(13, 6)] });
   await view.showBody('Clusters');
   await view.showTopicClusters();
   const minimum = () => view.control('Minimum matching jobs')!;
@@ -847,7 +848,7 @@ test('a lower-calendar brush date in Europe/Berlin cannot replace a supported ra
   assert.doesNotThrow(() => buildOpportunityInsights(view.calls[0]!));
 });
 
-test('addition dates retain legacy ratings in a historical interval without using the rating clock', async t => {
+test('addition dates retain categorical interest in a historical interval without using the review clock', async t => {
   const view = mount(t);
   const secondId = '92000000-0000-4000-8000-000000000004';
   const legacyId = '92000000-0000-4000-8000-000000000005';
@@ -855,8 +856,8 @@ test('addition dates retain legacy ratings in a historical interval without usin
     created_at: startOfDay(localDay(15)), personal_fit: opportunityAssessmentFixture(8.8) }), opportunityFixture({ id: legacyId,
     created_at: null, personal_fit: opportunityAssessmentFixture(9) })];
   view.props.reviews = [view.props.reviews[0]!, { ...view.props.reviews[0]!, opportunity_id: secondId,
-    feedback_updated_at: null, interest_rating: 9 }, { ...view.props.reviews[0]!, opportunity_id: legacyId,
-    feedback_updated_at: null, interest_rating: 10 }];
+    feedback_updated_at: null, state: 'very_high_interest', interest_rating: 9 }, { ...view.props.reviews[0]!, opportunity_id: legacyId,
+    feedback_updated_at: null, state: 'very_high_interest', interest_rating: 10 }];
   await nextTick();
   view.timelineEmit('update:range', { start: localDay(18), end: localDay(10) });
   await nextTick();
@@ -954,7 +955,7 @@ test('committed range changes reuse prepared evidence and the all-history overvi
     assert.equal(view.timeline().domainEnd, clock);
     assert.equal(view.preparations(), preparations, 'safe labels and feedback are prepared once per source snapshot');
   }
-  view.props.reviews[0]!.interest_rating = 3; await nextTick();
+  view.props.reviews[0]!.state = 'not_interested'; await nextTick();
   assert(view.preparations() > preparations, 'changing evidence creates a new prepared owner snapshot');
   assert.notEqual(view.timeline().domainEnd, clock);
 });
@@ -1022,7 +1023,7 @@ test('job clusters replace misalignment context with all high-interest jobs and 
   const view = mount(t, { opportunities: [job(10, 'Low-interest mismatch', ['Acoustics', 'Theory', 'Simulation'], 20),
     job(11, 'High-interest prototypes', ['Acoustics', 'Prototypes'], 15), job(12, 'High-interest experiments', ['Theory', 'Experiments'], 12),
     job(13, 'Isolated high-interest job', ['Unrelated'], 10)],
-    reviews: [jobReview(10, 2), jobReview(11, 9, [{ category: 'topic', polarity: 'negative', target: 'Prototypes' }]), jobReview(12, 8), jobReview(13, 10)] });
+    reviews: [jobReview(10, 2), jobReview(11, 9, [{ category: 'topic', polarity: 'negative', target: 'Prototypes' }]), jobReview(12, 8), jobReview(13, 9)] });
   await view.showBody('Clusters');
   await view.showTopicClusters();
   (view.control('Interest')!.props['onUpdate:modelValue'] as (value: string) => void)('low'); await nextTick();
@@ -1170,7 +1171,7 @@ test('unmount during prompt preparation cannot publish or announce a completed c
 
 test('selection focus mutes unrelated topic rows without disabling them and clears on reset or owner change', async t => {
   const view = mount(t, { opportunities: [job(10, 'Acoustic control', ['Acoustics', 'Control'], 4), job(11, 'Robotics research', ['Robotics'], 3)],
-    reviews: [jobReview(10, 9), jobReview(11, 7)] });
+    reviews: [jobReview(10, 9), jobReview(11, 6)] });
   await view.showBody('Clusters');
   await view.showTopicClusters();
   (view.control('Interest')!.props['onUpdate:modelValue'] as (value: string) => void)('all'); await nextTick();
@@ -1475,4 +1476,40 @@ test('job explorer spans the layout while preserving controls and evidence, and 
   assert.match(nodeText(jobList), /Acoustic prototype job.*Robotics job/u);
   assert.equal(view.byClass('insights-network-layout is-job-explorer'), layout);
   assert.deepEqual([...view.network()!.jobExcludedTopicIds], ['prototypes'], 'returning to jobs preserves the chosen clustering features');
+});
+
+test('Interest patterns includes all new reason categories and names application and submission origins', async t => {
+  const view = mount(t);
+  view.props.reviews[0]!.interest_reasons = [
+    { category: 'background_fit', polarity: 'positive' }, { category: 'project_context', polarity: 'positive' },
+    { category: 'requirements', polarity: 'negative' }, { category: 'availability', polarity: 'negative' },
+    { category: 'hardware', polarity: 'positive' }, { category: 'funding', polarity: 'negative' },
+  ];
+  view.props.applications = [{ id: fixtureId(900), user_id: owner, opportunity_id: opportunityId,
+    cv_variant_id: null, contact_email: null, context_json: view.props.opportunities[0]!,
+    context_captured_at: new Date().toISOString(), completed_checklist_keys: [], status: 'preparation',
+    notes: null, contacted_at: null, submitted_at: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }];
+  await view.showBody('Interest patterns');
+  const reasons = view.byClass('insights-reasons'); assert(reasons);
+  const labels = nodeText(reasons);
+  for (const label of ['Background fit', 'Project context', 'Requirements', 'Availability', 'Tools+hardware', 'Salary']) assert.ok(labels.includes(label), label);
+  assert.doesNotMatch(labels, /background_fit|project_context|Funding/);
+  assert.match(nodeText(view.byClass('insights-origins')!), /Application 1.*Submission 0/u);
+  view.props.applications[0]!.status = 'submitted';
+  await nextTick();
+  assert.match(nodeText(view.byClass('insights-origins')!), /Application 0.*Submission 1/u);
+  view.props.lang = 'de';
+  await nextTick();
+  assert.match(nodeText(view.byClass('insights-reasons')!), /Passung zum Hintergrund.*Projektkontext.*Tools\+Hardware.*Gehalt.*Anforderungen.*Verfügbarkeit/u);
+  assert.match(nodeText(view.byClass('insights-origins')!), /Bewerbung 0.*Einreichung 1/u);
+});
+
+test('retired numeric overrides do not alter a categorical interest cohort or selected job', async t => {
+  const view = mount(t, { opportunities: [job(10, 'Categorically high job', ['Acoustics'], 10)], reviews: [jobReview(10, 8)] });
+  await view.showBody('Clusters');
+  view.networkEmit('selectJob', fixtureId(10)); await nextTick();
+  view.props.reviews[0]!.interest_rating = 0; await nextTick();
+  assert.equal(view.network()!.selectedJobId, fixtureId(10));
+  assert.equal(view.network()!.graph.jobs.find((entry: { id: string }) => entry.id === fixtureId(10))?.interestScore, 8);
+  assert.match(nodeText(view.byClass('insights-job-list is-job-explorer')!), /Categorically high job/u);
 });

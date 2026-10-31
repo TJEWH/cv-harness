@@ -57,21 +57,20 @@ test('SIG-01: empty and legacy unreviewed records are unknown, never implicit ze
   }
 });
 
-test('SIG-02/03/06: every review enum, optional rating and submission obey exact precedence', () => {
-  const categorical = { unreviewed: null, interested: 6, strong_interest: 8, not_interested: 2 };
-  for (const state of OPPORTUNITY_REVIEW_STATES) {
-    for (const submitted of [false, true]) {
-      for (const rating of [undefined, null, 0, 0.25, 10]) {
-        const result = deriveOpportunityFeedback(input({
-          review: review({ state, interest_rating: rating }),
-          applications: submitted ? [application({ status: 'submitted' })] : [],
-        }));
-        const expected = rating ?? categorical[state] ?? (submitted ? 9 : null);
-        assert.equal(result.interest_score, expected, `${state}, rating=${rating}, submitted=${submitted}`);
-        assert.equal(result.interest_origin, rating != null ? 'explicit_rating' : state !== 'unreviewed'
-          ? 'categorical_review' : submitted ? 'confirmed_submission' : 'none');
-        assert.equal(result.confirmed_submission, submitted, 'retain genuine submission even when explicit interest wins');
-      }
+test('v2 categories and application evidence determine feedback while legacy numeric overrides are ignored', () => {
+  const categorical = { unreviewed: null, interested: 6, strong_interest: 8, very_high_interest: 9, not_interested: 2 };
+  for (const state of OPPORTUNITY_REVIEW_STATES) for (const stage of ['none', 'preparation', 'submitted'] as const) {
+    for (const rating of [undefined, null, 0, 0.25, 10]) {
+      const savedReview = review({ state, interest_rating: rating });
+      const result = deriveOpportunityFeedback(input({ review: savedReview,
+        applications: stage === 'none' ? [] : [application({ status: stage })] }));
+      assert.equal(result.interest_score, stage === 'submitted' ? 9.5 : stage === 'preparation' ? 9 : categorical[state]);
+      assert.equal(result.interest_origin, stage === 'submitted' ? 'confirmed_submission' : stage === 'preparation' ? 'application'
+        : state === 'unreviewed' ? 'none' : 'categorical_review');
+      assert.equal(result.confirmed_submission, stage === 'submitted');
+      assert.equal(savedReview.state, state, 'application scoring preserves the underlying opportunity rating');
+      assert.equal(deriveOpportunityFeedback(input({ review: savedReview })).interest_score, categorical[state],
+        'removing an application restores the actual category');
     }
   }
 });
@@ -84,7 +83,7 @@ test('ratings reject invalid numeric values and coercion while null remains opti
   for (const rating of [NaN, Infinity, -Infinity, -0.01, 10.01, '0', '8.5', '', true, false, {}, [], new Number(5)]) {
     assert.equal(isOpportunityInterestRating(rating), false);
     assert.throws(() => parseOpportunityInterestRating(rating), /finite number from 0 to 10/u);
-    assert.throws(() => deriveOpportunityFeedback(input({ review: review({ interest_rating: rating as number }) })), /finite number/u);
+    assert.equal(deriveOpportunityFeedback(input({ review: review({ state: 'interested', interest_rating: rating as number }) })).interest_score, 6);
   }
   for (const rating of [null, undefined]) assert.equal(parseOpportunityInterestRating(rating), null);
 });
@@ -107,12 +106,12 @@ test('excluded feedback always suppresses score and gap across every precedence 
 test('SIG-04: application workflow and later employer statuses alone never prove submission', () => {
   for (const status of APPLICATION_STATUSES) {
     const result = deriveOpportunityFeedback(input({ applications: [application({ status })] }));
-    assert.equal(result.interest_score, status === 'submitted' ? 9 : null, status);
+    assert.equal(result.interest_score, status === 'submitted' ? 9.5 : 9, status);
     assert.equal(result.submission_at, null, 'never infer a timestamp from a status');
   }
   for (const status of ['interview', 'offer', 'rejected', 'withdrawn'] as const) {
     assert.equal(deriveOpportunityFeedback(input({ applications: [application({ status: 'refinement',
-      status_history: [{ status, changedAt: feedbackTime }] })] })).interest_score, null);
+      status_history: [{ status, changedAt: feedbackTime }] })] })).interest_score, 9);
   }
 });
 
@@ -124,7 +123,7 @@ test('SIG-05: genuine past submission survives employer rejection, withdrawal an
       { status_history: [{ status: 'submitted' as const, changedAt: null }, { status, changedAt: feedbackTime }] },
     ]) {
       const result = deriveOpportunityFeedback(input({ applications: [application({ status, ...proof })] }));
-      assert.equal(result.interest_score, 9, status);
+      assert.equal(result.interest_score, 9.5, status);
       assert.equal(result.interest_origin, 'confirmed_submission');
       assert.equal(result.submission_at, 'submitted_at' in proof ? originalTime : proof.status_history[0]!.changedAt);
     }
@@ -153,13 +152,13 @@ test('confirmed submission preserves unknown dates and rejects coercible or inva
 
 test('removing or correcting real submission evidence recomputes fallback without inventing history', () => {
   const originallySubmitted = application({ status: 'rejected', submitted_at: originalTime });
-  assert.equal(deriveOpportunityFeedback(input({ applications: [originallySubmitted] })).interest_score, 9);
+  assert.equal(deriveOpportunityFeedback(input({ applications: [originallySubmitted] })).interest_score, 9.5);
   const corrected = { ...originallySubmitted, submitted_at: null };
-  assert.equal(deriveOpportunityFeedback(input({ applications: [corrected] })).interest_score, null);
+  assert.equal(deriveOpportunityFeedback(input({ applications: [corrected] })).interest_score, 9);
   assert.equal(corrected.status_history, undefined);
   assert.equal(deriveOpportunityFeedback(input({ applications: [application({ status: 'rejected',
-    status_history: [{ status: 'submitted', changedAt: null }] })] })).interest_score, 9);
-  assert.equal(deriveOpportunityFeedback(input({ applications: [application({ status: 'rejected', status_history: [] })] })).interest_score, null);
+    status_history: [{ status: 'submitted', changedAt: null }] })] })).interest_score, 9.5);
+  assert.equal(deriveOpportunityFeedback(input({ applications: [application({ status: 'rejected', status_history: [] })] })).interest_score, 9);
 });
 
 test('SIG-06/07: one owner/opportunity outcome is stable across views, comments and repeated documents', () => {
@@ -172,7 +171,7 @@ test('SIG-06/07: one owner/opportunity outcome is stable across views, comments 
   applications: Array.from({ length: 20 }, () => ({ ...submitted, documents: ['private'], context_json: { contact: 'secret' } })),
   }));
   assert.deepEqual(viewed, first);
-  assert.equal(first.interest_score, 2);
+  assert.equal(first.interest_score, 9.5);
   assert.equal(first.confirmed_submission, true);
   assert.equal(first.feedback_revision, 4);
   const json = JSON.stringify(viewed);
@@ -194,7 +193,9 @@ test('feedback scope rejects another owner review and ignores other owner/opport
 
 test('structured reasons use only bounded categories/polarities and explicit topic/method targets', () => {
   for (const category of OPPORTUNITY_INTEREST_REASON_CATEGORIES) for (const polarity of ['positive', 'negative'] as const) {
-    assert.deepEqual(normalizeOpportunityInterestReasons([{ category, polarity }]), [{ category, polarity }]);
+    if (['requirements', 'availability'].includes(category) && polarity === 'positive') {
+      assert.throws(() => normalizeOpportunityInterestReasons([{ category, polarity }]));
+    } else assert.deepEqual(normalizeOpportunityInterestReasons([{ category, polarity }]), [{ category, polarity }]);
   }
   for (const category of ['topic', 'method'] as const) {
     assert.deepEqual(normalizeOpportunityInterestReasons([{ category, polarity: 'positive', target: '  Acoustics  ' }]),
@@ -252,10 +253,10 @@ test('SIG-08: unknown original prediction and self-asserted baseline never becom
 
 test('only exact independently verified, scale-valid, timely historical evidence supplies the frozen gap', () => {
   const baseline = prediction();
-  const sample = input({ review: review({ interest_rating: 8.5, feedback_revision: 3,
+  const sample = input({ review: review({ state: 'strong_interest', interest_rating: 8.5, feedback_revision: 3,
     feedback_updated_at: feedbackTime, prediction_baseline: baseline }), verified_prediction: { ...baseline } });
   const result = deriveOpportunityFeedback(sample);
-  assert.equal(result.interest_gap, 1.5);
+  assert.equal(result.interest_gap, 1);
   assert.equal(result.baseline_status, 'available');
   assert.equal(result.feedback_revision, 3);
   assert.deepEqual(deriveOpportunityFeedback({ ...sample, opportunity: { personal_fit: '2/10', updated_at: '2030-01-01' } } as OpportunityFeedbackInput), result);
@@ -283,9 +284,21 @@ test('baseline timing uses known meaningful feedback/submission time, never an u
   assert.equal(deriveOpportunityFeedback(input({ ...shared, review: review({ prediction_baseline: baseline }),
     applications: [application({ status: 'submitted' })] })).interest_gap, null);
   assert.equal(deriveOpportunityFeedback(input({ ...shared, review: review({ prediction_baseline: baseline }),
-    applications: [application({ status: 'rejected', submitted_at: feedbackTime })] })).interest_gap, 2);
+    applications: [application({ status: 'rejected', submitted_at: feedbackTime })] })).interest_gap, 2.5);
   assert.equal(deriveOpportunityFeedback(input({ ...shared, review: review({ prediction_baseline: prediction({ predicted_at: feedbackTime }) }),
     verified_prediction: prediction({ predicted_at: feedbackTime }), applications: [application({ submitted_at: originalTime })] })).interest_gap, null);
+});
+
+test('application presence has no prediction gap from an unrelated saved review event', () => {
+  const baseline = prediction();
+  const result = deriveOpportunityFeedback(input({
+    review: review({ state: 'not_interested', feedback_updated_at: feedbackTime, prediction_baseline: baseline }),
+    applications: [application()], verified_prediction: baseline,
+  }));
+  assert.equal(result.interest_score, 9);
+  assert.equal(result.interest_origin, 'application');
+  assert.equal(result.baseline_status, 'unavailable');
+  assert.equal(result.interest_gap, null);
 });
 
 test('historical prediction timing and submission ordering preserve PostgreSQL microseconds', () => {
@@ -303,14 +316,14 @@ test('historical prediction timing and submission ordering preserve PostgreSQL m
   'an independently verified prediction may use another representation of the exact microsecond instant');
 });
 
-test('AF-05 independently verified discovery assessments provide a frozen baseline without changing v1 interest conventions', () => {
+test('independently verified discovery assessments provide a frozen categorical baseline under v2', () => {
   const baseline = prediction({ source_kind: 'discovery_assessment', source_ref: 'opportunity-discovery-assessment:00000000-0000-4000-8000-000000000005' });
-  const sample = input({ review: review({ interest_rating: 0, feedback_updated_at: feedbackTime, prediction_baseline: baseline }),
+  const sample = input({ review: review({ state: 'not_interested', interest_rating: 0, feedback_updated_at: feedbackTime, prediction_baseline: baseline }),
     verified_prediction: baseline });
   const result = deriveOpportunityFeedback(sample);
-  assert.equal(result.interest_score, 0);
-  assert.equal(result.interest_origin, 'explicit_rating');
-  assert.equal(result.interest_gap, -7);
+  assert.equal(result.interest_score, 2);
+  assert.equal(result.interest_origin, 'categorical_review');
+  assert.equal(result.interest_gap, -5);
   assert.equal(result.baseline_status, 'available');
   assert.equal(result.metric_version, OPPORTUNITY_INTEREST_METRIC_VERSION);
   assert.equal(deriveOpportunityFeedback({ ...sample, verified_prediction: null }).interest_gap, null, 'a structured assertion is still not provenance');
@@ -333,11 +346,11 @@ test('AF-05 a known submission can match a genuine ex-ante assessment without re
     verified_prediction: baseline });
   const result = deriveOpportunityFeedback(sample);
   assert.equal(result.interest_origin, 'confirmed_submission');
-  assert.equal(result.interest_score, 9);
-  assert.equal(result.interest_gap, 2);
+  assert.equal(result.interest_score, 9.5);
+  assert.equal(result.interest_gap, 2.5);
   assert.equal(sample.review!.prediction_baseline, null, 'fallback derivation does not write an invented review event');
-  assert.equal(deriveOpportunityFeedback({ ...sample, review: review({ state: 'interested', feedback_updated_at: feedbackTime }) }).interest_gap, null,
-    'an unchanged explicit review still needs its frozen stored baseline');
+  assert.equal(deriveOpportunityFeedback({ ...sample, review: review({ state: 'interested', feedback_updated_at: feedbackTime }) }).interest_gap, 2.5,
+    'submission uses its verified event independently of a previous categorical review');
   assert.equal(deriveOpportunityFeedback({ ...sample, applications: [application({ status: 'submitted', submitted_at: null })] }).interest_gap, null,
     'unknown submission time cannot establish ex-ante ordering');
   assert.equal(deriveOpportunityFeedback({ ...sample, verified_prediction: { ...baseline, predicted_at: '2026-10-02T09:00:00.000001Z' } }).interest_gap, null);
@@ -346,7 +359,7 @@ test('AF-05 a known submission can match a genuine ex-ante assessment without re
 test('metric conventions are versioned and configurable only under an explicit different version', () => {
   assert.equal(Object.isFrozen(DEFAULT_OPPORTUNITY_INTEREST_POLICY), true);
   assert.equal(Object.isFrozen(DEFAULT_OPPORTUNITY_INTEREST_POLICY.review_scores), true);
-  const custom = { version: 'opportunity-interest-v2-test', review_scores: { strong_interest: 9, interested: 7, not_interested: 1 }, submitted_score: 8 };
+  const custom = { version: 'opportunity-interest-v2-test', review_scores: { very_high_interest: 9.5, strong_interest: 9, interested: 7, not_interested: 1 }, application_score: 8, submitted_score: 8.5 };
   const result = deriveOpportunityFeedback(input({ review: review({ state: 'interested' }) }), custom);
   assert.equal(result.interest_score, 7);
   assert.equal(result.metric_version, custom.version);

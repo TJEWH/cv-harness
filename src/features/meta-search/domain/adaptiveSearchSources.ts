@@ -235,7 +235,7 @@ export function retainSuccessfulAdaptiveSource(source: AdaptiveSearchSource, sig
   if (paused) return result(false, 'adaptation_paused');
   if (before.owner_disabled) return result(false, 'owner_disabled');
   if (signal.role !== 'verified_listing' || !canonicalAdaptiveListingUrl(signal.listing_url) || instant(signal.verified_at) === null) return result(false, 'unverified_listing');
-  if (!['explicit_rating', 'categorical_review', 'confirmed_submission', 'none', 'excluded'].includes(signal.interest_origin)
+  if (!['explicit_rating', 'categorical_review', 'application', 'confirmed_submission', 'none', 'excluded'].includes(signal.interest_origin)
     || signal.interest_score !== null && (typeof signal.interest_score !== 'number' || !Number.isFinite(signal.interest_score)
       || signal.interest_score < 0 || signal.interest_score > 10)) throw new TypeError('Invalid source interest evidence');
   boolean(signal.confirmed_submission);
@@ -245,7 +245,7 @@ export function retainSuccessfulAdaptiveSource(source: AdaptiveSearchSource, sig
     && (signal.vacancy_url_role !== 'vacancy' || canonicalAdaptiveListingUrl(signal.vacancy_url) !== before.vacancy_url)) {
     return result(false, 'listing_mismatch');
   }
-  const explicitHigh = ['explicit_rating', 'categorical_review'].includes(signal.interest_origin)
+  const explicitHigh = ['explicit_rating', 'categorical_review', 'application', 'confirmed_submission'].includes(signal.interest_origin)
     && typeof signal.interest_score === 'number' && Number.isFinite(signal.interest_score) && signal.interest_score >= EXPLICIT_HIGH_SOURCE_INTEREST && signal.interest_score <= 10;
   if (signal.interest_origin === 'excluded' || !explicitHigh && signal.confirmed_submission !== true) return result(false, 'not_useful');
   const previousVerified = instant(before.listing_verified_at); const incomingVerified = instant(signal.verified_at)!;

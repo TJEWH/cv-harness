@@ -31,7 +31,7 @@ async function fixture(withSummary = true): Promise<{ bundle: AdaptiveSearchStar
   const first = example(1), proof = { summary_hash: await opportunityFeedbackTextHash('Prefer physical robotics experiments.'),
     source_hash: 'b'.repeat(64), summary_revision: 2, policy_version: 'included-unless-excluded-v1' as const, truncated: false, source_length: Array.from('Prefer physical robotics experiments.').length };
   if (withSummary) { first.search_feedback_summary = 'Prefer physical robotics experiments.'; first.summary_inclusion = proof; }
-  const packet = await compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search,
+  const packet = await compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search, metric_version: 'opportunity-interest-v1',
     feedback_revision: 1, preference_revision: 0, approved_preferences: [], examples: [first, example(2), example(3)] });
   const basis = { base_revision: 2, feedback_revision: 1, preference_revision: 0, protocol_version: 'opportunity-search-v1-canonical-6' };
   const plan = await createAdaptiveSearchPlan(basis, [
@@ -107,7 +107,7 @@ test('AF-07 preserved whole-set aggregates never recompute from the bounded exam
     source_hash: 'b'.repeat(64), summary_revision: 2, policy_version: 'included-unless-excluded-v1' as const, truncated: false, source_length: Array.from('Prefer physical robotics experiments.').length };
   const examples = Array.from({ length: 60 }, (_, index) => ({ ...example(index + 1), search_feedback_summary: summary, summary_inclusion: proof }));
   context.privacy.included_summaries = examples.map(row => ({ opportunity_id: row.opportunity_id, ...proof }));
-  const packet = await compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search,
+  const packet = await compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search, metric_version: 'opportunity-interest-v1',
     feedback_revision: 1, preference_revision: 0, examples, approved_preferences: [] });
   set(bundle, ['feedback'], packet);
   const projected = await projectAdaptiveSearchStartup(bundle, context); success(projected);
@@ -233,7 +233,7 @@ test('AF-07 fact masking retains full-token boundaries and cannot hide long phon
 
 test('AF-07 empty feedback and legacy core arrays start without invented IDs, hashes, attribution or query discovery', async () => {
   const { bundle, context } = await fixture(false);
-  const empty = await compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search,
+  const empty = await compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search, metric_version: 'opportunity-interest-v1',
     feedback_revision: 1, preference_revision: 0, examples: [], approved_preferences: [] });
   set(bundle, ['feedback'], empty); set(bundle, ['query_plan'], null); set(bundle, ['legacy_core_queries'], { query_revision_id: id(400),
     queries: [{ query: 'Exact legacy BCI query', sources: ['EXAMPLE.invalid'] }] });
@@ -417,4 +417,33 @@ test('v3 startup rejects a university-wide priority bonus while historical v2 pi
   set(bundle, ['planning','policy'], createLegacySearchBreadthPolicy());
   const old = await projectAdaptiveSearchStartup(bundle, context); success(old);
   assert.equal(old.planning.priorities[0]!.direction, 'increase');
+});
+
+test('startup projection preserves current application scores and their saved underlying review choice', async () => {
+  const f = await fixture(false);
+  f.bundle.feedback = await compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search, feedback_revision: 1, examples: [
+    { ...example(1), metric_version: 'opportunity-interest-v2', review_state: 'not_interested', interest_origin: 'application', interest_score: 9 },
+    { ...example(2), metric_version: 'opportunity-interest-v2', review_state: 'interested', interest_origin: 'confirmed_submission', interest_score: 9.5, confirmed_submission: true },
+  ] });
+  const projected = await projectAdaptiveSearchStartup(f.bundle, f.context); success(projected);
+  assert.equal(projected.feedback.metric_version, 'opportunity-interest-v2');
+  assert.equal(projected.feedback.counts.application, 1);
+  assert.equal(projected.feedback.examples.find(row => row.opportunity_id === id(1))?.review_state, 'not_interested');
+  assert.equal(projected.feedback.examples.find(row => row.opportunity_id === id(2))?.interest_score, 9.5);
+});
+
+test('the previous full batch protocol remains readable for an immutable historical pin', async () => {
+  const { ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT } = await import('../src/features/meta-search/domain/adaptiveSearchProtocol');
+  const f = await fixture(false);
+  f.bundle.protocol_text = ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT;
+  f.bundle.capabilities = ADAPTIVE_BATCH_CAPABILITIES;
+  f.bundle.execution_contract = ADAPTIVE_BATCH_EXECUTION_CONTRACT;
+  const projected = await projectAdaptiveSearchStartup(f.bundle, f.context); success(projected);
+  assert.equal(projected.protocol_text, ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT);
+  for (const category of ['requirements', 'availability'] as const) {
+    const copy = structuredClone(f.bundle);
+    copy.feedback.approved_preferences = [{ preference_id: id(991), category, polarity: 'positive', target: 'Recorded condition' }];
+    const invalid = await projectAdaptiveSearchStartup(copy, f.context);
+    assert.equal(invalid.compatible, false);
+  }
 });

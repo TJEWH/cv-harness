@@ -13,9 +13,12 @@ function opportunity(index: number, patch: Partial<Opportunity> = {}): Opportuni
     official_url: 'https://example.invalid/jobs/Acoustics', source_url: 'https://example.invalid/jobs',
     research_summary: 'Build acoustic prototypes and study physical sensing.', topics: ['Acoustics'], created_at: now, ...patch } as Opportunity;
 }
+/** Numeric fixture shorthand chooses a review category; current metrics ignore the retained legacy override. */
+const stateForScore = (score: number): OpportunityReview['state'] => score >= 9 ? 'very_high_interest' : score >= 8 ? 'strong_interest' : score > 4 ? 'interested' : 'not_interested';
 function review(index: number, patch: Partial<OpportunityReview> = {}): OpportunityReview {
   return { user_id: owner, opportunity_id: id(index), state: 'unreviewed', interest_rating: null, feedback_excluded: false,
-    feedback_revision: 1, feedback_updated_at: now, evaluation_revision: 1, reviewed_updated_at: null, created_at: now, updated_at: now, ...patch };
+    feedback_revision: 1, feedback_updated_at: now, evaluation_revision: 1, reviewed_updated_at: null, created_at: now, updated_at: now,
+    ...(typeof patch.interest_rating === 'number' && Number.isFinite(patch.interest_rating) ? { state: stateForScore(patch.interest_rating) } : {}), ...patch };
 }
 function application(index: number, patch: Partial<Application> = {}): Application {
   return { id: id(index + 100), user_id: owner, opportunity_id: id(index), status: 'preparation', submitted_at: null, status_history: [], ...patch } as Application;
@@ -45,24 +48,24 @@ test('insights retain unknown interest and an empty mean instead of manufacturin
   assert.deepEqual(unreviewed.topics, []);
 });
 
-test('insights deduplicate opportunities and preserve zero, decimal, category and submission precedence', () => {
+test('insights deduplicate opportunities and use categories and confirmed submission precedence', () => {
   const sample = input({ opportunities: [opportunity(10), opportunity(10), opportunity(11), opportunity(12), opportunity(13), opportunity(14)],
     reviews: [review(10, { interest_rating: 0 }), review(11, { interest_rating: 3.5, state: 'strong_interest' }),
       review(12, { state: 'strong_interest' }), review(13, { state: 'not_interested' })],
     applications: [application(10, { status: 'submitted' }), application(14, { status: 'submitted' }), application(14, { status: 'submitted' })] });
   const before = JSON.stringify(sample), result = buildOpportunityInsights(sample);
-  assert.deepEqual(result.summary, { catalogueCount: 5, eligibleCount: 5, excludedCount: 0, reviewedCount: 4, scoredCount: 5,
-    unknownCount: 0, meanInterest: 4.5, highInterestCount: 1, confirmedSubmissions: 2 });
-  assert.deepEqual(result.histogram.map(bucket => bucket.count), [1, 2, 0, 0, 2]);
-  assert.deepEqual(result.origins.map(origin => [origin.origin, origin.count]), [['explicit_rating', 2], ['categorical_review', 2], ['confirmed_submission', 1], ['none', 0]]);
+  assert.deepEqual(result.summary, { catalogueCount: 5, eligibleCount: 5, excludedCount: 0, reviewedCount: 5, scoredCount: 5,
+    unknownCount: 0, meanInterest: 7.4, highInterestCount: 4, confirmedSubmissions: 2 });
+  assert.deepEqual(result.histogram.map(bucket => bucket.count), [0, 1, 0, 0, 4]);
+  assert.deepEqual(result.origins.map(origin => [origin.origin, origin.count]), [['explicit_rating', 0], ['categorical_review', 3], ['application', 0], ['confirmed_submission', 2], ['none', 0]]);
   assert.equal(JSON.stringify(sample), before);
 });
 
-test('histogram edge membership retains exact scores including ten and nonempty decimal bins', () => {
-  const scores = [0, 1.999, 2, 4, 6, 8, 10];
+test('histogram bins retain the categorical feedback values', () => {
+  const scores = [2, 2, 2, 6, 6, 8, 9];
   const result = buildOpportunityInsights(input({ opportunities: scores.map((_score, index) => opportunity(index + 10)),
     reviews: scores.map((interest_rating, index) => review(index + 10, { interest_rating })) }));
-  assert.deepEqual(result.histogram.map(bucket => bucket.count), [2, 1, 1, 1, 2]);
+  assert.deepEqual(result.histogram.map(bucket => bucket.count), [0, 3, 0, 2, 2]);
   assert.equal(result.histogram.at(-1)!.upperInclusive, true);
   assert.equal(result.histogram[0]!.label, '0–<2');
   assert.equal(result.histogram.reduce((sum, bucket) => sum + bucket.count, 0), result.summary.scoredCount);
@@ -74,7 +77,7 @@ test('foreign account feedback and submissions never affect owner metrics', () =
     applications: [application(10, { user_id: other, status: 'submitted' })] }));
   assert.equal(result.summary.reviewedCount, 1);
   assert.equal(result.summary.scoredCount, 1);
-  assert.equal(result.summary.meanInterest, 4);
+  assert.equal(result.summary.meanInterest, 2);
   assert.equal(result.summary.confirmedSubmissions, 0);
 });
 
@@ -134,10 +137,11 @@ test('topic and reason groups deduplicate per opportunity, retain denominators a
   assert.equal(result.omittedTopics, 4);
 });
 
-test('malformed ratings become unknown and later employer statuses do not fabricate submissions', () => {
+test('retired numeric overrides are ignored while an application supplies interest without fabricating submission', () => {
   const result = buildOpportunityInsights(input({ reviews: [review(10, { interest_rating: Number.NaN })], applications: [application(10, { status: 'offer' })] }));
-  assert.equal(result.summary.scoredCount, 0);
-  assert.equal(result.summary.unknownCount, 1);
+  assert.equal(result.summary.scoredCount, 1);
+  assert.equal(result.summary.unknownCount, 0);
+  assert.equal(result.summary.meanInterest, 9);
   assert.equal(result.summary.confirmedSubmissions, 0);
 });
 
@@ -171,7 +175,7 @@ test('qualitative copy withholds unsafe evaluation tails and private URLs withou
     reviews: [review(10, { interest_rating: 5, comment: `${'Safe experiments. '.repeat(45)} Email private@example.invalid`, technical_issue_note: 'PRIVATE_CANARY' })] }),
     searchId: search, generatedAt: now });
   const example = evidence(result.text).qualitative_sample.examples[0];
-  assert.equal(example.interest_score, 5);
+  assert.equal(example.interest_score, 6);
   assert.equal(example.search_feedback_summary, undefined);
   assert.equal(example.source_url, undefined);
   assert(result.withheldFields >= 2);
@@ -209,11 +213,11 @@ test('high-interest institution and country shares use explicit-reviewed denomin
     review(17, { interest_rating: 9.5 }), review(18, { interest_rating: 8.25 }), review(19, { interest_rating: 10 })],
   applications: [application(14, { status: 'submitted' })] });
   const { highInterest, summary } = buildOpportunityInsights(sample);
-  assert.equal(summary.highInterestCount, 5);
+  assert.equal(summary.highInterestCount, 6);
   assert.deepEqual(highInterest.institutions, [
-    { label: 'Applied Research Lab', highInterestCount: 2, reviewedCount: 3, highInterestShare: 2 / 3, meanInterest: 9 },
+    { label: 'Applied Research Lab', highInterestCount: 3, reviewedCount: 4, highInterestShare: 3 / 4, meanInterest: 8.833333 },
     { label: 'Delft Institute', highInterestCount: 1, reviewedCount: 2, highInterestShare: 0.5, meanInterest: 8 },
-    { label: null, highInterestCount: 2, reviewedCount: 2, highInterestShare: 1, meanInterest: 8.875 },
+    { label: null, highInterestCount: 2, reviewedCount: 2, highInterestShare: 1, meanInterest: 8.5 },
   ]);
   assert.deepEqual(highInterest.countries.map(({ label, ...metrics }) => metrics), highInterest.institutions.map(({ label, ...metrics }) => metrics));
   assert.deepEqual(highInterest.countries.map(group => group.label), ['Switzerland', 'Netherlands', null]);
@@ -247,7 +251,7 @@ test('potential false positives compare current high-fit scores with explicit lo
     country: entry.index < 15 ? 'Switzerland' : 'Netherlands', topics: entry.index === 15 ? ['Robotics', 'Acoustics', 'acoustics'] : ['Acoustics'],
     personal_fit: { score: entry.fit, score_min: 0, score_max: 10, assessment: 'PRIVATE_ASSESSMENT_CANARY' } as unknown as Opportunity['personal_fit'] })),
     reviews: cases.flatMap(entry => entry.rating !== undefined || entry.state ? [review(entry.index, { interest_rating: entry.rating ?? null,
-      state: entry.state ?? 'unreviewed', feedback_excluded: entry.excluded ?? false, user_id: entry.foreign ? other : owner })] : []),
+      state: entry.state ?? stateForScore(entry.rating!), feedback_excluded: entry.excluded ?? false, user_id: entry.foreign ? other : owner })] : []),
     applications: [application(17, { status: 'submitted' })] });
   sample.reviews[0]!.interest_reasons = [{ category: 'topic', polarity: 'negative', target: 'Acoustics' }, { category: 'topic', polarity: 'negative', target: 'Robotics' }];
   sample.reviews[1]!.interest_reasons = [{ category: 'funding', polarity: 'negative' }, { category: 'method', polarity: 'positive', target: 'Physical experiments' }];
@@ -257,13 +261,13 @@ test('potential false positives compare current high-fit scores with explicit lo
   assert.equal(result.comparison, 'current_score_comparison');
   assert.equal(result.historicalAccuracy, 'unavailable');
   assert.equal(result.count, 3);
-  assert.equal(result.comparedCount, 7);
-  assert.equal(result.rate, 3 / 7);
-  assert.deepEqual(result.topics, [{ label: 'Acoustics', mismatchCount: 3, comparedCount: 7, rate: 3 / 7 }, { label: 'Robotics', mismatchCount: 1, comparedCount: 1, rate: 1 }]);
-  assert.deepEqual(result.institutions, [{ label: 'Lab A', mismatchCount: 2, comparedCount: 4, rate: 0.5 }, { label: 'Lab B', mismatchCount: 1, comparedCount: 3, rate: 1 / 3 }]);
-  assert.deepEqual(result.countries.map(group => [group.mismatchCount, group.comparedCount, group.rate]), [[2, 4, 0.5], [1, 3, 1 / 3]]);
+  assert.equal(result.comparedCount, 8);
+  assert.equal(result.rate, 3 / 8);
+  assert.deepEqual(result.topics, [{ label: 'Acoustics', mismatchCount: 3, comparedCount: 8, rate: 3 / 8 }, { label: 'Robotics', mismatchCount: 1, comparedCount: 1, rate: 1 }]);
+  assert.deepEqual(result.institutions, [{ label: 'Lab A', mismatchCount: 2, comparedCount: 4, rate: 0.5 }, { label: 'Lab B', mismatchCount: 1, comparedCount: 4, rate: 1 / 4 }]);
+  assert.deepEqual(result.countries.map(group => [group.mismatchCount, group.comparedCount, group.rate]), [[2, 4, 0.5], [1, 4, 1 / 4]]);
   assert.deepEqual(result.negativeReasons, [{ category: 'topic', count: 1 }, { category: 'method', count: 1 }, { category: 'funding', count: 1 }]);
-  assert.deepEqual(result.examples.map(example => [example.currentFit, example.interestScore]), [[10, 2], [8, 0], [8, 4]]);
+  assert.deepEqual(result.examples.map(example => [example.currentFit, example.interestScore]), [[10, 2], [8, 2], [8, 2]]);
   assert(!JSON.stringify(result).includes('PRIVATE_ASSESSMENT_CANARY'));
 });
 
@@ -296,7 +300,7 @@ test('mismatch pattern bounds preserve unknown comparisons and safe examples omi
   assert.equal(result.omittedCountries, 3);
   const unsafe = buildOpportunityInsights(input({ opportunities: [opportunity(10, { title: 'private@example.invalid', institution: 'access_token=PRIVATE_INSTITUTION',
     country: 'private@example.invalid', topics: ['Acoustics', 'private@example.invalid'], personal_fit: { score: 8 } as Opportunity['personal_fit'] })], reviews: [review(10, { interest_rating: 0 })] })).falsePositives;
-  assert.deepEqual(unsafe.examples, [{ title: null, institution: null, country: null, currentFit: 8, interestScore: 0 }]);
+  assert.deepEqual(unsafe.examples, [{ title: null, institution: null, country: null, currentFit: 8, interestScore: 2 }]);
   assert.deepEqual(unsafe.topics, [{ label: 'Acoustics', mismatchCount: 1, comparedCount: 1, rate: 1 }, { label: null, mismatchCount: 1, comparedCount: 1, rate: 1 }]);
   assert(!JSON.stringify(unsafe).includes('PRIVATE_INSTITUTION'));
 });
@@ -310,7 +314,7 @@ test('analysis copy includes high-interest places and bounded current-score patt
   assert.equal(packet.potential_false_positives.comparedCount, 2);
   assert.equal(packet.potential_false_positives.count, 1);
   assert.equal(packet.potential_false_positives.examples[0].currentFit, 8);
-  assert.equal(packet.potential_false_positives.examples[0].interestScore, 0);
+  assert.equal(packet.potential_false_positives.examples[0].interestScore, 2);
   assert.equal(packet.potential_false_positives.comparison, 'current_score_comparison');
   assert.equal(packet.potential_false_positives.historicalAccuracy, 'unavailable');
   assert.match(copied.text, /not causes, historical model errors, or institution-wide fitness claims/u);
@@ -332,7 +336,7 @@ test('addition windows ignore rating, submission and update clocks with exact mi
   const sample = input({ opportunities: Array.from({ length: 13 }, (_value, index) => opportunity(10 + index, { created_at: dates.get(10 + index),
     updated_at: clock, personal_fit: { score: 8 } as Opportunity['personal_fit'] })),
   reviews: [...dates].filter(([index]) => index !== 18).map(([index]) => review(index, { feedback_updated_at: null, updated_at: clock,
-    state: index === 17 ? 'unreviewed' : 'interested', interest_rating: index === 17 ? null : index === 10 || index === 13 || index === 20 ? 8 : index === 11 ? 4 : 2,
+    state: index === 17 ? 'unreviewed' : index === 10 || index === 13 || index === 20 ? 'strong_interest' : 'not_interested', interest_rating: index === 17 ? null : index === 10 || index === 13 || index === 20 ? 8 : index === 11 ? 4 : 2,
     feedback_excluded: index === 20, user_id: index === 21 ? other : owner })),
   applications: [application(18, { status: 'submitted', submitted_at: '2026-10-01T12:00:00Z' }), application(19, { status: 'submitted', submitted_at: clock })],
   windowDays: 7, now: clock });
@@ -343,11 +347,11 @@ test('addition windows ignore rating, submission and update clocks with exact mi
   assert.equal(result.summary.eligibleCount, 5);
   assert.equal(result.summary.excludedCount, 1);
   assert.equal(result.summary.scoredCount, 3);
-  assert.equal(result.summary.highInterestCount, 1);
-  assert.equal(result.summary.meanInterest, 7);
-  assert.equal(result.alignment.current.pairedCount, 2);
+  assert.equal(result.summary.highInterestCount, 2);
+  assert.equal(result.summary.meanInterest, 6.5);
+  assert.equal(result.alignment.current.pairedCount, 3);
   assert.equal(result.alignment.previous!.pairedCount, 3);
-  assert.equal(result.alignment.previous!.falsePositiveCount, 2, 'a current submission does not move an older catalogue addition');
+  assert.equal(result.alignment.previous!.falsePositiveCount, 1, 'a current submission does not move an older catalogue addition');
   assert.equal(result.summary.catalogueCount + result.window.undatedCount + result.window.outsideCount + result.window.futureCount, 13);
   const all = buildOpportunityInsights({ ...sample, windowDays: null });
   assert.equal(all.summary.catalogueCount, 12);
@@ -471,14 +475,14 @@ test('topics count explicit high interest and lift uses explicit-reviewed global
     opportunity(13, { topics: ['B'] }), opportunity(14, { topics: ['B'] }), opportunity(15, { topics: ['B'] }), opportunity(16, { topics: ['A'] })],
   reviews: [review(10, { interest_rating: 8 }), review(11, { interest_rating: 10 }), review(12, { interest_rating: 2 }), review(13, { state: 'strong_interest' }),
     review(16, { interest_rating: 10, feedback_excluded: true })], applications: [application(14, { status: 'submitted' })] }));
-  assert.equal(result.summary.highInterestCount, 3);
-  assert.equal(result.summary.reviewedCount, 4);
+  assert.equal(result.summary.highInterestCount, 4);
+  assert.equal(result.summary.reviewedCount, 5);
   assert.deepEqual(result.topics.map(({ lift, ...topic }) => topic), [
     { topic: 'A', count: 3, scoredCount: 3, reviewedCount: 3, highInterestCount: 2, highInterestShare: 2 / 3 },
-    { topic: 'B', count: 3, scoredCount: 2, reviewedCount: 1, highInterestCount: 1, highInterestShare: 1 },
+    { topic: 'B', count: 3, scoredCount: 2, reviewedCount: 2, highInterestCount: 2, highInterestShare: 1 },
   ]);
-  near(result.topics[0]!.lift, 8 / 9);
-  near(result.topics[1]!.lift, 4 / 3);
+  near(result.topics[0]!.lift, 5 / 6);
+  near(result.topics[1]!.lift, 5 / 4);
   assert(result.topics.every(topic => !Object.hasOwn(topic, 'meanInterest')));
 });
 
@@ -495,9 +499,9 @@ test('alignment counts high-fit hits, middle-band outcomes, missed high interest
   assert.equal(alignment.lowFitCount, 3);
   assert.equal(alignment.missedHighInterestCount, 1);
   assert.equal(alignment.missedHighInterestRate, 0.5, 'miss share uses all paired owner-high opportunities, not all low-fit results');
-  assert.equal(alignment.meanAbsoluteGap, 2.5);
+  assert.equal(alignment.meanAbsoluteGap, 3.166667);
   assert.equal(alignment.meanSignedGap, 1.833333);
-  near(alignment.spearman, 17 / 35);
+  near(alignment.spearman, 4.5 / Math.sqrt(17.5 * 15.5));
   assert.equal(alignment.falsePositiveCount, result.falsePositives.count);
   assert.equal(alignment.highFitCount, result.falsePositives.comparedCount);
 });
@@ -518,26 +522,25 @@ test('Wilson95 hit intervals remain bounded and preserve uncertainty at zero, pe
   assert.equal(missing.missedHighInterestRate, null);
 });
 
-test('Spearman ranks nonlinear orderings and average ties, with explicit sample and constant-input guards', () => {
-  near(buildOpportunityInsights(pairedInput([0, 1, 2, 3, 4], [0, 1, 4, 9, 10])).alignment.current.spearman, 1);
-  near(buildOpportunityInsights(pairedInput([0, 1, 2, 3, 4], [10, 9, 4, 1, 0])).alignment.current.spearman, -1);
-  near(buildOpportunityInsights(pairedInput([1, 1, 2, 3, 4], [1, 2, 2, 3, 4])).alignment.current.spearman, 8.75 / 9.5);
-  assert.equal(buildOpportunityInsights(pairedInput([0, 1, 2, 3], [0, 1, 2, 3])).alignment.current.spearman, null);
-  assert.equal(buildOpportunityInsights(pairedInput([8, 8, 8, 8, 8], [0, 2, 4, 8, 10])).alignment.current.spearman, null);
+test('Spearman retains categorical ties, monotonic ranks and constant-input guards', () => {
+  near(buildOpportunityInsights(pairedInput([0, 0, 2, 3, 4], [2, 2, 6, 8, 9])).alignment.current.spearman, 1);
+  near(buildOpportunityInsights(pairedInput([0, 1, 2, 3, 3], [9, 8, 6, 2, 2])).alignment.current.spearman, -1);
+  assert.equal(buildOpportunityInsights(pairedInput([0, 1, 2, 3], [2, 6, 8, 9])).alignment.current.spearman, null);
+  assert.equal(buildOpportunityInsights(pairedInput([8, 8, 8, 8, 8], [2, 2, 6, 8, 9])).alignment.current.spearman, null);
   assert.equal(buildOpportunityInsights(pairedInput([0, 2, 4, 8, 10], [6, 6, 6, 6, 6])).alignment.current.spearman, null);
 });
 
-test('alignment excludes foreign, submission-only, unknown, excluded and invalid-fit rows but preserves explicit zero', () => {
+test('alignment includes applications and excludes foreign, unknown, excluded and invalid-fit rows', () => {
   const sample = input({ opportunities: [10, 11, 12, 13, 14, 15, 16].map(index => opportunity(index, { personal_fit: { score: index === 16 ? NaN : 8 } as Opportunity['personal_fit'] })),
   reviews: [review(10, { interest_rating: 0 }), review(11, { interest_rating: 0, user_id: other }), review(14, { interest_rating: 0, feedback_excluded: true }), review(16, { interest_rating: 0 })],
   applications: [application(12, { status: 'submitted' })] });
   sample.opportunities = [...sample.opportunities, sample.opportunities[0]!];
   const result = buildOpportunityInsights(sample).alignment.current;
-  assert.equal(result.pairedCount, 1);
-  assert.equal(result.highFitCount, 1);
+  assert.equal(result.pairedCount, 2);
+  assert.equal(result.highFitCount, 2);
   assert.equal(result.falsePositiveCount, 1);
-  assert.equal(result.meanAbsoluteGap, 8);
-  assert.equal(result.meanSignedGap, 8);
+  assert.equal(result.meanAbsoluteGap, 3.75);
+  assert.equal(result.meanSignedGap, 2.25);
   assert.equal(result.spearman, null);
 });
 
@@ -550,7 +553,7 @@ test('preceding equal-window comparisons retain sample counts, delta signs and u
   assert.equal(result.current.pairedCount, 5);
   assert.equal(result.previous!.pairedCount, 5);
   assert.deepEqual(result.comparison, { hitRateChange: 1, falsePositiveRateChange: -1, missedHighInterestRateChange: -1,
-    spearmanChange: 2, absoluteGapChange: -6.4, currentPairedCount: 5, previousPairedCount: 5 });
+    spearmanChange: 1.7888543819998317, absoluteGapChange: -5.2, currentPairedCount: 5, previousPairedCount: 5 });
   assert.equal(buildOpportunityInsights({ ...sample, windowDays: null }).alignment.previous, null);
   assert.equal(buildOpportunityInsights({ ...sample, reviews: sample.reviews.slice(5) }).alignment.comparison, null);
   assert.equal(buildOpportunityInsights({ ...sample, reviews: sample.reviews.slice(0, 5) }).alignment.comparison, null);
@@ -607,7 +610,7 @@ test('the relationship graph retains complete topic bundles, isolated nodes and 
   ]);
   assert(graph.topics.some(topic => topic.id === 'acoustics' && topic.highInterestCount === 1), 'a single-topic high-interest job survives without any edges');
   assert.equal(graph.topics.find(topic => topic.id === 'foreign only')!.highInterestCount, 0);
-  assert.equal(graph.topics.find(topic => topic.id === 'submission only')!.highInterestCount, 0);
+  assert.equal(graph.topics.find(topic => topic.id === 'submission only')!.highInterestCount, 1);
   const mismatch = graph.jobs.find(job => job.id === id(12))!;
   assert.equal(mismatch.mismatch, true);
   assert.deepEqual(mismatch.topicIds, ['hardware', 'robotics', 'simulation']);
@@ -647,19 +650,19 @@ test('topic formatting equivalence is shared by graph evidence, trends and reaso
     review(13, { interest_rating: 1, feedback_excluded: true }),
   ], applications: [application(12, { status: 'submitted' })] });
   const result = buildOpportunityInsights(sample), topic = result.graph.topics.find(row => row.id === 'acoustic sensing')!;
-  assert.deepEqual(topic, { id: 'acoustic sensing', label: 'Acoustic sensing', jobCount: 3, reviewedCount: 2,
-    highInterestCount: 1, lowInterestCount: 1, avoidedCount: 1, positiveReasonCount: 1 });
+  assert.deepEqual(topic, { id: 'acoustic sensing', label: 'Acoustic sensing', jobCount: 3, reviewedCount: 3,
+    highInterestCount: 2, lowInterestCount: 1, avoidedCount: 1, positiveReasonCount: 1 });
   assert.equal(result.graph.topics.find(row => row.id === 'embedded ai')!.label, 'Embedded AI');
   assert.equal(result.graph.topics.find(row => row.id === 'simulation')!.avoidedCount, 0,
     'a negative method reason does not become a negative topic annotation');
   assert.deepEqual(result.graph.jobs.find(row => row.id === id(11))!.avoidedTopicIds, ['acoustic sensing']);
   assert.deepEqual(result.graph.jobs.find(row => row.id === id(11))!.topicIds, ['acoustic sensing', 'simulation']);
-  assert.equal(result.topics.find(row => row.topic === 'Acoustic sensing')!.highInterestCount, 1);
-  assert.equal(result.timeline.buckets[0]!.topicHighCounts['acoustic sensing'], 1);
+  assert.equal(result.topics.find(row => row.topic === 'Acoustic sensing')!.highInterestCount, 2);
+  assert.equal(result.timeline.buckets[0]!.topicHighCounts['acoustic sensing'], 2);
   assert.deepEqual(buildOpportunityInsights({ ...sample, opportunities: [...sample.opportunities].reverse(), reviews: [...sample.reviews].reverse() }).graph,
     result.graph, 'input order cannot choose the casing or labels of canonical topic evidence');
-  assert.equal(result.graph.edges.find(edge => edge.source === 'acoustic sensing' && edge.target === 'embedded ai')!.sharedReviewedCount, 0,
-    'submission-only fallback remains distinct from explicit preference evidence');
+  assert.equal(result.graph.edges.find(edge => edge.source === 'acoustic sensing' && edge.target === 'embedded ai')!.sharedReviewedCount, 1,
+    'confirmed submission contributes high-interest evidence');
 });
 
 test('normalization cannot reveal unsafe text hidden behind underscores or compatibility characters', async () => {
@@ -693,13 +696,13 @@ test('interest visibility counts explicit threshold matches and keeps rare low-i
   const matches = (mode: 'all' | 'high' | 'low', interestThreshold: number, minimumJobCount = 1) => Object.fromEntries(
     filterOpportunityInsightTopics(graph, { mode, interestThreshold, minimumJobCount }).map(row => [row.topicId, row.matchingJobCount]));
   assert.deepEqual(matches('low', 4), { boundary: 1, 'rare low': 1 });
-  assert.deepEqual(matches('low', 2.5), { 'rare low': 1 });
+  assert.deepEqual(matches('low', 2.5), { boundary: 1, 'rare low': 1 });
   assert.deepEqual(matches('low', 4, 100), { boundary: 1, 'rare low': 1 }, 'low mode retains rare qualifying topics instead of applying a minimum count');
   assert(!Object.hasOwn(matches('low', 4), 'shared'), 'any explicit interest above the maximum excludes the topic');
-  assert.deepEqual(matches('low', 0), { 'rare low': 1 }, 'a real explicit zero qualifies, unknown interest does not');
-  assert.deepEqual(matches('high', 8, 2), { shared: 2, high: 2 }, 'all/high minimum occurrence filtering is retained');
-  assert.deepEqual(matches('high', 8), { shared: 2, high: 2 });
-  assert.deepEqual(matches('high', 8.5), { shared: 1, high: 1 });
+  assert.deepEqual(matches('low', 0), {}, 'categorical low interest is 2, unknown interest does not qualify');
+  assert.deepEqual(matches('high', 8, 2), { shared: 3, high: 2 }, 'all/high minimum occurrence filtering is retained');
+  assert.deepEqual(matches('high', 8), { shared: 3, high: 2, unknown: 1 });
+  assert.deepEqual(matches('high', 8.5), { shared: 2, high: 1, unknown: 1 });
   assert.equal(matches('all', 8).shared, 8, 'All includes unknown and submission-only jobs');
   assert.equal(matches('all', 8).foreign, 1);
   assert(!Object.hasOwn(matches('all', 8), 'excluded'));
@@ -933,13 +936,13 @@ test('prepared evidence snapshots do not observe later in-place source edits or 
   const fresh = prepareOpportunityInsights(sample).build();
   assert.notDeepEqual(fresh, original);
   assert.equal(fresh.graph.jobs[0]!.currentFit, 4);
-  assert.equal(fresh.graph.jobs[0]!.interestScore, 8);
+  assert.equal(fresh.graph.jobs[0]!.interestScore, 9.5);
   assert.equal(fresh.graph.jobs[0]!.addedAt, '2026-10-01T12:00:00.000Z');
   assert.deepEqual(fresh.graph.jobs[0]!.topicIds, ['acoustic sensing', 'robotics']);
   assert.deepEqual(fresh.graph.jobs[0]!.avoidedTopicIds, []);
   assert.equal(fresh.summary.confirmedSubmissions, 1);
   const foreign = prepareOpportunityInsights({ ...sample, ownerId: other }).build();
-  assert.equal(foreign.graph.jobs[0]!.interestScore, 10);
+  assert.equal(foreign.graph.jobs[0]!.interestScore, 9);
   assert.equal(foreign.summary.confirmedSubmissions, 0, 'the other owner cannot inherit submission evidence');
   sample.reviews[0]!.feedback_excluded = true;
   assert.equal(prepareOpportunityInsights(sample).build().summary.eligibleCount, 0, 'a fresh context respects an in-place exclusion');
@@ -959,7 +962,7 @@ test('low-interest visibility rejects mixed-interest topics and copies the same 
   const graph = buildOpportunityInsights(sample).graph;
   const filter = { mode: 'low' as const, interestThreshold: 4, minimumJobCount: 100 };
   assert.deepEqual(filterOpportunityInsightTopics(graph, filter).map(row => [row.topicId, row.matchingJobCount, row.highInterestJobCount]),
-    [['frequent low', 3, 0], ['rare low', 1, 0]]);
+    [['rare low', 1, 0]]);
   const allowed = filterOpportunityInsightTopics(graph, filter);
   assert.equal(allowed.find(row => row.topicId === 'mixed'), undefined, 'a higher-interest occurrence disqualifies the topic');
   assert(!allowed.some(row => ['high only', 'submission only', 'unknown only'].includes(row.topicId)));
@@ -1007,7 +1010,7 @@ test('strict low-interest topics exclude higher exact-threshold occurrences and 
   graph.jobs.push(graph.jobs[0]!);
   const before = structuredClone(graph);
   const low = filterOpportunityInsightTopics(graph, { mode: 'low', interestThreshold: 2, minimumJobCount: 999 });
-  assert.deepEqual(low, [{ topicId: 'max boundary', matchingJobCount: 2, highInterestJobCount: 0 }]);
+  assert.deepEqual(low, [{ topicId: 'decimal', matchingJobCount: 2, highInterestJobCount: 0 }]);
   const high = filterOpportunityInsightTopics(graph, { mode: 'high', interestThreshold: 8, minimumJobCount: 1 });
   assert(high.some(topic => topic.topicId === 'signal processing'));
   assert(low.every(topic => !high.some(other => other.topicId === topic.topicId)), 'strict maximum 2 cannot overlap a minimum-8 topic');
@@ -1138,11 +1141,11 @@ test('hierarchy copy applies addition range, current-only, active owner and expl
     applications: [application(17, { status: 'submitted' })] });
   const options = { ...sample, searchId: search, explorerCurrentOnly: true, explorerCurrentAt: now, jobClusterMinimumInterest: 8, jobClusterCount: 10 };
   const packet = evidence((await buildOpportunityInsightsAnalysisPrompt(options)).text), copy = packet.job_clustering;
-  assert.equal(copy.totalJobCount, 2);
-  assert.equal(copy.clusterCount, 2);
-  assert.deepEqual(copy.jobs.map((job: any) => job.title), ['Eligible research role', 'Unknown deadline research role']);
+  assert.equal(copy.totalJobCount, 3);
+  assert.equal(copy.clusterCount, 3);
+  assert.deepEqual(copy.jobs.map((job: any) => job.title), ['Submission fallback role', 'Eligible research role', 'Unknown deadline research role']);
   assert(copy.jobs.every((job: any) => job.interestScore >= 8));
-  assert.equal(packet.quantitative_summary.highInterestCount, 4, 'the hierarchy filter retains full selected-time aggregate statistics');
+  assert.equal(packet.quantitative_summary.highInterestCount, 5, 'the hierarchy filter retains full selected-time aggregate statistics');
   const otherCopy = evidence((await buildOpportunityInsightsAnalysisPrompt({ ...options, ownerId: other })).text).job_clustering;
   assert.equal(otherCopy.totalJobCount, 1);
   assert.deepEqual(otherCopy.jobs.map((job: any) => job.title), ['Foreign feedback role']);

@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { faCopy } from '@fortawesome/free-solid-svg-icons';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseConfiguration } from '../../../platform/supabase/supabase';
-import type { Application, Opportunity, OpportunityReview } from '../../../app/cloudTypes';
+import { OPPORTUNITY_INTEREST_REASON_CATEGORIES, type Application, type Opportunity, type OpportunityReview } from '../../../app/cloudTypes';
 import {
   prepareOpportunityInsights, buildOpportunityInsightsAnalysisPrompt, filterOpportunityInsightTopics,
   type OpportunityInsightJob, type OpportunityInsightTopicNode, type OpportunityTopicInterestFilter, type OpportunityInsightsAggregation,
@@ -260,15 +260,17 @@ const highInterestPanels = computed(() => [
 ]);
 const rate = (value: number | null) => value === null ? text('Unknown', 'Unbekannt') : `${number(value * 100, 0)}%`;
 const search = useOpportunityInsightsSearch({ ownerId: () => props.ownerId, client: () => props.client, projectRef: () => connectedProjectRef.value });
-const reasonRows = computed(() => ['topic', 'method', 'hardware', 'location', 'funding', 'timing', 'other'].map(category => ({
+const reasonRows = computed(() => OPPORTUNITY_INTEREST_REASON_CATEGORIES.map(category => ({
   category, positive: insights.value.reasons.find(row => row.category === category && row.polarity === 'positive')?.count ?? 0,
   negative: insights.value.reasons.find(row => row.category === category && row.polarity === 'negative')?.count ?? 0,
 })).filter(row => row.positive + row.negative > 0));
 const maximumReason = computed(() => Math.max(1, ...reasonRows.value.flatMap(row => [row.positive, row.negative])));
-const reasonLabel = (category: string) => ({ topic: text('Topic', 'Thema'), method: text('Method', 'Methode'), hardware: text('Hardware', 'Hardware'),
-  location: text('Location', 'Ort'), funding: text('Funding', 'Finanzierung'), timing: text('Timing', 'Zeitpunkt'), other: text('Other', 'Sonstiges') })[category] ?? category;
+const reasonLabel = (category: string) => ({ topic: text('Topic', 'Thema'), method: text('Method', 'Methode'),
+  background_fit: text('Background fit', 'Passung zum Hintergrund'), project_context: text('Project context', 'Projektkontext'),
+  hardware: text('Tools+hardware', 'Tools+Hardware'), location: text('Location', 'Ort'), funding: text('Salary', 'Gehalt'),
+  timing: text('Timing', 'Zeitpunkt'), requirements: text('Requirements', 'Anforderungen'), availability: text('Availability', 'Verfügbarkeit'), other: text('Other', 'Sonstiges') })[category] ?? category;
 const originLabel = (origin: string) => ({ explicit_rating: text('Explicit rating', 'Eigene Bewertung'), categorical_review: text('Interest category', 'Interessenauswahl'),
-  confirmed_submission: text('Submission fallback', 'Einreichung als Ersatzsignal'), none: text('Unknown', 'Unbekannt') })[origin] ?? origin;
+  application: text('Application', 'Bewerbung'), confirmed_submission: text('Submission', 'Einreichung'), none: text('Unknown', 'Unbekannt') })[origin] ?? origin;
 const percent = (value: number, total: number) => total ? value / total * 100 : 0;
 const copying = ref(false);
 const preparedText = ref('');
@@ -375,7 +377,7 @@ async function copyAnalysis() {
           <div v-if="networkMode === 'jobs'" class="insights-topic-filters insights-job-filters" role="group" :aria-label="text('Job filters', 'Stellenfilter')">
             <div class="insights-job-interest" role="group" :aria-label="text('Job cluster filters', 'Filter für Stellengruppen')">
               <label class="insights-filter-slider"><span>{{ text('Minimum interest', 'Mindestinteresse') }} <strong>{{ jobInterestDraft.toFixed(1) }} / 10</strong></span><input type="range" min="0" max="10" step="0.5" :value="jobInterestDraft" @input="previewJobInterest" @change="commitJobInterest" /></label>
-              <InfoHint :lang="lang" :label="text('Minimum job interest', 'Mindestinteresse für Stellen')" :text="text('Include jobs with your rating or review category at or above this score. Release the slider to update the clusters; overall statistics keep their thresholds.', 'Zeige Stellen mit eigener Bewertung oder Interessenkategorie ab diesem Wert. Lass den Regler los, um die Gruppen zu aktualisieren; andere Statistiken behalten ihre Schwellen.')" />
+              <InfoHint :lang="lang" :label="text('Minimum job interest', 'Mindestinteresse für Stellen')" :text="text('Include jobs whose interest score meets this minimum, including applications (9) and submissions (9.5). Release the slider to update the clusters; overall statistics keep their thresholds.', 'Zeige Stellen ab diesem Interessenwert, einschließlich Bewerbungen (9) und Einreichungen (9,5). Lass den Regler los, um die Gruppen zu aktualisieren; andere Statistiken behalten ihre Schwellen.')" />
             </div>
             <div class="insights-job-interest" role="group" :aria-label="text('Job cluster count', 'Anzahl der Stellengruppen')">
               <label class="insights-filter-slider"><span>{{ text('Clusters', 'Gruppen') }} <strong>{{ jobClusterDraft }}</strong></span><input type="range" min="1" :max="maximumJobClusters" step="1" :value="jobClusterDraft" :disabled="!clusterJobs.length" @input="previewJobClusters" @change="commitJobClusters" /></label>
@@ -386,7 +388,7 @@ async function copyAnalysis() {
             <label class="insights-filter-mode"><span>{{ text('Interest', 'Interesse') }}</span><select v-model="interestMode"><option value="all">{{ text('All topics', 'Alle Themen') }}</option><option value="high">{{ text('At or above', 'Mindestens') }}</option><option value="low">{{ text('At or below', 'Höchstens') }}</option></select></label>
             <label v-if="interestMode !== 'all'" class="insights-filter-slider"><span>{{ interestMode === 'low' ? text('Maximum interest', 'Maximales Interesse') : text('Minimum interest', 'Minimales Interesse') }} <strong>{{ number(interestThreshold) }} / 10</strong></span><input type="range" min="0" max="10" step="0.5" :value="interestThreshold" @input="setInterestThreshold" /></label>
             <label v-if="interestMode !== 'low'" class="insights-filter-slider"><span>{{ text('Minimum matching jobs', 'Mindestens passende Stellen') }} <strong>{{ number(minimumJobCount, 0) }}</strong></span><input v-model.number="minimumJobCount" type="range" min="1" :max="maximumTopicCount" step="1" :disabled="!matchingTopicsAtInterest.length" /></label>
-            <InfoHint :lang="lang" :label="text('Topic filters', 'Themenfilter')" :text="interestMode === 'low' ? text('In the selected period, include topics with at least one rated job and none above the maximum. Interest categories count as ratings.', 'Zeige im gewählten Zeitraum Themen mit mindestens einer bewerteten Stelle und keiner Bewertung über dem Maximum. Interessenkategorien zählen als Bewertungen.') : interestMode === 'high' ? text('Count jobs whose rating or interest category meets the minimum. Keep topics with at least the chosen number of matching jobs.', 'Zähle Stellen, deren Bewertung oder Interessenkategorie das Minimum erreicht. Zeige Themen mit mindestens der gewählten Zahl passender Stellen.') : text('Count jobs with each topic, including jobs without feedback. Use the job-count minimum to hide rare topics.', 'Zähle Stellen pro Thema, auch ohne Feedback. Blende seltene Themen über die Mindestzahl passender Stellen aus.')" />
+            <InfoHint :lang="lang" :label="text('Topic filters', 'Themenfilter')" :text="interestMode === 'low' ? text('Include topics with at least one interest score and none above the maximum in this period. Applications score 9 and submissions 9.5.', 'Zeige Themen mit mindestens einem Interessenwert und keinem Wert über dem Maximum in diesem Zeitraum. Bewerbungen zählen mit 9 und Einreichungen mit 9,5.') : interestMode === 'high' ? text('Count jobs whose interest score meets the minimum, including applications (9) and submissions (9.5). Keep topics with at least the chosen number of matching jobs.', 'Zähle Stellen ab dem gewählten Interessenwert, einschließlich Bewerbungen (9) und Einreichungen (9,5). Zeige Themen mit mindestens der gewählten Zahl passender Stellen.') : text('Count jobs with each topic, including jobs without feedback. Use the job-count minimum to hide rare topics.', 'Zähle Stellen pro Thema, auch ohne Feedback. Blende seltene Themen über die Mindestzahl passender Stellen aus.')" />
           </div>
         </div>
         <DesktopSidebarPortal area="minor" :active="sidebarActive">
@@ -450,7 +452,7 @@ async function copyAnalysis() {
         </section>
 
       <section class="insights-chart" :aria-labelledby="`${id}-distribution`">
-          <div class="insights-section-heading"><h3 :id="`${id}-distribution`">{{ text('Interest distribution', 'Verteilung des Interesses') }}</h3><InfoHint :lang="lang" :label="text('Interest distribution', 'Verteilung des Interesses')" :text="text('Compare shares among jobs with an interest score. Use your rating first, then review category (2/6/8), then confirmed submission (9). Leave jobs with unknown interest out.', 'Vergleiche Anteile unter Stellen mit Interessenwert. Es zählt deine Bewertung, danach die Interessenkategorie (2/6/8), danach eine bestätigte Einreichung (9). Stellen mit unbekanntem Interesse zählen nicht mit.')" /></div>
+          <div class="insights-section-heading"><h3 :id="`${id}-distribution`">{{ text('Interest distribution', 'Verteilung des Interesses') }}</h3><InfoHint :lang="lang" :label="text('Interest distribution', 'Verteilung des Interesses')" :text="text('Interest scores are Low 2, Medium 6, High 8 and Very high 9; applications score 9 and submissions 9.5. Jobs with unknown interest are excluded.', 'Die Interessenwerte sind Gering 2, Mittel 6, Hoch 8 und Sehr hoch 9; Bewerbungen zählen mit 9 und Einreichungen mit 9,5. Stellen mit unbekanntem Interesse zählen nicht mit.')" /></div>
           <ol class="insights-bars" :aria-label="text('Interest from 0 to 10', 'Interesse von 0 bis 10')">
             <li v-for="bucket in insights.histogram" :key="bucket.min">
               <span class="insights-bar-label">{{ bucket.label }}</span>
@@ -458,13 +460,13 @@ async function copyAnalysis() {
               <span class="insights-bar-value">{{ number(bucket.count, 0) }}<small>{{ number(percent(bucket.count, summary.scoredCount), 0) }}%</small></span>
             </li>
           </ol>
-          <p v-if="!summary.scoredCount" class="insights-empty-note">{{ text('No interest scores yet. Add a rating or interest category to an opportunity.', 'Noch keine Interessenwerte. Vergib eine Bewertung oder Interessenauswahl für eine Stelle.') }}</p>
+          <p v-if="!summary.scoredCount" class="insights-empty-note">{{ text('No interest scores yet. Choose an interest level for an opportunity or create an application.', 'Noch keine Interessenwerte. Wähle eine Interessenstufe für eine Stelle oder lege eine Bewerbung an.') }}</p>
           <dl class="insights-origins"><div v-for="origin in insights.origins" :key="origin.origin"><dt>{{ originLabel(origin.origin) }}</dt><dd>{{ number(origin.count, 0) }}</dd></div></dl>
         </section>
       <section class="insights-section insights-places" :aria-labelledby="`${id}-places`">
         <div class="insights-section-heading">
           <h3 :id="`${id}-places`">{{ text('Where your high interest clusters', 'Wo sich dein hohes Interesse bündelt') }}</h3>
-          <InfoHint :lang="lang" :label="text('High-interest institutions and countries', 'Hochschulen und Länder mit hohem Interesse')" :text="text('Compare jobs rated 8+ with all rated jobs in each group; interest categories count as ratings. Read Mean as the average for the 8+ subset.', 'Vergleiche Stellen ab 8 mit allen bewerteten Stellen je Gruppe; Interessenkategorien zählen als Bewertungen. Das Mittel bezieht sich auf die Teilmenge ab 8.')" />
+          <InfoHint :lang="lang" :label="text('High-interest institutions and countries', 'Hochschulen und Länder mit hohem Interesse')" :text="text('Compare jobs with interest 8+ against all scored jobs in each group, including applications and submissions. Mean is the average for the 8+ subset.', 'Vergleiche Stellen ab Interessenwert 8 mit allen bewerteten Stellen je Gruppe, einschließlich Bewerbungen und Einreichungen. Das Mittel bezieht sich auf die Teilmenge ab 8.')" />
         </div>
         <div class="insights-place-panels">
           <section v-for="panel in highInterestPanels" :key="panel.key" class="insights-cohort-panel" :aria-labelledby="`${id}-high-${panel.key}`">

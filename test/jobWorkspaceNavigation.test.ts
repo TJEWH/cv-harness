@@ -19,7 +19,8 @@ import { migrateOpportunityEvaluationDrafts } from '../src/features/opportunitie
 const normalizeOpportunity = (input: Record<string, unknown> & { id: string }) => readOpportunity(opportunityFixture(input));
 
 const filename = new URL('../src/app/components/JobWorkspace.vue', import.meta.url);
-const { descriptor } = parse(readFileSync(filename, 'utf8'));
+const source = readFileSync(filename, 'utf8');
+const { descriptor } = parse(source);
 const compiled = compileScript(descriptor, { id: 'job-workspace-navigation-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const renderer = createRenderer<object, object>({
@@ -171,6 +172,7 @@ function mount(t: TestContext, options: { restoredOpportunityId?: string; active
     query: string; statusFilter: string; reviewFilter: string; showWithApplications: boolean; showLowInterest: boolean; sortBy: string; applicationSortBy: string; deadlineFilter: 'current' | 'past'; applicationDeadlineFilter: 'current' | 'past'; now: Date;
     statusLabel(status: string): string;
     reviewSelection(id: string): OpportunityReviewState;
+    saveReviewSelection(item: Opportunity, state: OpportunityReviewState): Promise<boolean>;
     changeReview(item: Opportunity, event: Event): Promise<void>;
     pendingReviewSelections: Map<string, { state: OpportunityReviewState; status: 'saving' | 'error' }>;
     startingApplication: object | null;
@@ -431,6 +433,37 @@ test('opportunity navigation saves evaluations and retains the current draft whe
   await setup.navigateDetail(-1);
   assert.equal(setup.selectedOpportunity?.id, opportunity.id);
   assert.equal(setup.opportunityComment, 'Ask about access to the robotics lab.');
+});
+
+test('active applications show locked very high interest and removal restores the saved opportunity choice', async t => {
+  const f = mount(t);
+  f.reviews.value = [{ user_id: f.props.userId, opportunity_id: f.opportunity.id, state: 'not_interested', reviewed_updated_at: null, created_at: '', updated_at: '' }];
+  f.applications.value = [f.application];
+  f.setup.showWithApplications = true;
+  f.setup.reviewFilter = 'very_high_interest';
+  await nextTick();
+  assert.equal(f.setup.reviewSelection(f.opportunity.id), 'very_high_interest');
+  assert.equal(f.setup.statusLabel('very_high_interest'), 'Very high');
+  assert.deepEqual(f.setup.filteredOpportunities.map(item => item.id), [f.opportunity.id]);
+  assert.equal(await f.setup.saveReviewSelection(f.opportunity, 'interested'), false);
+  assert.deepEqual(f.reviewUpdates, []);
+  assert.equal(f.reviews.value[0]?.state, 'not_interested');
+  f.setup.reviewFilter = 'all';
+  f.setup.showLowInterest = true;
+  f.applications.value = [];
+  await nextTick();
+  assert.equal(f.setup.reviewSelection(f.opportunity.id), 'not_interested');
+  assert.equal(await f.setup.saveReviewSelection(f.opportunity, 'very_high_interest'), true);
+  assert.equal(f.reviews.value[0]?.state, 'very_high_interest');
+});
+
+test('an application from another account cannot lock interest for the active account', async t => {
+  const f = mount(t);
+  f.applications.value = [{ ...f.application, user_id: 'other-owner' }];
+  await nextTick();
+  assert.equal(f.setup.reviewSelection(f.opportunity.id), 'unreviewed');
+  assert.equal(await f.setup.saveReviewSelection(f.opportunity, 'very_high_interest'), true);
+  assert.equal(f.setup.reviewSelection(f.opportunity.id), 'very_high_interest');
 });
 
 test('interest can remain pending or failed while navigating away and back without losing the choice', async t => {
@@ -1063,10 +1096,14 @@ test('show checkboxes include low-interest and applied opportunities independent
   applications.value = [{ ...application, opportunity_id: ignored.id }];
   assert.equal(setup.filteredOpportunities.length, 0);
   setup.showWithApplications = true;
+  assert.equal(setup.filteredOpportunities.length, 0, 'the applied opportunity now belongs to Very high interest');
+  setup.reviewFilter = 'very_high_interest';
   assert.deepEqual(setup.filteredOpportunities.map(item => item.id), [ignored.id]);
   setup.showLowInterest = false;
+  assert.deepEqual(setup.filteredOpportunities.map(item => item.id), [ignored.id]);
+  applications.value = [];
   assert.equal(setup.filteredOpportunities.length, 0);
-  assert.equal(setup.reviewFilter, 'not_interested', 'the checkbox preserves the chosen review filter');
+  assert.equal(setup.reviewFilter, 'very_high_interest', 'the checkbox preserves the chosen review filter');
 });
 
 test('application search matches server codes and full IDs, including applications without a code', async (t) => {
@@ -1739,4 +1776,10 @@ test('pending Insights opportunity navigation cannot outlive its account, view, 
       assert.equal(f.setup.opportunityView, changed === 'account' ? 'catalogue' : changed === 'newer navigation' ? 'searches' : 'insights');
     });
   }
+});
+
+
+test('application interest is disabled in both result and detail selectors', () => {
+  assert.match(source, /:value="reviewSelection\(item.id\)" :disabled="applicationByOpportunity.has\(item.id\)"/);
+  assert.match(source, /:value="reviewSelection\(selectedOpportunity.id\)" :disabled="applicationByOpportunity.has\(selectedOpportunity.id\)"/);
 });

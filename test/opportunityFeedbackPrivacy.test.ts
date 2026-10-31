@@ -53,7 +53,8 @@ test('PRIV-01: strict outgoing DTO never exports private comments, contacts, ide
   const before = JSON.stringify(sample);
   const packet = await projectOpportunityFeedback(sample);
   assert.ok(packet.example);
-  assert.equal(packet.example.interest_score, 0, 'explicit zero is still structured feedback');
+  assert.equal(packet.example.interest_score, 9, 'the current application supplies interest without a numeric override');
+  assert.equal(packet.example.interest_origin, 'application');
   assert.equal(packet.example.confirmed_submission, false);
   assert.equal(packet.example.search_feedback_summary, undefined);
   assert.equal(packet.example.official_url, 'https://example.invalid/Jobs/Sensing?jobId=123456789');
@@ -104,7 +105,7 @@ test('normalization cannot conceal unsafe topic or reason values and equivalent 
 test('feedback is shared by default within a valid owner/search scope without an opt-in setting', async () => {
   const included = await projectOpportunityFeedback(input());
   assert.ok(included.example);
-  assert.equal(included.example.interest_score, 0);
+  assert.equal(included.example.interest_score, 6);
   for (const scope of [{ user_id: '' }, { user_id: 'not-an-owner' }, { search_id: '' }, { search_id: 'not-a-search' }]) {
     const result = await projectOpportunityFeedback(input(scope));
     assert.equal(result.example, null);
@@ -160,7 +161,7 @@ test('full-source safety checks withhold unsafe material even when it falls afte
     assert.equal(await includedOpportunitySearchSummary(saved), null);
     const projected = await projectOpportunityFeedback(input({ review: saved }));
     assert.equal(projected.example?.search_feedback_summary, undefined);
-    assert.equal(projected.example?.interest_score, 0, 'withheld prose does not manufacture or erase an independent explicit rating');
+    assert.equal(projected.example?.interest_score, 6, 'withheld prose does not change the selected interest category');
     assert.doesNotMatch(JSON.stringify(projected), /person@example|Bearer|Ignore previous/u);
   }
 });
@@ -290,7 +291,7 @@ test('default feedback reads only the saved evaluation and ignores unrelated pri
   Object.defineProperty(sample.review!, 'search_feedback_approved_at', { get() { throw new Error('Approval is not required by the inclusion policy'); } });
   Object.defineProperty(sample.review!, 'technical_issue_note', { get() { throw new Error('Never export free technical notes'); } });
   const result = await projectOpportunityFeedback(sample);
-  assert.equal(result.example?.interest_score, 0);
+  assert.equal(result.example?.interest_score, 6);
   assert.equal(result.example?.search_feedback_summary, summary);
   assert.equal('summary_approval' in result.example!, false);
 });
@@ -304,7 +305,7 @@ test('only independently proven original predictions preserve score provenance; 
   assert.equal((await projectOpportunityFeedback(sample)).example?.original_prediction, undefined);
   const result = await projectOpportunityFeedback({ ...sample, verified_prediction: baseline });
   assert.deepEqual(result.example?.original_prediction, baseline);
-  assert.equal(result.example?.interest_gap, -7);
+  assert.equal(result.example?.interest_gap, -1);
   assert.doesNotMatch(JSON.stringify(result), /personal_fit|Rowan|rowan@/u);
 });
 
@@ -325,6 +326,6 @@ test('AF-05 outgoing prediction metadata preserves discovery provenance without 
   sample.opportunity.assessment = { private: privateComment };
   const result = await projectOpportunityFeedback(sample);
   assert.deepEqual(result.example?.original_prediction, baseline);
-  assert.equal(result.example?.interest_gap, -7);
+  assert.equal(result.example?.interest_gap, -1);
   assert.doesNotMatch(JSON.stringify(result), /Rowan|rowan@|execute_sql|"assessment"/u);
 });

@@ -99,7 +99,7 @@ test('job network worker requests clone reactive exclusion drafts on initial and
   const graph = buildOpportunityInsights({ ownerId: 'owner', now: '2026-10-31T12:00:00Z',
     opportunities: reactive([opportunityFixture({ id: 'a', title: 'Acoustic job', topics: ['Research', 'Acoustics'],
       created_at: '2026-10-30T12:00:00Z' })]),
-    reviews: reactive<OpportunityReview[]>([{ user_id: 'owner', opportunity_id: 'a', state: 'interested', interest_rating: 9,
+    reviews: reactive<OpportunityReview[]>([{ user_id: 'owner', opportunity_id: 'a', state: 'very_high_interest',
       interest_reasons: [{ category: 'topic', polarity: 'positive', target: 'Acoustics' }], feedback_revision: 1,
       reviewed_updated_at: null, created_at: '2026-10-30T12:00:00Z', updated_at: '2026-10-30T12:00:00Z' }]),
     applications: reactive([]), windowDays: null }).graph;

@@ -51,7 +51,7 @@ const payloadExamples = {
   completion: { schema_version: 1, completion_id: '<completion_uuid>', batch_ids: ['<batch_uuid>'], status: 'complete' },
 };
 
-export const ADAPTIVE_PAYLOAD_CONTRACT_TEXT = `ADAPTIVE PAYLOAD CONTRACT 1
+export const ADAPTIVE_LEGACY_PAYLOAD_CONTRACT_TEXT = `ADAPTIVE PAYLOAD CONTRACT 1
 The following closed payload contract is sufficient to call the three allowed helpers. The startup result_schema describes one canonical opportunity only; never send a batch or completion object as an opportunity. Examples below are templates, not research facts. Replace every angle-bracket placeholder with actual authorized data; generate UUID placeholders once, preserve them on exact retries, and never submit a placeholder or example as evidence. Omit optional keys rather than supplying unknown values or unlisted metadata. Do not add a second wrapper or SQL statements inside JSON.
 
 FIRST BATCH AND QUERY PLAN
@@ -78,6 +78,12 @@ ADAPTIVE PAYLOAD EXAMPLES (JSON templates)
 \`\`\`json
 ${JSON.stringify(payloadExamples, null, 2)}
 \`\`\``;
+
+export const ADAPTIVE_PAYLOAD_CONTRACT_TEXT = ADAPTIVE_LEGACY_PAYLOAD_CONTRACT_TEXT
+  .replace("Source retention also requires enabled reuse/adaptation and an explicit rating/review-category score of at least 8 or a confirmed submission;", "Source retention also requires enabled reuse/adaptation and a recorded review, application or confirmed-submission score of at least 8; historical v1 packets retain their original interest conventions;")
+  .replace("a rule needs rule_id, kind and 1–16 authorized substantive-reviewed or verified opportunity UUID evidence_refs, never a submission-only score fallback or an excluded record.", "a rule needs rule_id, kind and 1–16 authorized substantive-reviewed or verified opportunity UUID evidence_refs. Current v2 application and confirmed-submission decisions are substantive evidence; a historical v1 submission-only score fallback alone or an excluded record is not.")
+  .replace("category (topic, method, hardware, location, funding, timing, other), polarity (positive or negative),", "category (topic, method, hardware, location, funding, timing, background_fit, project_context, requirements, availability, other), polarity (positive or negative; requirements and availability allow only negative),");
+export const ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT = `${ADAPTIVE_BATCH_PROTOCOL_PREFIX}\n\n${ADAPTIVE_LEGACY_PAYLOAD_CONTRACT_TEXT}`;
 
 export const ADAPTIVE_BATCH_PROTOCOL_TEXT = `${ADAPTIVE_BATCH_PROTOCOL_PREFIX}\n\n${ADAPTIVE_PAYLOAD_CONTRACT_TEXT}`;
 

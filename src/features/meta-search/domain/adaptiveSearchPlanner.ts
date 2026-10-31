@@ -1,7 +1,7 @@
 import type { SearchCriteria } from '../searchTypes';
 import { SEARCH_CRITERIA_KEYS } from '../searchTypes';
 import { OPPORTUNITY_INTEREST_REASON_CATEGORIES, type OpportunityInterestReason } from '../../../app/cloudTypes';
-import type { AdaptiveFeedbackSnapshot, ApprovedAdaptivePreference } from './adaptiveFeedbackSnapshots';
+import { isSupportedOpportunityInterestMetric, type AdaptiveFeedbackSnapshot, type ApprovedAdaptivePreference } from './adaptiveFeedbackSnapshots';
 import { createAdaptiveSearchPlan, replaceAdaptiveSearchSlice, validateAdaptiveSearchPlanTransition, type AdaptiveSearchPlan, type AdaptiveSearchPlanBasis, type AdaptiveSearchQuery, type AdaptiveSearchQueryInput } from './adaptiveSearchPlans';
 import { opportunityFeedbackTextHash, opportunityFeedbackTextIsSafe, sanitizeOpportunityFeedbackUrl } from '../../opportunities/domain/opportunityFeedbackPrivacy';
 
@@ -148,7 +148,8 @@ export function validateApprovedAdaptiveRules(value: unknown): readonly Approved
       || !opportunityFeedbackTextIsSafe(item.target, 120)) throw new TypeError('Invalid search preference rule.');
     const common = { rule_id: id, category: item.category as OpportunityInterestReason['category'], target: item.target, evidence_refs: evidence };
     if (item.kind === 'hard_exclusion') return Object.freeze({ ...common, kind: 'hard_exclusion' as const });
-    if (!['positive', 'negative'].includes(item.polarity as string)) throw new TypeError('Invalid approved emphasis polarity.');
+    if (!['positive', 'negative'].includes(item.polarity as string)
+      || ['requirements', 'availability'].includes(common.category) && item.polarity !== 'negative') throw new TypeError('Invalid approved emphasis polarity.');
     const emphasisTarget = categoryKey(common.category, common.target);
     if (emphasisTargets.has(emphasisTarget)) throw new TypeError('Resolve conflicting approved emphasis before planning.');
     emphasisTargets.add(emphasisTarget);
@@ -217,7 +218,7 @@ export function buildAdaptiveSearchPlanningContext(input: AdaptiveSearchPlannerI
   const active = input.adaptation_enabled && !input.adaptation_paused;
   const priorities = new Map<string, AdaptivePriority>();
   if (active && input.feedback) {
-    if (input.feedback.metric_version !== 'opportunity-interest-v1' || input.feedback.feedback_revision !== current.feedback_revision
+    if (!isSupportedOpportunityInterestMetric(input.feedback.metric_version) || input.feedback.feedback_revision !== current.feedback_revision
       || input.feedback.preference_revision !== current.preference_revision || input.feedback.aggregates.groups.length > 64) throw new TypeError('Use the current bounded authorized feedback snapshot.');
     const groups = new Map<string, { general?: AdaptiveFeedbackSnapshot['aggregates']['groups'][number]; positive?: AdaptiveFeedbackSnapshot['aggregates']['groups'][number]; negative?: AdaptiveFeedbackSnapshot['aggregates']['groups'][number] }>();
     for (const group of input.feedback.aggregates.groups) {
