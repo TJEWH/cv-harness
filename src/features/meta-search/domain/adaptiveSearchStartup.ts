@@ -13,7 +13,7 @@ import {
   type AdaptiveSearchPolicy, type ApprovedAdaptiveRule,
 } from './adaptiveSearchPlanner';
 import { ADAPTIVE_SOURCE_KINDS, ADAPTIVE_SOURCE_STATUSES } from './adaptiveSearchSources';
-import { ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT, ADAPTIVE_BATCH_PROTOCOL_TEXT,
+import { ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT, ADAPTIVE_BATCH_PROTOCOL_PREFIX, ADAPTIVE_BATCH_PROTOCOL_TEXT,
   ADAPTIVE_MAX_BUNDLE_BYTES, ADAPTIVE_MAX_SOURCES, ADAPTIVE_PROTOCOL_STARTUP_CAPABILITIES,
   ADAPTIVE_PROTOCOL_STARTUP_EXECUTION_CONTRACT } from './adaptiveSearchProtocol';
 
@@ -372,7 +372,11 @@ export async function projectAdaptiveSearchStartup(value: unknown, context: {
     const batchContract = same(raw.capabilities, ADAPTIVE_BATCH_CAPABILITIES);
     const expectedCapabilities = batchContract ? ADAPTIVE_BATCH_CAPABILITIES : ADAPTIVE_STARTUP_CAPABILITIES;
     const expectedExecution = batchContract ? ADAPTIVE_BATCH_EXECUTION_CONTRACT : ADAPTIVE_STARTUP_EXECUTION_CONTRACT;
-    const expectedProtocol = batchContract ? ADAPTIVE_BATCH_PROTOCOL_TEXT : ADAPTIVE_STARTUP_PROTOCOL_TEXT;
+    // Historical pins retain their exact reviewed text. Accept only these two
+    // complete literals, matching the server's narrow payload-contract upgrade.
+    const expectedProtocol = batchContract
+      ? raw.protocol_text === ADAPTIVE_BATCH_PROTOCOL_PREFIX ? ADAPTIVE_BATCH_PROTOCOL_PREFIX : ADAPTIVE_BATCH_PROTOCOL_TEXT
+      : ADAPTIVE_STARTUP_PROTOCOL_TEXT;
     if (raw.adaptive_contract_version !== 1 || raw.bootstrap_version !== 1 || raw.compatible !== true
       || release.schema_version !== 6 || release.protocol_version !== authorized.protocol_version || release.protocol_hash !== authorized.protocol_hash
       || release.release_revision !== authorized.release_revision || !same(raw.result_schema, canonicalResultSchema)

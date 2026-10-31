@@ -245,6 +245,12 @@
       "sha256": "bb21ee391bd8ccc38720de083f3fdebf81be8db208c4484cb68ae637d8339cdb",
       "migration_only": true,
       "scheduler_operations": false
+    },
+    {
+      "path": "supabase/opportunity_search_adaptive_payload_contract.sql",
+      "sha256": "63c0ca36f6c48875e7ea830e54362ca91f8bfc209a5cbdba8acf222a5e6d1f7e",
+      "migration_only": true,
+      "scheduler_operations": false
     }
   ],
   "installed_definition_prerequisites": {
@@ -296,15 +302,15 @@
   "runner_artifacts": [
     {
       "path": "src/features/meta-search/domain/adaptiveSearchProtocol.ts",
-      "sha256": "4d7a1d4fc39c8138e886b0c3f7901f4a94d31da25c172f23aa4d93c4d76ed0b0"
+      "sha256": "e36989eb2b2ea561cd293e25ef703c90843013fcca8e183129118dbdb83f41bf"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
-      "sha256": "080c993f0cb2ede0d935e9e7db3c0d647e4643baf4cd1b80d036b30ab0ce0baf"
+      "sha256": "68cc38ed164c6fcfc1183f5a6a9cc38089c66bc2ac602212ad8caa159d434294"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchStartup.ts",
-      "sha256": "87be82b9da3522b43ff86a7839358fa58b46996921c8648e147bdcaae966b69d"
+      "sha256": "360993a9c8e347562312713a5a991c4ecc1c2835439346536e41c0fcc20453c9"
     },
     {
       "path": "src/features/opportunities/domain/opportunityResultSchema.ts",

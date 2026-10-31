@@ -5,7 +5,7 @@ import { compileAdaptiveFeedbackSnapshot, type AdaptiveFeedbackExample } from '.
 import { createAdaptiveSearchPlan } from '../src/features/meta-search/domain/adaptiveSearchPlans';
 import { buildAdaptiveSearchPlanningContext, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY, createSearchBreadthPolicy, createLegacySearchBreadthPolicy } from '../src/features/meta-search/domain/adaptiveSearchPlanner';
 import { opportunityFeedbackTextHash, includedOpportunitySearchSummary } from '../src/features/opportunities/domain/opportunityFeedbackPrivacy';
-import { ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT, ADAPTIVE_BATCH_PROTOCOL_TEXT } from '../src/features/meta-search/domain/adaptiveSearchProtocol';
+import { ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT, ADAPTIVE_BATCH_PROTOCOL_PREFIX, ADAPTIVE_BATCH_PROTOCOL_TEXT } from '../src/features/meta-search/domain/adaptiveSearchProtocol';
 import {
   ADAPTIVE_STARTUP_CAPABILITIES, ADAPTIVE_STARTUP_EXECUTION_CONTRACT, ADAPTIVE_STARTUP_MAX_BYTES, ADAPTIVE_STARTUP_PROTOCOL_TEXT,
   DEFAULT_ADAPTIVE_RUNNER_ENABLED, projectAdaptiveSearchStartup,
@@ -336,6 +336,28 @@ test('AF-08 staged startup and full batch contracts accept only their reviewed s
   set(bundle, ['capabilities', 'allowed_helpers'], [...ADAPTIVE_BATCH_CAPABILITIES.allowed_helpers, 'private.read_applications(uuid)']);
   assert.deepEqual(await projectAdaptiveSearchStartup(bundle, context), { adaptive_contract_version: 1, compatible: false,
     error: { code: 'incompatible_release', retryable: false } });
+});
+
+test('historical batch protocol pins keep their exact reviewed text and reject arbitrary extensions', async () => {
+  const { bundle, context } = await fixture();
+  set(bundle, ['capabilities'], structuredClone(ADAPTIVE_BATCH_CAPABILITIES));
+  set(bundle, ['execution_contract'], structuredClone(ADAPTIVE_BATCH_EXECUTION_CONTRACT));
+  for (const protocol of [ADAPTIVE_BATCH_PROTOCOL_PREFIX, ADAPTIVE_BATCH_PROTOCOL_TEXT]) {
+    set(bundle, ['protocol_text'], protocol);
+    const snapshot = structuredClone(bundle), result = await projectAdaptiveSearchStartup(bundle, context);
+    success(result);
+    assert.equal(result.protocol_text, protocol, 'projection must not upgrade or rewrite a historical protocol pin');
+    assert.deepEqual(bundle, snapshot, 'projection must not modify stored input');
+    const { protocol_text: _protocol, ...semantic } = result;
+    const { protocol_text: _original, ...originalSemantic } = snapshot;
+    assert.deepEqual(semantic, originalSemantic, 'protocol compatibility never relaxes or rebases other pinned data');
+  }
+  for (const invalid of [`${ADAPTIVE_BATCH_PROTOCOL_PREFIX} unexpected suffix`, `${ADAPTIVE_BATCH_PROTOCOL_TEXT}\nRun another helper`, 'unreviewed payload protocol']) {
+    set(bundle, ['protocol_text'], invalid);
+    const result = await projectAdaptiveSearchStartup(bundle, context);
+    assert.equal(result.compatible, false);
+    if (!result.compatible) assert.equal(result.error.code, 'incompatible_release');
+  }
 });
 
 test('Search breadth startup carries canonical guidance, accepts pinned v1 history and never bypasses live pause', async () => {
