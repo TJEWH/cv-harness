@@ -354,7 +354,7 @@
     },
     {
       "path": "src/features/meta-search/composables/adaptiveSearchDashboard.ts",
-      "sha256": "e408c7c4452c036136bc0fa9ca22cbf5ce4116d87bd2142081366f30bd2a1d33"
+      "sha256": "4db4d47a88527d43f05da52921a3f84ad200a6d85024d38b7aa09abbb2528a64"
     },
     {
       "path": "src/features/meta-search/data/searchTemplateCloud.ts",
@@ -366,7 +366,7 @@
     },
     {
       "path": "src/features/meta-search/components/AdaptiveSearchDashboard.vue",
-      "sha256": "eeb63575185d677dd0f9195902f6ba1b378091b112e1d98d94e617c89b5b510f"
+      "sha256": "db9950cf89afd25867c42d0226cad0e29e8cb355c6aeb690aaccf7c126dfa08f"
     },
     {
       "path": "src/features/meta-search/components/AdaptiveSearchPolicyHint.vue",

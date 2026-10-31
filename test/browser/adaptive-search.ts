@@ -31,6 +31,30 @@ let row: SearchCloudTemplate = { id: search, user_id: owner, name: template.name
 let state: AdaptiveSearchRunnerState = { setup_contract_version: 1, user_id: owner, search_id: search, project_ref: project,
   revision: 0, mode: 'legacy', migration_requested: false, ready: true, readiness_code: 'ready', setup_id: null,
   binding: { task_id: 'synthetic-existing-task', schedule: row.schedule, runner_capability: null } };
+if (new URLSearchParams(location.search).get('scenario') === 'legacy-empty') {
+  // Synthetic legacy-only account: keep ordinary run history without inventing adaptive records.
+  Object.assign(dashboard.settings, { adaptation_enabled: false, adaptation_paused: false, successful_source_reuse_enabled: false,
+    institution_sources_omitted: 0, query_plan_dirty: false });
+  dashboard.sources = [];
+  dashboard.queries = { plan: null, executions: [] };
+  dashboard.preferences = { revision: 0, approved_rules: [], suggestions: [], proposals: [] };
+  dashboard.runner_authorization = { enabled: false, authorization_revision: 0, project_ref: null };
+  dashboard.omitted = { sources: 0, preference_suggestions: 0, proposals: 0, queries: 0, executions: 0, runs: 0, withheld_fields: 0 };
+  state = { ...state, ready: false, readiness_code: 'release_disabled',
+    binding: { task_id: 'synthetic-legacy-task', schedule: row.schedule, runner_capability: 'legacy-v1' } };
+  dashboard.readiness = structuredClone(state);
+  const runShape = structuredClone(dashboard.runs[0]!);
+  dashboard.runs = Array.from({ length: 4 }, (_, index) => ({ ...structuredClone(runShape),
+    run_id: `84000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    status: index === 0 ? 'failed' : 'complete', started_at: new Date(Date.UTC(2026, 9, 31 - index, 8)).toISOString(),
+    completed_at: new Date(Date.UTC(2026, 9, 31 - index, 8, 20)).toISOString(), query_plan_id: null,
+    adaptive_contract_version: null, execution_report_status: 'unreported', backlog_candidates: null, backlog_omitted: null, backlog_overflow: null,
+    counts: { new: index === 0 ? 3 : 0, updated: 0, unchanged: 0, verified: index === 0 ? 3 : 0,
+      unresolved: null, failed_checks: 0, incomplete_sources: 0 },
+    deadline: { late_discoveries: 0, possible_late_discoveries: 0, unknown: index === 0 ? 3 : 0,
+      exact_lead_time_hours: null, lower_lead_time_hours: null, upper_lead_time_hours: null, uncertain: true },
+  }));
+}
 const calls: { name: string; args: Record<string, unknown> }[] = [];
 const copied = ref(''), saveCount = ref(0), requestCount = ref(0);
 const lang = ref('en');

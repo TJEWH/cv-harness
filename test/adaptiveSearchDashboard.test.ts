@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { watch } from 'vue';
 import { compileAdaptiveFeedbackSnapshot } from '../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
 import { createSearchBreadthPolicy, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY } from '../src/features/meta-search/domain/adaptiveSearchPlanner';
 import { adaptiveDashboardRunState, createAdaptiveSearchDashboardController, readAdaptiveSearchDashboard, validateAdaptiveSettingsPatch, validateAdaptiveSourcePatch } from '../src/features/meta-search/composables/adaptiveSearchDashboard';
@@ -368,6 +369,61 @@ test('AF-10 rule decisions and runner authorization occur only as explicit actio
   assert.equal(await controller.authorize(true),true); assert.equal(runnerChanges,1);
   assert.equal(service.calls.find(call=>call.name==='set_opportunity_search_runner_authorization')!.args.p_expected_revision,0);
   assert.equal(controller.state.data!.runner_authorization.enabled,true); controller.dispose();
+});
+
+test('runner authorization reports an unconfigured project without exposing database details or retrying it', async () => {
+  const raw = await fixture(), service = mock(raw);
+  let unavailable = true;
+  const client = { rpc: async (name: string, args: Record<string,unknown>) => name === 'set_opportunity_search_runner_authorization' && unavailable
+    ? { data: null, error: { code: '22023', message: 'Configured project binding is required', details: 'PRIVATE_DATABASE_DETAIL' } }
+    : service.client.rpc(name,args) } as unknown as Pick<SupabaseClient,'rpc'>;
+  const controller = createAdaptiveSearchDashboardController(client,scope,service);
+  try {
+    assert.equal(await controller.load(),true);
+    assert.equal(await controller.authorize(true),false);
+    assert.equal(controller.state.error,'runner_unavailable');
+    assert.equal(controller.state.retryable,false);
+    assert.equal(controller.state.data!.runner_authorization.enabled,false);
+    assert.equal(await controller.retry(),false);
+    assert.equal(await controller.flush(),false,'unacknowledged authorization remains unresolved until an explicit reload');
+    assert.doesNotMatch(controller.state.error,/Configured|PRIVATE/);
+    unavailable = false;
+    assert.equal(await controller.load(),true);
+    assert.equal(await controller.authorize(true),true);
+    assert.equal(controller.state.error,'');
+    assert.equal(controller.state.data!.runner_authorization.enabled,true);
+  } finally { controller.dispose(); }
+});
+
+test('synchronous error observers receive the current exact-retry availability', async () => {
+  const raw = await fixture(), service = mock(raw);
+  const controller = createAdaptiveSearchDashboardController(service.client,scope,service);
+  const observed: { error: string; retryable: boolean }[] = [];
+  const stop = watch(() => controller.state.error, error => {
+    if (error) observed.push({ error, retryable: controller.state.retryable });
+  }, { flush: 'sync' });
+  try {
+    await controller.load();
+    service.hooks.afterWrite = () => ({ data: null, error: { code: 'NETWORK' } });
+    assert.equal(await controller.patchSettings({ adaptation_enabled: true }),false);
+    assert.deepEqual(observed,[{ error: 'save_failed', retryable: true }]);
+  } finally { stop(); controller.dispose(); }
+});
+
+test('only the known authorization configuration failure receives the runner-unavailable message', async () => {
+  for (const [name,message] of [['set_opportunity_search_runner_authorization','PRIVATE_DATABASE_DETAIL'],
+    ['patch_opportunity_search_settings','Configured project binding is required']] as const) {
+    const raw = await fixture(), service = mock(raw);
+    const client = { rpc: async (requested: string, args: Record<string,unknown>) => requested === name
+      ? { data: null, error: { code: '22023', message } } : service.client.rpc(requested,args) } as unknown as Pick<SupabaseClient,'rpc'>;
+    const controller = createAdaptiveSearchDashboardController(client,scope,service);
+    try {
+      await controller.load();
+      assert.equal(await (name === 'set_opportunity_search_runner_authorization' ? controller.authorize(true) : controller.patchSettings({ adaptation_enabled: true })),false);
+      assert.equal(controller.state.error,'save_failed');
+      assert.equal(controller.state.retryable,false);
+    } finally { controller.dispose(); }
+  }
 });
 
 test('AF-10 an explicit orphan-draft discard is local, chosen-only and cannot cancel queued or saving requests', async () => {

@@ -263,11 +263,16 @@ export function createAdaptiveSearchDashboardController(client: Pick<SupabaseCli
     try { Object.keys(copy).length ? options.storage?.setItem(recoveryKey(scope), JSON.stringify(copy)) : options.storage?.removeItem(recoveryKey(scope)); } catch { /* in-memory owner-scoped recovery remains */ }
   }
   function resetError() { state.error = ''; state.errorKind = null; state.retryable = false; }
-  function error(cause: unknown, loading = false) {
+  function error(cause: unknown, loading = false, request?: PendingRequest) {
     const code = typeof cause === 'object' && cause ? String((cause as { code?: unknown }).code ?? '') : '';
-    state.errorKind = loading ? 'load' : code === '40001' ? 'conflict' : ['42501','PGRST301','PGRST302'].includes(code) ? 'denied' : 'save';
-    state.error = code === 'SOURCE_UNAVAILABLE' ? 'source_unavailable' : code === 'BREADTH_UPGRADE_REQUIRED' ? 'breadth_upgrade_required' : state.errorKind === 'conflict' ? 'conflict' : state.errorKind === 'denied' ? 'denied' : loading ? 'load_failed' : 'save_failed';
-    state.retryable = !loading && state.errorKind === 'save' && !['22023','BREADTH_UPGRADE_REQUIRED'].includes(code) && failed !== null;
+    const unconfiguredRunner = request?.authorization !== undefined && code === '22023'
+      && typeof cause === 'object' && cause !== null
+      && (cause as { message?: unknown }).message === 'Configured project binding is required';
+    const kind = loading ? 'load' : code === '40001' ? 'conflict' : ['42501','PGRST301','PGRST302'].includes(code) ? 'denied' : 'save';
+    state.errorKind = kind;
+    // Synchronous toast observers read the recovery action when the error is published.
+    state.retryable = !loading && kind === 'save' && !['22023','BREADTH_UPGRADE_REQUIRED'].includes(code) && failed !== null;
+    state.error = unconfiguredRunner ? 'runner_unavailable' : code === 'SOURCE_UNAVAILABLE' ? 'source_unavailable' : code === 'BREADTH_UPGRADE_REQUIRED' ? 'breadth_upgrade_required' : kind === 'conflict' ? 'conflict' : kind === 'denied' ? 'denied' : loading ? 'load_failed' : 'save_failed';
   }
   async function load(clearFailure = true): Promise<boolean> {
     if (disposed) return false;
@@ -343,7 +348,7 @@ export function createAdaptiveSearchDashboardController(client: Pick<SupabaseCli
         }
       }
       return loaded;
-    } catch (cause) { if (request.generation === generation) { failed = request; error(cause); } return false; }
+    } catch (cause) { if (request.generation === generation) { failed = request; error(cause, false, request); } return false; }
     finally { if (request.generation === generation) state.saving = false; }
   }
   function enqueue(build: () => PendingRequest | null): Promise<boolean> {
