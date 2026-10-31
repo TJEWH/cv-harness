@@ -139,6 +139,18 @@ runButton.addEventListener('click', async () => {
     assert(await (await local.getDocument(first.id))!.blob.text() === await transcript.text(), 'Saving metadata changed the original file');
     stage('Manual names/descriptions sync; file bytes and filenames remain local');
     const transcriptRow = [...current().querySelectorAll('.attachment-list li')].find(row => row.querySelector('h3')?.textContent === 'Transcript of records')!;
+    const recommendationRow = [...current().querySelectorAll('.attachment-list li')].find(row => row.querySelector('h3')?.textContent === 'Letter of recommendation')!;
+    await click('Edit', recommendationRow);
+    const inlineEditor = recommendationRow.querySelector<HTMLFormElement>('form');
+    assert(inlineEditor && current().querySelectorAll('form').length === 1 && !transcriptRow.querySelector('form'), 'Editing must stay inside the selected attachment row');
+    assert(document.activeElement === inlineEditor.querySelector('input'), 'Editing did not focus the inline name field');
+    await click('Edit', transcriptRow);
+    assert(transcriptRow.querySelector('form') && !recommendationRow.querySelector('form') && current().querySelectorAll('form').length === 1, 'Changing attachment must move the single editor to its selected row');
+    assert(document.activeElement === transcriptRow.querySelector('form input'), 'An old ref cleared the new inline editor focus');
+    await click('Cancel', transcriptRow);
+    assert(document.activeElement === transcriptRow.querySelector('button[data-attachment-edit]'), 'Cancel should return focus to the edited attachment');
+    assert(!current().querySelector('form') && fixture.rows.length === 2, 'Opening and cancelling editors must not add or change attachments');
+    stage('Editing stays beneath the selected attachment and restores focus without moving to the bottom add button');
     await click('Open', transcriptRow);
     const localFull = await renderedPreview(1, 'PRIVATE_TRANSCRIPT_CONTENT_83 page 1', true);
     assert(localFull.getAttribute('aria-label') === 'Transcript of records', 'Local preview lost its attachment title');
@@ -212,9 +224,19 @@ runButton.addEventListener('click', async () => {
     stage('Missing files remain explicit and block export while metadata stays available');
     await local.importBackup(backup); window.dispatchEvent(new Event('cv-local-documents-updated')); await settle();
     await click('Attachments', root); assert(documents.composition, 'Restored files did not restore the automatic preview'); await renderedPreview();
-    status.textContent = '6/6 attachment checks passed'; document.body.dataset.result = 'passed';
+    status.textContent = '7/7 attachment checks passed'; document.body.dataset.result = 'passed';
   } catch (reason) {
     const item = document.createElement('li'); item.dataset.result = 'fail'; item.textContent = `FAIL: ${reason instanceof Error ? reason.message : String(reason)}`; results.append(item);
     status.textContent = 'Attachment workflow failed'; document.body.dataset.result = 'failed';
   } finally { runButton.disabled = false; }
 });
+
+
+if (new URLSearchParams(location.search).get('preview') === 'library') {
+  void (async () => {
+    await mount();
+    await add(await pdf(400, 'Synthetic transcript'), 'synthetic-transcript.pdf', 'Transcript of records', 'Course list and grades for my engineering degree.');
+    await add(await pdf(400, 'Synthetic reference'), 'synthetic-reference.pdf', 'Letter of recommendation', 'Academic recommendation describing my research work.');
+    status.textContent = 'Synthetic attachment library ready';
+  })().catch(reason => { status.textContent = reason instanceof Error ? reason.message : String(reason); });
+}

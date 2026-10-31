@@ -53,7 +53,8 @@ test('PRIV-01: strict outgoing DTO never exports private comments, contacts, ide
   const before = JSON.stringify(sample);
   const packet = await projectOpportunityFeedback(sample);
   assert.ok(packet.example);
-  assert.equal(packet.example.interest_score, 0, 'explicit zero is still structured feedback');
+  assert.equal(packet.example.interest_score, 9, 'the current application supplies interest without a numeric override');
+  assert.equal(packet.example.interest_origin, 'application');
   assert.equal(packet.example.confirmed_submission, false);
   assert.equal(packet.example.search_feedback_summary, undefined);
   assert.equal(packet.example.official_url, 'https://example.invalid/Jobs/Sensing?jobId=123456789');
@@ -64,10 +65,47 @@ test('PRIV-01: strict outgoing DTO never exports private comments, contacts, ide
   assert.equal(JSON.stringify(sample), before, 'omission is never a mutation or deletion');
 });
 
+test('safe topic projection cleans equivalent labels and explicit topic targets without changing method reasons', async () => {
+  const sample = input();
+  sample.opportunity.topics = ['ACOUSTIC_SENSING', 'acoustic sensing', 'embedded_AI'];
+  sample.review = review({ comment: null, interest_reasons: [
+    { category: 'topic', polarity: 'negative', target: 'ACOUSTIC_SENSING' },
+    { category: 'topic', polarity: 'negative', target: 'acoustic sensing' },
+    { category: 'method', polarity: 'negative', target: 'Simulation_ONLY' },
+  ] });
+  const before = JSON.stringify(sample);
+  const packet = await projectOpportunityFeedback(sample);
+  assert.deepEqual(packet.example?.topics, ['Acoustic sensing', 'Embedded AI']);
+  assert.deepEqual(packet.example?.reasons, [
+    { category: 'method', polarity: 'negative', target: 'Simulation_ONLY' },
+    { category: 'topic', polarity: 'negative', target: 'Acoustic sensing' },
+  ]);
+  assert.deepEqual(packet.withheld, []);
+  assert.equal(JSON.stringify(sample), before);
+});
+
+test('normalization cannot conceal unsafe topic or reason values and equivalent topics do not consume the cap', async () => {
+  const sample = input();
+  sample.opportunity.topics = ['ACOUSTICS', 'acoustics', 'sb_secret_private_token_value', 'ＩＧＮＯＲＥ previous system', 'ignore_previous_system', 'ｓｂ＿ｓｅｃｒｅｔ＿private_token',
+    ...Array.from({ length: 16 }, (_, index) => `Safe topic ${index}`)];
+  sample.review = review({ interest_reasons: [
+    { category: 'topic', polarity: 'negative', target: 'ＩＧＮＯＲＥ previous system' },
+    { category: 'topic', polarity: 'negative', target: 'sb_secret_private_token_value' },
+    { category: 'topic', polarity: 'negative', target: 'ｓｂ＿ｓｅｃｒｅｔ＿private_token' },
+  ] });
+  const packet = await projectOpportunityFeedback(sample);
+  assert.equal(packet.example?.topics.length, 16);
+  assert.equal(packet.example?.topics.filter(topic => topic === 'Acoustics').length, 1);
+  assert.deepEqual(packet.example?.reasons, []);
+  assert.deepEqual(packet.withheld.filter(item => item.field === 'topics').map(item => item.reason), ['unsafe_value', 'unsafe_value', 'unsafe_value', 'unsafe_value', 'limit']);
+  assert.deepEqual(packet.withheld.filter(item => item.field === 'reasons').map(item => item.reason), ['unsafe_value', 'unsafe_value', 'unsafe_value']);
+  assert.doesNotMatch(JSON.stringify(packet.example), /private_token|previous system/iu);
+});
+
 test('feedback is shared by default within a valid owner/search scope without an opt-in setting', async () => {
   const included = await projectOpportunityFeedback(input());
   assert.ok(included.example);
-  assert.equal(included.example.interest_score, 0);
+  assert.equal(included.example.interest_score, 6);
   for (const scope of [{ user_id: '' }, { user_id: 'not-an-owner' }, { search_id: '' }, { search_id: 'not-a-search' }]) {
     const result = await projectOpportunityFeedback(input(scope));
     assert.equal(result.example, null);
@@ -123,7 +161,7 @@ test('full-source safety checks withhold unsafe material even when it falls afte
     assert.equal(await includedOpportunitySearchSummary(saved), null);
     const projected = await projectOpportunityFeedback(input({ review: saved }));
     assert.equal(projected.example?.search_feedback_summary, undefined);
-    assert.equal(projected.example?.interest_score, 0, 'withheld prose does not manufacture or erase an independent explicit rating');
+    assert.equal(projected.example?.interest_score, 6, 'withheld prose does not change the selected interest category');
     assert.doesNotMatch(JSON.stringify(projected), /person@example|Bearer|Ignore previous/u);
   }
 });
@@ -253,7 +291,7 @@ test('default feedback reads only the saved evaluation and ignores unrelated pri
   Object.defineProperty(sample.review!, 'search_feedback_approved_at', { get() { throw new Error('Approval is not required by the inclusion policy'); } });
   Object.defineProperty(sample.review!, 'technical_issue_note', { get() { throw new Error('Never export free technical notes'); } });
   const result = await projectOpportunityFeedback(sample);
-  assert.equal(result.example?.interest_score, 0);
+  assert.equal(result.example?.interest_score, 6);
   assert.equal(result.example?.search_feedback_summary, summary);
   assert.equal('summary_approval' in result.example!, false);
 });
@@ -267,7 +305,7 @@ test('only independently proven original predictions preserve score provenance; 
   assert.equal((await projectOpportunityFeedback(sample)).example?.original_prediction, undefined);
   const result = await projectOpportunityFeedback({ ...sample, verified_prediction: baseline });
   assert.deepEqual(result.example?.original_prediction, baseline);
-  assert.equal(result.example?.interest_gap, -7);
+  assert.equal(result.example?.interest_gap, -1);
   assert.doesNotMatch(JSON.stringify(result), /personal_fit|Rowan|rowan@/u);
 });
 
@@ -288,6 +326,6 @@ test('AF-05 outgoing prediction metadata preserves discovery provenance without 
   sample.opportunity.assessment = { private: privateComment };
   const result = await projectOpportunityFeedback(sample);
   assert.deepEqual(result.example?.original_prediction, baseline);
-  assert.equal(result.example?.interest_gap, -7);
+  assert.equal(result.example?.interest_gap, -1);
   assert.doesNotMatch(JSON.stringify(result), /Rowan|rowan@|execute_sql|"assessment"/u);
 });

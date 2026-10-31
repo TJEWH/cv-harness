@@ -37,6 +37,17 @@ test('content and configuration exports round trip independently without leaking
   assert.deepEqual(config.data.design.customFonts, [{ name: 'Literata', source: 'google' }]);
 });
 
+test('new exports use CV Harness names while existing split backups remain importable', () => {
+  const content = createCvContentJson(sampleCv, { bypassPrivacy: true });
+  const config = createCvConfigJson(sampleCv);
+  assert.equal(content.format, 'cv-harness/content');
+  assert.equal(config.format, 'cv-harness/config');
+  assert.deepEqual(parseCvContentJson(JSON.stringify({ ...content, format: 'cv-builder/content' })), content.data);
+  assert.deepEqual(parseCvConfigJson(JSON.stringify({ ...config, format: 'cv-builder/config' })), config.data);
+  assert.throws(() => parseCvContentJson(JSON.stringify({ ...config, format: 'cv-builder/config' })), /unsupported CV export format/);
+  assert.throws(() => parseCvConfigJson(JSON.stringify({ ...content, format: 'cv-builder/content' })), /unsupported CV export format/);
+});
+
 test('content replacement removes old entries and preserves configuration for unchanged IDs', () => {
   const state = createNormalizedContentState(sampleCv);
   const before = structuredClone(state);

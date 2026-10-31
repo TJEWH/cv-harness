@@ -33,6 +33,8 @@ test('an empty vector export produces a valid single blank PDF page', async () =
   const blob = await renderVectorPdf(fixture({ pages: [] }));
   const pdf = Buffer.from(await blob.arrayBuffer()).toString('latin1');
   assert.equal(blob.type, 'application/pdf');
+  assert.match(pdf, /CV Harness/);
+  assert.doesNotMatch(pdf, /CV Builder/);
   assert.match(pdf, /^%PDF-/);
   assert.equal([...pdf.matchAll(/\/Type \/Page\b/g)].length, 1);
   assert.equal(pdf.includes('/Subtype /Image'), false);

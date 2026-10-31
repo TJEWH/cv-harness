@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { watch } from 'vue';
 import { compileAdaptiveFeedbackSnapshot } from '../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
 import { createSearchBreadthPolicy, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY } from '../src/features/meta-search/domain/adaptiveSearchPlanner';
 import { adaptiveDashboardRunState, createAdaptiveSearchDashboardController, readAdaptiveSearchDashboard, validateAdaptiveSettingsPatch, validateAdaptiveSourcePatch } from '../src/features/meta-search/composables/adaptiveSearchDashboard';
@@ -94,6 +95,36 @@ test('AF-10 owner dashboard retains exact outgoing packet, honest unknowns and s
   Object.assign(poisoned.sources[0]!,{ private_comment: 'PRIVATE_COMMENT',contacts: [{ name: 'Private Person' }] });
   const projected = await readAdaptiveSearchDashboard(poisoned,scope);
   assert.doesNotMatch(JSON.stringify(projected),/private@example|PRIVATE_CONTEXT|PRIVATE_COMMENT|Private Person|contacts|context_json/);
+});
+
+test('dashboard loads historical protocol identifiers containing dates in runs and saved plans', async () => {
+  const raw = await fixture();
+  const historicalProtocol = 'opportunity-search-v1-2026-10-12-normalization-3';
+  raw.runs.push({ ...clone(raw.runs[0]!), run_id: id(14) });
+  raw.runs[0]!.basis.protocol_version = historicalProtocol;
+  raw.queries.plan.basis.protocol_version = historicalProtocol;
+  const service = mock(raw), controller = createAdaptiveSearchDashboardController(service.client, scope, service);
+  try {
+    assert.equal(await controller.load(), true);
+    assert.equal(controller.state.error, '');
+    assert.equal(controller.state.data!.runs[0]!.basis.protocol_version, historicalProtocol);
+    assert.equal(controller.state.data!.runs[1]!.basis.protocol_version, 'opportunity-search-v1-canonical-6');
+    assert.equal(controller.state.data!.queries.plan!.basis.protocol_version, historicalProtocol);
+    assert.deepEqual(controller.state.data!.feedback_preview, raw.feedback_preview);
+    assert.deepEqual(service.calls.map(call => call.name), ['read_opportunity_search_dashboard']);
+  } finally { controller.dispose(); }
+});
+
+test('dashboard protocol identifiers reject prose, contacts, URLs, controls and oversized values', async () => {
+  const raw = await fixture();
+  for (const protocol of [null, 123, '', 'private@example.invalid', 'https://example.invalid/protocol',
+    ' opportunity-search-v1', 'opportunity-search-v1 private context', 'opportunity-search-v1\ncanonical-6',
+    'opportunity-search-v1-"contacts":{}', '<script>private</script>', 'a'.repeat(201)]) {
+    const invalidRun = clone(raw); Object.assign(invalidRun.runs[0]!.basis, { protocol_version: protocol });
+    await assert.rejects(readAdaptiveSearchDashboard(invalidRun, scope));
+    const invalidPlan = clone(raw); Object.assign(invalidPlan.queries.plan.basis, { protocol_version: protocol });
+    await assert.rejects(readAdaptiveSearchDashboard(invalidPlan, scope));
+  }
 });
 
 test('AF-10 exact packet validation rejects hidden extra/private fields and malformed or foreign scope', async () => {
@@ -338,6 +369,61 @@ test('AF-10 rule decisions and runner authorization occur only as explicit actio
   assert.equal(await controller.authorize(true),true); assert.equal(runnerChanges,1);
   assert.equal(service.calls.find(call=>call.name==='set_opportunity_search_runner_authorization')!.args.p_expected_revision,0);
   assert.equal(controller.state.data!.runner_authorization.enabled,true); controller.dispose();
+});
+
+test('runner authorization reports an unconfigured project without exposing database details or retrying it', async () => {
+  const raw = await fixture(), service = mock(raw);
+  let unavailable = true;
+  const client = { rpc: async (name: string, args: Record<string,unknown>) => name === 'set_opportunity_search_runner_authorization' && unavailable
+    ? { data: null, error: { code: '22023', message: 'Configured project binding is required', details: 'PRIVATE_DATABASE_DETAIL' } }
+    : service.client.rpc(name,args) } as unknown as Pick<SupabaseClient,'rpc'>;
+  const controller = createAdaptiveSearchDashboardController(client,scope,service);
+  try {
+    assert.equal(await controller.load(),true);
+    assert.equal(await controller.authorize(true),false);
+    assert.equal(controller.state.error,'runner_unavailable');
+    assert.equal(controller.state.retryable,false);
+    assert.equal(controller.state.data!.runner_authorization.enabled,false);
+    assert.equal(await controller.retry(),false);
+    assert.equal(await controller.flush(),false,'unacknowledged authorization remains unresolved until an explicit reload');
+    assert.doesNotMatch(controller.state.error,/Configured|PRIVATE/);
+    unavailable = false;
+    assert.equal(await controller.load(),true);
+    assert.equal(await controller.authorize(true),true);
+    assert.equal(controller.state.error,'');
+    assert.equal(controller.state.data!.runner_authorization.enabled,true);
+  } finally { controller.dispose(); }
+});
+
+test('synchronous error observers receive the current exact-retry availability', async () => {
+  const raw = await fixture(), service = mock(raw);
+  const controller = createAdaptiveSearchDashboardController(service.client,scope,service);
+  const observed: { error: string; retryable: boolean }[] = [];
+  const stop = watch(() => controller.state.error, error => {
+    if (error) observed.push({ error, retryable: controller.state.retryable });
+  }, { flush: 'sync' });
+  try {
+    await controller.load();
+    service.hooks.afterWrite = () => ({ data: null, error: { code: 'NETWORK' } });
+    assert.equal(await controller.patchSettings({ adaptation_enabled: true }),false);
+    assert.deepEqual(observed,[{ error: 'save_failed', retryable: true }]);
+  } finally { stop(); controller.dispose(); }
+});
+
+test('only the known authorization configuration failure receives the runner-unavailable message', async () => {
+  for (const [name,message] of [['set_opportunity_search_runner_authorization','PRIVATE_DATABASE_DETAIL'],
+    ['patch_opportunity_search_settings','Configured project binding is required']] as const) {
+    const raw = await fixture(), service = mock(raw);
+    const client = { rpc: async (requested: string, args: Record<string,unknown>) => requested === name
+      ? { data: null, error: { code: '22023', message } } : service.client.rpc(requested,args) } as unknown as Pick<SupabaseClient,'rpc'>;
+    const controller = createAdaptiveSearchDashboardController(client,scope,service);
+    try {
+      await controller.load();
+      assert.equal(await (name === 'set_opportunity_search_runner_authorization' ? controller.authorize(true) : controller.patchSettings({ adaptation_enabled: true })),false);
+      assert.equal(controller.state.error,'save_failed');
+      assert.equal(controller.state.retryable,false);
+    } finally { controller.dispose(); }
+  }
 });
 
 test('AF-10 an explicit orphan-draft discard is local, chosen-only and cannot cancel queued or saving requests', async () => {

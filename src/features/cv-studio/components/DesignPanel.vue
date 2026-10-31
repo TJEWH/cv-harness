@@ -177,6 +177,7 @@ function toggleSection(key: string) {
 
 <template>
   <section class="section-group editor-panel design-panel">
+    <header class="workspace-page-heading"><h2>{{ t('design') }}</h2></header>
     <div class="design-panel__scroll-body">
       <section class="design-favorites">
       <DesktopSidebarPortal area="major" :active="sidebarActive">
@@ -229,6 +230,9 @@ function toggleSection(key: string) {
 </template>
 
 <style scoped>
+.design-panel > .design-panel__scroll-body { padding-top: 10px; }
+.design-panel .editor-panel__body > .editor-subsection:first-child, .design-favorites__row:first-child { border-top: 0; }
+.design-favorites:empty { display: none; }
 .design-favorites { display: grid; gap: 10px; margin: 0 0 20px; }
 .design-favorites__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--ui-text); font-size: 10pt; font-weight: 600; }
 .design-favorites__header span { display: inline-flex; align-items: center; gap: 7px; }
@@ -237,11 +241,11 @@ function toggleSection(key: string) {
 .design-favorites__header--sidebar { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; }
 .design-favorites__header--sidebar .design-favorites__toggle { width: 100%; min-height: 40px; justify-content: flex-start; }
 .design-favorites__toggle.is-active { border-color: var(--ui-accent-border); background: var(--ui-active); color: var(--ui-accent); }
-.design-favorites__picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 7px 12px; padding-top: 10px; border-top: 1px solid #134e4a; }
+.design-favorites__picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 7px 12px; padding-top: 10px; border-top: 1px solid var(--ui-divider); }
 .design-favorites__picker label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
 .design-favorites__picker input { width: 16px; height: 16px; accent-color: var(--ui-accent); }
 .design-favorites__rows { display: grid; gap: 12px; }
-.design-favorites__row { display: grid; gap: 7px; padding-top: 10px; border-top: 1px solid #134e4a; }
+.design-favorites__row { display: grid; gap: 7px; padding-top: 10px; border-top: 1px solid var(--ui-divider); }
 .design-favorites__row h4 { margin: 0; color: var(--ui-muted); font-size: 9pt; font-weight: 600; }
 .editor-subsection h4 { margin: 0; color: var(--ui-text); font-size: 10pt; font-weight: 600; }
 /* The full header row toggles the section; help belongs to individual fields. */

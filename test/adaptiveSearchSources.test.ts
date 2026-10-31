@@ -248,6 +248,7 @@ test('AF-06 automatic retention requires active adaptation without deleting manu
 test('reuse needs explicit high interest or genuine submission, while exclusions and weak proxies are not useful evidence', () => {
   for (const observation of [signal({ interest_origin: 'categorical_review', interest_score: 8 }),
     signal({ interest_origin: 'confirmed_submission', interest_score: 9, confirmed_submission: true }),
+    signal({ interest_origin: 'application', interest_score: 9, confirmed_submission: false }),
     signal({ interest_origin: 'categorical_review', interest_score: 2, confirmed_submission: true })]) {
     assert.equal(retainSuccessfulAdaptiveSource(source(), observation, policy).retained, true);
   }

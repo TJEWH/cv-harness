@@ -24,7 +24,7 @@ See [prompt testing](refinementProtocol/README.md) for offline MCP trace validat
 npm run test:e2e:serve
 ```
 
-Open [the synthetic runner](http://127.0.0.1:5177/cv-builder/test/e2e/index.html) and click **Run all synthetic flows**. Confirm the result reads **9/9 browser flows passed**. Each run starts fresh in-memory fixtures and leaves the final workspace visible.
+Open [the synthetic runner](http://127.0.0.1:5177/cv-harness/test/e2e/index.html) and click **Run all synthetic flows**. Confirm the result reads **9/9 browser flows passed**. Each run starts fresh in-memory fixtures and leaves the final workspace visible.
 
 | Flow | Behavior |
 | --- | --- |
@@ -52,8 +52,8 @@ Database tests in [`supabase/tests`](../supabase/tests) exercise real functions 
 
 ## Additional fixtures
 
-- [Attachments](http://127.0.0.1:5177/cv-builder/test/e2e/attachments.html): click **Run attachment workflow**. Four checks cover manual metadata, application selection, actual PDF page order/sizes and missing-file export blocking. Files are synthetic `File`/`DataTransfer` objects; storage and cloud transport are in memory.
-- [Job workspace](http://127.0.0.1:5177/cv-builder/test/browser/job-workspace.html): current opportunities/applications and connected proposal simulation. At a viewport no wider than 760px, `?flow=phone-filters` checks touch controls, filtering and navigation; inspect `body.dataset.filterTest`.
-- [CV Studio](http://127.0.0.1:5177/cv-builder/test/browser/cv-studio.html): the complete app with synthetic storage and a sample CV. Check template selection, form scrolling, privacy replacements/exclusions and normal/privacy preview switching at desktop and phone widths. `?performance` records preview layout counts; `?stress` supplies a longer German CV.
+- [Attachments](http://127.0.0.1:5177/cv-harness/test/e2e/attachments.html): click **Run attachment workflow**. Four checks cover manual metadata, application selection, actual PDF page order/sizes and missing-file export blocking. Files are synthetic `File`/`DataTransfer` objects; storage and cloud transport are in memory.
+- [Job workspace](http://127.0.0.1:5177/cv-harness/test/browser/job-workspace.html): current opportunities/applications and connected proposal simulation. At a viewport no wider than 760px, `?flow=phone-filters` checks touch controls, filtering and navigation; inspect `body.dataset.filterTest`.
+- [CV Studio](http://127.0.0.1:5177/cv-harness/test/browser/cv-studio.html): the complete app with synthetic storage and a sample CV. Check template selection, form scrolling, privacy replacements/exclusions and normal/privacy preview switching at desktop and phone widths. `?performance` records preview layout counts; `?stress` supplies a longer German CV.
 
 Local attachment checks also run through `attachmentMetadata`, `localDocuments`, `localAttachmentsWorkflow` and `applicationPackage` Node tests. Opportunity checks cover filters, grouping, score/recency/deadline boundaries, receipts, account changes and private comments. The fixtures never read real browser CVs or cloud sessions.

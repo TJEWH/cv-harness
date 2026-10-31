@@ -35,7 +35,7 @@ function example(index: number, patch: Partial<AdaptiveFeedbackExample> = {}): A
     review_state: 'unreviewed', confirmed_submission: false, submission_at: null, reasons: [], ...patch };
 }
 async function feedback(examples: AdaptiveFeedbackExample[]): Promise<AdaptiveFeedbackSnapshot> {
-  return compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search,
+  return compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search, metric_version: 'opportunity-interest-v1',
     feedback_revision: 1, preference_revision: 0, examples, approved_preferences: [] });
 }
 const emphasis = (index: number, target = 'Robotics', polarity: 'positive' | 'negative' = 'positive'): ApprovedAdaptiveRule => ({ rule_id: id(500 + index),
@@ -380,4 +380,19 @@ test('AF-06 malformed identities, unsafe rule targets and unknown nested instruc
   await assert.rejects(createColdStartAdaptiveSearchPlan({ user_id: owner, search_id: search, base_criteria: criteria(), basis: basis(), maximum_queries: 31 }), /query ceiling/u);
   const wrong = await feedback([example(1)]);
   assert.throws(() => buildAdaptiveSearchPlanningContext(input({ feedback: wrong, basis: basis({ feedback_revision: 2 }) })), /current bounded/u);
+});
+
+test('new preference categories preserve polarity while requirements and availability are avoid-only', () => {
+  for (const category of ['background_fit', 'project_context'] as const) for (const polarity of ['positive', 'negative'] as const) {
+    const rule = { ...emphasis(1), category, polarity };
+    const validated = validateApprovedAdaptiveRules([rule])[0]!;
+    assert('category' in validated);
+    assert.equal(validated.category, category);
+  }
+  for (const category of ['requirements', 'availability'] as const) {
+    const rule = { ...emphasis(1), category, polarity: 'negative' as const };
+    assert.equal(validateApprovedAdaptiveRules([rule])[0]?.kind, 'emphasis');
+    assert.throws(() => validateApprovedAdaptiveRules([{ ...rule, polarity: 'positive' }]), /polarity/u);
+    assert.throws(() => validatePendingAdaptiveRuleSuggestion({ suggestion_id: id(999), state: 'pending', rule: { ...rule, polarity: 'positive', evidence_refs: [id(1)] } }, [id(1)]), /polarity/u);
+  }
 });

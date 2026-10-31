@@ -260,7 +260,7 @@ create table public.opportunity_reviews (
   user_id uuid not null references auth.users(id) on delete cascade,
   opportunity_id uuid not null references public.opportunities(id) on delete cascade,
   state text not null default 'unreviewed'
-    check (state in ('unreviewed', 'interested', 'strong_interest', 'not_interested')),
+    check (state in ('unreviewed', 'interested', 'strong_interest', 'very_high_interest', 'not_interested')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (user_id, opportunity_id)
@@ -409,7 +409,7 @@ begin
   if account is null or coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then
     raise exception 'A signed-in account is required' using errcode = '42501';
   end if;
-  if p_state is not null and p_state not in ('unreviewed', 'interested', 'strong_interest', 'not_interested') then
+  if p_state is not null and p_state not in ('unreviewed', 'interested', 'strong_interest', 'very_high_interest', 'not_interested') then
     raise exception 'Invalid opportunity review state' using errcode = '22023';
   end if;
   select coalesce(updated_at, created_at) into source_version

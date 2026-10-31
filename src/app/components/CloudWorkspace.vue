@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import InfoHint from '../../shared/ui/InfoHint.vue';
 import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowReactive, shallowRef, watch } from 'vue';
-import { faFilter, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
+import { faChartSimple, faCommentDots, faFilter, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CvState, SavedConfiguration } from '../../documents/cv/types';
 import type { Application, Opportunity, OpportunityReviewState } from '../cloudTypes';
@@ -21,6 +21,7 @@ import { isOpportunityInPast } from '../../features/opportunities/domain/opportu
 import OpportunityContext from '../../features/opportunities/components/OpportunityContext.vue';
 import ApplicationWorkspace from '../../features/applications/components/ApplicationWorkspace.vue';
 import MetaSearchEditor from '../../features/meta-search/components/MetaSearchEditor.vue';
+import OpportunityInsights from '../../features/opportunities/components/OpportunityInsights.vue';
 import ApplicationIdentifier from '../../features/applications/components/ApplicationIdentifier.vue';
 import ApplicationDeadlineCalendar from '../../features/applications/components/ApplicationDeadlineCalendar.vue';
 import WorkspaceDetailHeader from '../../shared/ui/WorkspaceDetailHeader.vue';
@@ -88,11 +89,28 @@ const opportunityFeedback = ref<{ flush(): Promise<boolean> } | null>(null);
 const applicationFeedback = ref<{ flush(): Promise<boolean> } | null>(null);
 const opportunityDisposition = ref<{ flush(): Promise<boolean> } | null>(null);
 const applicationDisposition = ref<{ flush(): Promise<boolean> } | null>(null);
-const opportunityView = ref<'catalogue' | 'searches'>('catalogue');
+const opportunityView = ref<'catalogue' | 'searches' | 'insights'>('catalogue');
 const showingSearchTemplates = computed(() => props.tab === 'opportunities' && opportunityView.value === 'searches');
-async function selectOpportunityView(view: 'catalogue' | 'searches') {
-  if (!await flushTextareas()) return;
+const showingInsights = computed(() => props.tab === 'opportunities' && opportunityView.value === 'insights');
+const showingOpportunitySubview = computed(() => showingSearchTemplates.value || showingInsights.value);
+let opportunityViewRequest = 0;
+function opportunityNavigationCurrent(request: number, owner: string): boolean {
+  return request === opportunityViewRequest && props.userId === owner && props.tab === 'opportunities' && props.active;
+}
+async function selectOpportunityView(view: 'catalogue' | 'searches' | 'insights'): Promise<boolean> {
+  const request = ++opportunityViewRequest, owner = props.userId;
+  if (!await flushTextareas() || !opportunityNavigationCurrent(request, owner)) return false;
   opportunityView.value = view;
+  return true;
+}
+async function openInsightOpportunity(id: string): Promise<boolean> {
+  if (!showingInsights.value || !opportunityById.value.has(id)) return false;
+  const request = ++opportunityViewRequest, owner = props.userId;
+  if (!await flushTextareas() || !opportunityNavigationCurrent(request, owner)
+    || !showingInsights.value || !opportunityById.value.has(id)) return false;
+  opportunityView.value = 'catalogue';
+  openOpportunity(id);
+  return true;
 }
 const opportunityNavigationIds = ref<string[]>([]);
 const applicationNavigationIds = ref<string[]>([]);
@@ -134,7 +152,8 @@ const reviewState = (id: string): OpportunityReviewState => reviewById.value.get
 // Keep the control responsive while the persistence queue saves in user order.
 // Filters continue to use confirmed state, so a failed save cannot hide a card.
 const pendingReviewSelections = shallowReactive(new Map<string, { state: OpportunityReviewState; status: 'saving' | 'error' }>());
-const reviewSelection = (id: string) => pendingReviewSelections.get(id)?.state ?? reviewState(id);
+const effectiveReviewState = (id: string): OpportunityReviewState => applicationByOpportunity.value.has(id) ? 'very_high_interest' : reviewState(id);
+const reviewSelection = (id: string) => applicationByOpportunity.value.has(id) ? 'very_high_interest' : pendingReviewSelections.get(id)?.state ?? reviewState(id);
 const reviewToasts = useToasts();
 const reviewToastIds = new Map<string, number>();
 function clearReviewSelections() {
@@ -144,13 +163,13 @@ function clearReviewSelections() {
 }
 watch(() => props.userId, clearReviewSelections, { flush: 'sync' });
 onBeforeUnmount(clearReviewSelections);
-const applicationByOpportunity = computed(() => new Map(applications.value.map((item) => [item.opportunity_id, item])));
+const applicationByOpportunity = computed(() => new Map(applications.value.filter(item => item.user_id === props.userId).map((item) => [item.opportunity_id, item])));
 const filteredOpportunities = computed(() => {
   const needle = query.value.toLocaleLowerCase().trim();
   return opportunities.value.filter((item) => (isOpportunityInPast(item, reviewById.value.get(item.id), now.value) === (deadlineFilter.value === 'past'))
     && (showWithApplications.value || !applicationByOpportunity.value.has(item.id))
-    && (showLowInterest.value || reviewState(item.id) !== 'not_interested')
-    && (reviewFilter.value === 'all' || reviewState(item.id) === reviewFilter.value)
+    && (showLowInterest.value || effectiveReviewState(item.id) !== 'not_interested')
+    && (reviewFilter.value === 'all' || effectiveReviewState(item.id) === reviewFilter.value)
     && (!needle || [item.title, item.institution, item.country, ...item.topics].join(' ').toLocaleLowerCase().includes(needle)))
     .toSorted((a, b) => sortBy.value === 'personal_fit' ? (fitScoreById.value.get(b.id) ?? -1) - (fitScoreById.value.get(a.id) ?? -1)
       : sortBy.value === 'salary_score' ? (salaryScoreById.value.get(b.id) ?? -1) - (salaryScoreById.value.get(a.id) ?? -1)
@@ -260,10 +279,11 @@ watch([() => props.userId, evaluationOpportunityId, () => props.tab, () => props
   });
 onBeforeUnmount(clearCommentToast);
 const showingDetail = computed(() => props.tab === 'opportunities' ? Boolean(selectedOpportunity.value) : Boolean(editingApplication.value));
-useJobCardTrackHeight(tableScroll, () => props.active && !showingDetail.value);
+useJobCardTrackHeight(tableScroll, () => props.active && !showingOpportunitySubview.value && !showingDetail.value);
 const statusNames: Record<string, [string, string]> = {
-  unreviewed: ['Not reviewed', 'Ungeprüft'], not_interested: ['Low', 'Gering'], interested: ['Medium', 'Mittel'], strong_interest: ['High', 'Hoch'],
+  unreviewed: ['Not reviewed', 'Ungeprüft'], not_interested: ['Low', 'Gering'], interested: ['Medium', 'Mittel'], strong_interest: ['High', 'Hoch'], very_high_interest: ['Very high', 'Sehr hoch'],
 };
+const interestHint = computed(() => text('Applications use Very high interest. Removing an application restores the opportunity’s saved interest selection.', 'Bewerbungen verwenden sehr hohes Interesse. Nach dem Entfernen einer Bewerbung gilt wieder die gespeicherte Interessenauswahl der Stelle.'));
 function statusLabel(value: string) { const pair = statusNames[value]; return pair ? text(...pair) : applicationStatusLabel(value, props.lang); }
 function contextTitle(item: Application) { return String(item.context_json.title || opportunityById.value.get(item.opportunity_id)?.title || text('Application', 'Bewerbung')); }
 function contextInstitution(item: Application) { return String(item.context_json.institution || item.context_json.university || ''); }
@@ -283,7 +303,7 @@ function timestampLabel(value: string) {
   return new Intl.DateTimeFormat(props.lang === 'de' ? 'de-DE' : 'en-GB', { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value));
 }
 watch(() => props.tab, () => { filtersOpen.value = false; notice.value = ''; cancelRemoval(); removedOpportunityId.value = null; });
-watch(() => props.userId, () => { filtersOpen.value = false; editingId.value = null; selectedOpportunityId.value = null; cancelRemoval(); removedOpportunityId.value = null; visitedOpportunityVersions.value = new Map(); });
+watch(() => props.userId, () => { filtersOpen.value = false; editingId.value = null; selectedOpportunityId.value = null; opportunityView.value = 'catalogue'; cancelRemoval(); removedOpportunityId.value = null; visitedOpportunityVersions.value = new Map(); });
 watch(() => props.active, active => { if (!active) filtersOpen.value = false; });
 function closeFilters(event: KeyboardEvent) {
   if (!filtersOpen.value) return;
@@ -342,6 +362,7 @@ function changeReview(item: Opportunity, event: Event) {
   return saveReviewSelection(item, (event.target as HTMLSelectElement).value as OpportunityReviewState);
 }
 async function saveReviewSelection(item: Opportunity, state: OpportunityReviewState): Promise<boolean> {
+  if (applicationByOpportunity.value.has(item.id)) return false;
   notice.value = '';
   const owner = props.userId;
   const selection = { state, status: 'saving' as const };
@@ -508,16 +529,16 @@ async function navigateDetail(direction: -1 | 1) {
   } finally { detailNavigationPending = false; }
 }
 const swipe = createJobSwipe({
-  enabled: () => props.active && !showingSearchTemplates.value && showingDetail.value && !blockingSave.value && !startingApplication.value && !removingId.value
+  enabled: () => props.active && !showingOpportunitySubview.value && showingDetail.value && !blockingSave.value && !startingApplication.value && !removingId.value
     && window.matchMedia('(max-width: 760px)').matches,
   onSwipe: direction => { void navigateDetail(direction); },
 });
 const cardSwipe = createJobCardSwipe({
-  enabled: () => props.active && !showingSearchTemplates.value && !showingDetail.value && !filtersOpen.value
+  enabled: () => props.active && !showingOpportunitySubview.value && !showingDetail.value && !filtersOpen.value
     && window.matchMedia('(max-width: 760px)').matches,
   root: () => tableScroll.value,
 });
-watch([() => props.tab, () => props.active, () => props.userId, selectedOpportunityId, editingId], () => { swipe.cancel(); cardSwipe.cancel(); cancelSwipeTransition(); });
+watch([() => props.tab, () => props.active, () => props.userId, selectedOpportunityId, editingId, opportunityView], () => { swipe.cancel(); cardSwipe.cancel(); cancelSwipeTransition(); });
 onBeforeUnmount(() => { swipe.cancel(); cardSwipe.cancel(); cancelSwipeTransition(); });
 async function toggleApplication(application: Application) {
   if (saving.value) return;
@@ -631,15 +652,17 @@ useToastWatch(() => notice.value, () => {
 <template>
   <section :id="`builder-group-${tab}`" ref="workspaceElement" class="jobs-workspace" :aria-busy="loading || blockingSave" :aria-label="tab === 'opportunities' ? text('Opportunities', 'Stellenangebote') : text('Applications', 'Bewerbungen')"
     @touchstart.passive="swipe.onTouchStart" @touchmove="swipe.onTouchMove" @touchend.passive="swipe.onTouchEnd" @touchcancel.passive="swipe.cancel" @click.capture="swipe.onClickCapture">
-    <DesktopSidebarPortal area="subtabs" :active="props.active && tab === 'opportunities' && (!showingDetail || showingSearchTemplates)">
-      <div v-if="tab === 'opportunities' && (!showingDetail || showingSearchTemplates)" class="opportunity-navigation">
+    <DesktopSidebarPortal area="subtabs" :active="props.active && tab === 'opportunities' && (!showingDetail || showingOpportunitySubview)">
+      <div v-if="tab === 'opportunities' && (!showingDetail || showingOpportunitySubview)" class="opportunity-navigation">
         <nav class="opportunity-subtabs workspace-subtabs" :aria-label="text('Opportunity sections', 'Bereiche für Stellenangebote')">
           <button class="btn" :class="{ 'is-active': opportunityView === 'catalogue' }" type="button" :aria-pressed="opportunityView === 'catalogue'" @click="selectOpportunityView('catalogue')"><font-awesome-icon :icon="['fas', 'briefcase']" aria-hidden="true" /><span>{{ text('Results', 'Ergebnisse') }}</span></button>
           <button class="btn" :class="{ 'is-active': opportunityView === 'searches' }" type="button" :aria-pressed="opportunityView === 'searches'" @click="selectOpportunityView('searches')"><font-awesome-icon :icon="faMagnifyingGlass" aria-hidden="true" /><span>{{ text('Meta research', 'Metasuche') }}</span></button>
+          <button class="btn" :class="{ 'is-active': opportunityView === 'insights' }" type="button" :aria-pressed="opportunityView === 'insights'" @click="selectOpportunityView('insights')"><font-awesome-icon :icon="faChartSimple" aria-hidden="true" /><span>{{ text('Insights', 'Einblicke') }}</span></button>
         </nav>
       </div>
     </DesktopSidebarPortal>
     <MetaSearchEditor v-if="showingSearchTemplates" ref="searchTemplates" :client="client" :user-id="userId" :lang="lang" :sidebar-active="props.active" :project-id="projectId" />
+    <OpportunityInsights v-else-if="showingInsights" :sidebar-active="props.active" :owner-id="userId" :client="client" :project-ref="projectId" :opportunities="opportunities" :reviews="reviews" :applications="applications" :lang="lang" :loading="loading" :current-time="now" @open-opportunity="openInsightOpportunity" />
     <template v-else>
     <DesktopSidebarPortal area="major" :active="props.active !== false && !showingDetail">
     <div v-show="!showingDetail" class="jobs-toolbar jobs-sidebar-controls" :class="{ 'jobs-toolbar--sidebar': sidebarActive }" @keydown.esc="closeFilters">
@@ -672,7 +695,7 @@ useToastWatch(() => notice.value, () => {
       @touchstart.passive="cardSwipe.onTouchStart" @touchmove="cardSwipe.onTouchMove" @touchend.passive="cardSwipe.onTouchEnd" @touchcancel.passive="cardSwipe.cancel" @wheel.passive="cardSwipe.onWheel" @click.capture="cardSwipe.onClickCapture">
       <table v-if="tab === 'opportunities'" class="jobs-opportunities-table">
         <colgroup><col style="width: 38%" /><col style="width: 25%" /><col style="width: 10%" /><col style="width: 12%" /><col style="width: 15%" /></colgroup>
-        <thead><tr><th scope="col">{{ text('Opportunity', 'Stelle') }}</th><th scope="col">{{ text('Topics', 'Themen') }}</th><th scope="col">{{ text('Country', 'Land') }}</th><th scope="col">{{ text('Deadline', 'Frist') }}</th><th scope="col">{{ text('Your review', 'Deine Bewertung') }}</th></tr></thead>
+        <thead><tr><th scope="col">{{ text('Opportunity', 'Stelle') }}</th><th scope="col">{{ text('Topics', 'Themen') }}</th><th scope="col">{{ text('Country', 'Land') }}</th><th scope="col">{{ text('Deadline', 'Frist') }}</th><th scope="col">{{ text('Your review', 'Deine Bewertung') }}<InfoHint :lang="lang" :label="text('Application interest', 'Bewerbungsinteresse')" :text="interestHint" /></th></tr></thead>
         <tbody v-if="filteredOpportunities.length" class="jobs-card-track">
         <template v-for="group in opportunityGroups" :key="group.key">
           <tr v-if="group.title" class="jobs-group-row" :data-opportunity-group="group.key"><th scope="rowgroup" colspan="5">{{ group.title }} <span>{{ group.items.length }}</span></th></tr>
@@ -682,7 +705,7 @@ useToastWatch(() => notice.value, () => {
             <td v-if="researchSummary(item)" class="jobs-card-summary jobs-cell-wide"><p>{{ researchSummary(item) }}</p></td>
             <td class="jobs-topics jobs-cell-wide" :data-label="text('Topics', 'Themen')">{{ item.topics.join(' · ') || '—' }}</td>
             <td class="jobs-card-location" :data-label="text('Country', 'Land')" :data-mobile-label="text('Location', 'Ort')"><span class="jobs-card-country">{{ item.country || '—' }}</span><span class="jobs-card-location-text">{{ opportunityLocation(item) }}</span></td><td class="jobs-card-deadline" :data-label="text('Deadline', 'Frist')"><span :class="{ 'jobs-expired': isOpportunityDeadlinePassed(item, now) }">{{ formatOpportunityDeadline(item, lang) }}</span></td>
-            <td class="jobs-cell-state" :data-label="text('Your review', 'Deine Bewertung')" @click.stop><select class="jobs-review-select" :aria-label="`${text('Review state for', 'Bewertung für')} ${item.title}`" :aria-invalid="pendingReviewSelections.get(item.id)?.status === 'error' || undefined" :value="reviewSelection(item.id)" @change="changeReview(item, $event)"><option v-for="state in OPPORTUNITY_REVIEW_STATES" :key="state" :value="state">{{ statusLabel(state) }}</option></select><button v-if="pendingReviewSelections.get(item.id)?.status === 'error'" class="btn" type="button" @click="saveReviewSelection(item, reviewSelection(item.id))">{{ text('Retry interest save', 'Interesse erneut speichern') }}</button></td>
+            <td class="jobs-cell-state" :data-label="text('Your review', 'Deine Bewertung')" @click.stop><select class="jobs-review-select" :aria-label="`${text('Review state for', 'Bewertung für')} ${item.title}`" :aria-invalid="pendingReviewSelections.get(item.id)?.status === 'error' || undefined" :value="reviewSelection(item.id)" :disabled="applicationByOpportunity.has(item.id)" @change="changeReview(item, $event)"><option v-for="state in OPPORTUNITY_REVIEW_STATES" :key="state" :value="state">{{ statusLabel(state) }}</option></select><button v-if="!applicationByOpportunity.has(item.id) && pendingReviewSelections.get(item.id)?.status === 'error'" class="btn" type="button" @click="saveReviewSelection(item, reviewSelection(item.id))">{{ text('Retry interest save', 'Interesse erneut speichern') }}</button></td>
             <td v-if="reviewById.get(item.id)?.comment?.trim()" class="jobs-cell-wide jobs-card-evaluation" :data-label="text('Personal Evaluation', 'Persönliche Einschätzung')"><p>{{ reviewById.get(item.id)?.comment }}</p></td>
           </tr>
         </template></template></tbody><tbody v-if="!loading && !filteredOpportunities.length"><tr><td colspan="5" class="jobs-empty"><p>{{ text('No matching opportunities. Adjust the deadline, application, review or search filters.', 'Keine passenden Stellen. Ändere die Frist-, Bewerbungs-, Bewertungs- oder Suchfilter.') }}</p></td></tr></tbody>
@@ -716,7 +739,7 @@ useToastWatch(() => notice.value, () => {
           <ApplicationIdentifier :application="applicationByOpportunity.get(selectedOpportunity.id)!" :lang="lang" />
         </template>
         <template #actions>
-          <label class="jobs-detail-state jobs-sidebar-controls"><span class="jobs-action-label">{{ text('Your review', 'Deine Bewertung') }}</span><select :key="selectedOpportunity.id" :aria-label="text('Your review', 'Deine Bewertung')" :aria-invalid="pendingReviewSelections.get(selectedOpportunity.id)?.status === 'error' || undefined" :value="reviewSelection(selectedOpportunity.id)" @change="changeReview(selectedOpportunity, $event)"><option v-for="state in OPPORTUNITY_REVIEW_STATES" :key="state" :value="state">{{ statusLabel(state) }}</option></select></label>
+          <label class="jobs-detail-state jobs-sidebar-controls"><span class="jobs-action-label">{{ text('Your review', 'Deine Bewertung') }}<InfoHint :lang="lang" :label="text('Application interest', 'Bewerbungsinteresse')" :text="interestHint" /></span><select :key="selectedOpportunity.id" :aria-label="text('Your review', 'Deine Bewertung')" :aria-invalid="pendingReviewSelections.get(selectedOpportunity.id)?.status === 'error' || undefined" :value="reviewSelection(selectedOpportunity.id)" :disabled="applicationByOpportunity.has(selectedOpportunity.id)" @change="changeReview(selectedOpportunity, $event)"><option v-for="state in OPPORTUNITY_REVIEW_STATES" :key="state" :value="state">{{ statusLabel(state) }}</option></select></label>
           <button class="btn btn--success jobs-detail-action" type="button" :disabled="blockingSave || !!startingApplication" :aria-busy="!!startingApplication" @click="startApplication(selectedOpportunity)">
             <span v-if="startingApplication">{{ applicationByOpportunity.has(selectedOpportunity.id) ? text('Opening…', 'Öffnet…') : text('Creating…', 'Wird angelegt…') }}</span>
             <template v-else><span class="jobs-action-desktop">{{ applicationByOpportunity.has(selectedOpportunity.id) ? text('Open application', 'Bewerbung öffnen') : text('Create application', 'Bewerbung anlegen') }}</span><span class="jobs-action-mobile">{{ applicationByOpportunity.has(selectedOpportunity.id) ? text('Open', 'Öffnen') : text('Apply', 'Bewerben') }}</span></template>
@@ -724,12 +747,12 @@ useToastWatch(() => notice.value, () => {
         </template>
       </WorkspaceDetailHeader>
       <div class="opportunity-detail__body">
-        <button v-if="pendingReviewSelections.get(selectedOpportunity.id)?.status === 'error'" class="btn" type="button" @click="saveReviewSelection(selectedOpportunity, reviewSelection(selectedOpportunity.id))">{{ text('Retry interest save', 'Interesse erneut speichern') }}</button>
+        <button v-if="!applicationByOpportunity.has(selectedOpportunity.id) && pendingReviewSelections.get(selectedOpportunity.id)?.status === 'error'" class="btn" type="button" @click="saveReviewSelection(selectedOpportunity, reviewSelection(selectedOpportunity.id))">{{ text('Retry interest save', 'Interesse erneut speichern') }}</button>
         <details :key="selectedOpportunity.id" class="opportunity-evaluation personal-evaluation disclosure-row" open>
-          <summary id="opportunity-evaluation-heading">{{ text('Personal Evaluation', 'Persönliche Einschätzung') }}</summary>
+          <summary id="opportunity-evaluation-heading"><font-awesome-icon :icon="faCommentDots" class="disclosure-prefix" aria-hidden="true" />{{ text('Personal Evaluation', 'Persönliche Einschätzung') }}</summary>
           <OpportunityFeedbackControls v-if="tab === 'opportunities' && active" ref="opportunityFeedback" :owner-id="userId" :opportunity="selectedOpportunity" :review="reviewById.get(selectedOpportunity.id)"
             v-model:evaluation-text="opportunityComment" :evaluation-status="commentStatus" :evaluation-error="commentError" evaluation-input-id="opportunity-comment" evaluation-labelledby="opportunity-evaluation-heading"
-            :application="applicationByOpportunity.get(selectedOpportunity.id)" :lang="lang" :busy="saving"
+            :lang="lang" :busy="saving"
             :save-feedback="saveOpportunityFeedback" :flush-private-comment="flushComment" />
           <div v-else class="opportunity-comment">
             <AutosaveTextarea id="opportunity-comment" v-model="opportunityComment" aria-labelledby="opportunity-evaluation-heading" rows="2" :aria-invalid="commentError ? true : undefined" :placeholder="text('Add your assessment…', 'Deine Einschätzung…')" @commit="flushComment" />
@@ -742,10 +765,10 @@ useToastWatch(() => notice.value, () => {
     <ApplicationWorkspace ref="applicationWorkspace" tabindex="-1" :aria-label="editingApplication ? contextTitle(editingApplication) : undefined" v-if="editingApplication" v-show="tab === 'applications'" :active="props.active !== false && tab === 'applications'" :checklist-saving="saving" @toggle-checklist="(key, completed) => changeChecklist(editingApplication!, key, completed)" :key="userId + ':' + editingApplication.id" :application="editingApplication" :client="client" :user-id="userId" :lang="lang" :project-id="projectId" :configurations="configurations" :read-version="readVersion" :create-variant="createVariant" :flush-evaluation="flushEvaluation" :publish-cv="(state) => updateApplication(editingApplication!.id, { cvState: state })" @change-stage="stage => setApplicationStage(editingApplication!.id, stage)" @close="closeApplication" @edit-variant="id => emit('edit-variant', id)">
       <template #preparation-evaluation>
         <details class="application-evaluation personal-evaluation disclosure-row" open>
-          <summary :id="`application-evaluation-${editingApplication.id}`">{{ text('Personal Evaluation', 'Persönliche Einschätzung') }}</summary>
+          <summary :id="`application-evaluation-${editingApplication.id}`"><font-awesome-icon :icon="faCommentDots" class="disclosure-prefix" aria-hidden="true" />{{ text('Personal Evaluation', 'Persönliche Einschätzung') }}</summary>
           <OpportunityFeedbackControls v-if="tab === 'applications' && active && opportunityById.get(editingApplication.opportunity_id)" ref="applicationFeedback" :owner-id="userId" :opportunity="opportunityById.get(editingApplication.opportunity_id)!" :review="reviewById.get(editingApplication.opportunity_id)"
             v-model:evaluation-text="opportunityComment" :evaluation-status="commentStatus" :evaluation-error="commentError" :evaluation-labelledby="`application-evaluation-${editingApplication.id}`"
-            :application="editingApplication" :lang="lang" :busy="saving"
+            :lang="lang" :busy="saving"
             :save-feedback="saveOpportunityFeedback" :flush-private-comment="flushComment" />
           <div v-else class="opportunity-comment">
             <AutosaveTextarea v-model="opportunityComment" :aria-labelledby="`application-evaluation-${editingApplication.id}`" rows="3" :aria-invalid="commentError ? true : undefined" :placeholder="text('Add your assessment…', 'Deine Einschätzung…')" @commit="flushComment" />
@@ -792,7 +815,7 @@ useToastWatch(() => notice.value, () => {
 .opportunity-navigation { flex: 0 0 auto; }
 
 .jobs-workspace > :not(.jobs-table-scroll) { flex-shrink: 0; }
-.jobs-workspace > .search-templates, .jobs-workspace > .application-workspace, .jobs-workspace > .opportunity-detail { flex: 1 1 auto; min-height: 0; }
+.jobs-workspace > .search-templates, .jobs-workspace > .opportunity-insights, .jobs-workspace > .application-workspace, .jobs-workspace > .opportunity-detail { flex: 1 1 auto; min-height: 0; }
 .jobs-workspace > .application-workspace:focus, .opportunity-detail:focus { outline: none; }
 .opportunity-detail { display: flex; flex-direction: column; min-width: 0; padding: 32px; overflow: hidden;}
 .opportunity-detail__body { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; }

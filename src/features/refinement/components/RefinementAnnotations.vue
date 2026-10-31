@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, useId, watch } from 'vue';
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
+import { faQuoteLeft } from '@fortawesome/free-solid-svg-icons';
 import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import type { AnnotationStatus } from '../refinementTypes';
 import { QUESTION_GROUPS, questionPresentation, type AnnotationView, type QuestionGroup } from '../domain/refinementAnnotations';
@@ -176,7 +178,7 @@ const groups = computed(() => QUESTION_GROUPS.map(group => ({
       <article v-for="item in group.items" :key="key(item)" class="annotation-row" :data-annotation-id="item.annotation.id" :data-proposal-id="item.proposalId" :aria-label="item.target" :aria-busy="drafts[key(item)]!.saving">
         <p class="annotation-text">{{ questionPresentation(item.annotation.text).text }}</p>
         <template v-if="item.annotation.document === 'letter' && item.annotation.location">
-          <details class="disclosure-row"><summary>{{ text('Original text reference', 'Ursprünglicher Textbezug') }}<InfoHint v-if="item.referenceChanged" :lang="lang" :label="text('Original text reference', 'Ursprünglicher Textbezug')" :text="text('Referenced text has changed', 'Referenzierter Text wurde geändert')" /></summary><blockquote>{{ item.annotation.location.quote }}</blockquote></details>
+          <details class="disclosure-row"><summary><FontAwesomeIcon :icon="faQuoteLeft" class="disclosure-prefix" aria-hidden="true" />{{ text('Original text reference', 'Ursprünglicher Textbezug') }}<InfoHint v-if="item.referenceChanged" :lang="lang" :label="text('Original text reference', 'Ursprünglicher Textbezug')" :text="text('Referenced text has changed', 'Referenzierter Text wurde geändert')" /></summary><blockquote>{{ item.annotation.location.quote }}</blockquote></details>
         </template>
         <label>{{ text('Your response (optional)', 'Deine Antwort (optional)') }}<AutosaveTextarea v-model="drafts[key(item)]!.response" @commit="commitAnswer(item)" rows="3" maxlength="12000" :disabled="controlsDisabled" /></label>
         <fieldset class="status-choices" :disabled="controlsDisabled" :aria-label="text('Question status', 'Fragenstatus')">

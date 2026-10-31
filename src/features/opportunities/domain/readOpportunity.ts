@@ -1,5 +1,7 @@
 import schema from '../../../../supabase/opportunity_schema_v6.json';
 import type { Opportunity } from '../opportunityTypes';
+import { normalizeOpportunityTopic } from './opportunityTopics';
+import { opportunityFeedbackTextIsSafe } from './opportunityFeedbackPrivacy';
 
 type Schema = boolean | { $ref?: string; type?: string | string[]; properties?: Record<string, Schema>; required?: string[];
   additionalProperties?: Schema; items?: Schema; enum?: unknown[]; const?: unknown; anyOf?: Schema[];
@@ -34,5 +36,15 @@ function matches(value: unknown, rule: Schema): boolean {
 export function readOpportunity(value: unknown): Opportunity {
   if (!matches(value, rowSchema) || !(value as Opportunity).id.trim() || !(value as Opportunity).title.trim()
     || !(value as Opportunity).opportunity_key.trim()) throw new TypeError('The opportunities table returned an invalid canonical record.');
-  return value as Opportunity;
+  const opportunity = value as Opportunity;
+  const topics: string[] = [], topicIds = new Set<string>();
+  for (const raw of opportunity.topics) {
+    const topic = normalizeOpportunityTopic(raw);
+    // Do not obscure an unsafe source value before the existing privacy projection can withhold it.
+    if (!opportunityFeedbackTextIsSafe(raw, 120) || !opportunityFeedbackTextIsSafe(raw.normalize('NFKC'), 120)
+      || !opportunityFeedbackTextIsSafe(topic.label, 120)) { topics.push(raw); continue; }
+    if (!topicIds.has(topic.id)) { topicIds.add(topic.id); topics.push(topic.label); }
+  }
+  return topics.length === opportunity.topics.length && topics.every((topic, index) => topic === opportunity.topics[index])
+    ? opportunity : { ...opportunity, topics };
 }

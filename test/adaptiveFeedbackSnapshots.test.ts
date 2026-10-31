@@ -19,7 +19,7 @@ function example(index: number, patch: Partial<AdaptiveFeedbackExample> = {}): A
 }
 function input(examples: (AdaptiveFeedbackExample | null)[] = [], patch: Partial<CompileAdaptiveFeedbackInput> = {}): CompileAdaptiveFeedbackInput {
   return { user_id: owner, search_id: search,
-    feedback_revision: 1, preference_revision: 0, examples, approved_preferences: [], ...patch };
+    feedback_revision: 1, preference_revision: 0, metric_version: 'opportunity-interest-v1', examples, approved_preferences: [], ...patch };
 }
 function discrepancy(index: number, score: number, prediction: number): AdaptiveFeedbackExample {
   return example(index, { interest_score: score, interest_gap: score - prediction, baseline_status: 'available',
@@ -284,4 +284,47 @@ test('AF-03 asynchronous hashing captures scalar proof values and never aliases 
   result.examples[0]!.reasons.push({ category: 'other', polarity: 'negative' });
   assert.deepEqual(summary.reasons, []);
   assert.doesNotMatch(JSON.stringify(result), /person@example/u);
+});
+
+test('current feedback packets use categorical choices and application scores while v1 evidence stays historical', async () => {
+  const current = [
+    example(1, { metric_version: 'opportunity-interest-v2', review_state: 'very_high_interest', interest_origin: 'categorical_review', interest_score: 9 }),
+    example(2, { metric_version: 'opportunity-interest-v2', review_state: 'not_interested', interest_origin: 'application', interest_score: 9 }),
+    example(3, { metric_version: 'opportunity-interest-v2', review_state: 'not_interested', interest_origin: 'confirmed_submission', interest_score: 9.5, confirmed_submission: true }),
+  ];
+  const packet = await compileAdaptiveFeedbackSnapshot(input([...current, example(4)], { metric_version: 'opportunity-interest-v2' }));
+  assert.equal(packet.metric_version, 'opportunity-interest-v2');
+  assert.equal(packet.counts.eligible, 3);
+  assert.equal(packet.counts.application, 1);
+  assert.equal(packet.counts.submission_fallback, 1);
+  assert.equal(packet.counts.categorical_review, 1);
+  assert.equal(packet.counts.explicit_rating, 0);
+  assert.equal(packet.aggregates.mean_interest, 9.166667);
+  assert.equal(packet.examples.find(row => row.opportunity_id === id(2))?.review_state, 'not_interested');
+  const historical = await compileAdaptiveFeedbackSnapshot(input([example(4, { interest_score: 0 })]));
+  assert.equal(historical.metric_version, 'opportunity-interest-v1');
+  assert.equal(historical.examples[0]?.interest_score, 0);
+});
+
+test('current packet validation rejects retired overrides and inconsistent application evidence', async () => {
+  const candidates = [
+    example(1, { metric_version: 'opportunity-interest-v2' }),
+    example(2, { metric_version: 'opportunity-interest-v2', interest_origin: 'confirmed_submission', interest_score: 9, confirmed_submission: true }),
+    example(3, { metric_version: 'opportunity-interest-v2', interest_origin: 'application', interest_score: 9, confirmed_submission: true }),
+    example(4, { metric_version: 'opportunity-interest-v2', interest_origin: 'categorical_review', review_state: 'very_high_interest', interest_score: 8 }),
+  ];
+  const result = await compileAdaptiveFeedbackSnapshot(input(candidates, { metric_version: 'opportunity-interest-v2' }));
+  assert.equal(result.counts.eligible, 0);
+  const cold = await compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search, feedback_revision: 1, examples: [] });
+  assert.equal(cold.metric_version, 'opportunity-interest-v2');
+  assert.equal(cold.counts.application, 0);
+});
+
+test('approved packet preferences reject positive requirements and availability', async () => {
+  for (const category of ['requirements', 'availability'] as const) {
+    const preference = { preference_id: 'avoid-condition', category, polarity: 'negative' as const, target: 'Recorded condition' };
+    const packet = await compileAdaptiveFeedbackSnapshot(input([], { metric_version: 'opportunity-interest-v2', approved_preferences: [preference] }));
+    assert.equal(packet.approved_preferences[0]?.category, category);
+    await assert.rejects(compileAdaptiveFeedbackSnapshot(input([], { approved_preferences: [{ ...preference, polarity: 'positive' }] })), /Invalid approved/u);
+  }
 });

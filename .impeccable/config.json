@@ -39,6 +39,15 @@
         ],
         "createdAt": "2026-10-13T15:48:20.171Z",
         "reason": "Agent: the sole finding is an existing semantic blockquote border marking the exact original letter passage under Original text reference; it is not a decorative card accent."
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/app/components/JobWorkspace.vue"
+        ],
+        "createdAt": "2026-10-30T22:59:40.579Z",
+        "reason": "Agent review: the existing application-status-history ol border is a semantic timeline rail connecting li::before status nodes, timestamps, and the aria-current=step marker. Its geometry and color are unchanged from HEAD and outside the Insights changes. Preserve the timeline; the same intentional design already has an exception under its legacy src/components/JobWorkspace.vue path."
       }
     ]
   }

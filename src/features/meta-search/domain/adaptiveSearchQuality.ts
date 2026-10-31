@@ -1,7 +1,7 @@
 import { resolveDeadline } from '../../opportunities/domain/opportunityDeadline';
-import { isOpportunityInterestRating, opportunityFeedbackTimestamp, type OpportunityFeedbackOutcome } from '../../opportunities/domain/opportunityFeedback';
-import { OPPORTUNITY_REVIEW_STATES, type OpportunityReviewState } from '../../../app/cloudTypes';
-import { adaptiveFeedbackScoreStatistics } from './adaptiveFeedbackSnapshots';
+import { opportunityFeedbackTimestamp, type OpportunityFeedbackOutcome } from '../../opportunities/domain/opportunityFeedback';
+import type { OpportunityReviewState } from '../../../app/cloudTypes';
+import { adaptiveFeedbackScoreStatistics, validOpportunityInterestEvidence } from './adaptiveFeedbackSnapshots';
 import { opportunityFeedbackTextIsSafe } from '../../opportunities/domain/opportunityFeedbackPrivacy';
 
 export const ADAPTIVE_SEARCH_QUALITY_VERSION = 'opportunity-search-quality-v1';
@@ -47,7 +47,7 @@ export interface AdaptiveQualityInput extends AdaptiveQualityScope {
 export interface AdaptiveOutcomeMetrics {
   unique_discoveries: number; unique_encounters: number; reviewed: number; with_interest: number;
   mean_interest: number | null; explicit_high_interest: number; confirmed_submissions: number;
-  explicit_rating: number; categorical_review: number; submission_fallback: number; high_interest_rate: number | null;
+  explicit_rating: number; categorical_review: number; application?: number; submission_fallback: number; high_interest_rate: number | null;
 }
 export interface AdaptiveQualityCoverage {
   executed_checks: number; complete_checks: number; empty_successes: number; blocked_checks: number; failed_checks: number;
@@ -256,16 +256,8 @@ function preferenceFeedback(values: readonly AdaptiveQualityFeedback[], owner: s
   for (const value of values) {
     if (typeof value.user_id !== 'string' || value.user_id.toLowerCase() !== owner) continue;
     const id = identity(value.opportunity_id);
-    if (value.metric_version !== 'opportunity-interest-v1' || !OPPORTUNITY_REVIEW_STATES.includes(value.review_state)
-      || !['explicit_rating', 'categorical_review', 'confirmed_submission', 'none', 'excluded'].includes(value.interest_origin)
-      || !(value.interest_score === null || isOpportunityInterestRating(value.interest_score))
-      || typeof value.confirmed_submission !== 'boolean' || !nonnegative(value.feedback_revision)) throw new TypeError('Invalid current quality feedback.');
-    const origin = value.interest_origin, score = value.interest_score;
-    const categorical = { strong_interest: 8, interested: 6, not_interested: 2, unreviewed: null }[value.review_state];
-    if (origin === 'excluded' && score !== null || origin === 'none' && (score !== null || value.review_state !== 'unreviewed' || value.confirmed_submission)
-      || origin === 'explicit_rating' && score === null || origin === 'categorical_review' && (categorical === null || score !== categorical)
-      || origin === 'confirmed_submission' && (score !== 9 || !value.confirmed_submission || value.review_state !== 'unreviewed')) throw new TypeError('Inconsistent current interest evidence.');
-    const safe: AdaptiveQualityFeedback = { user_id: owner, opportunity_id: id, metric_version: 'opportunity-interest-v1',
+    if (!validOpportunityInterestEvidence(value) || !nonnegative(value.feedback_revision)) throw new TypeError('Invalid current quality feedback.');
+    const safe: AdaptiveQualityFeedback = { user_id: owner, opportunity_id: id, metric_version: value.metric_version,
       interest_score: value.interest_score, interest_origin: value.interest_origin, confirmed_submission: value.confirmed_submission,
       submission_at: timestamp(value.submission_at), feedback_revision: value.feedback_revision, feedback_updated_at: timestamp(value.feedback_updated_at),
       baseline_status: value.baseline_status, interest_gap: value.interest_gap, review_state: value.review_state };
@@ -279,14 +271,15 @@ function outcomeMetrics(cohort: Cohort, feedback: ReadonlyMap<string, AdaptiveQu
   const rows = [...cohort.keys()].flatMap(id => {
     const value = feedback.get(id); return value && value.interest_origin !== 'excluded' ? [value] : [];
   });
-  const reviewed = rows.filter(row => row.interest_origin === 'explicit_rating' || row.review_state !== 'unreviewed');
-  const high = reviewed.filter(row => ['explicit_rating', 'categorical_review'].includes(row.interest_origin) && (row.interest_score ?? -1) >= 8);
+  const reviewed = rows.filter(row => (['explicit_rating', 'categorical_review'].includes(row.interest_origin) || row.metric_version === 'opportunity-interest-v2' && ['application', 'confirmed_submission'].includes(row.interest_origin)));
+  const high = reviewed.filter(row => (row.interest_score ?? -1) >= 8);
   const scored = rows.flatMap(row => row.interest_score === null ? [] : [row.interest_score]);
   return { unique_discoveries: [...cohort.values()].filter(row => row.primary).length, unique_encounters: cohort.size,
     reviewed: reviewed.length, with_interest: scored.length, mean_interest: adaptiveFeedbackScoreStatistics(scored).mean_interest,
     explicit_high_interest: high.length, confirmed_submissions: rows.filter(row => row.confirmed_submission).length,
     explicit_rating: rows.filter(row => row.interest_origin === 'explicit_rating').length,
     categorical_review: rows.filter(row => row.interest_origin === 'categorical_review').length,
+    ...(rows.some(row => row.metric_version === 'opportunity-interest-v2') ? { application: rows.filter(row => row.interest_origin === 'application').length } : {}),
     submission_fallback: rows.filter(row => row.interest_origin === 'confirmed_submission').length,
     high_interest_rate: reviewed.length ? Math.round(high.length / reviewed.length * 1_000_000) / 1_000_000 : null };
 }

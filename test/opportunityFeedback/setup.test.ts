@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { file, reset, sql } from './db';
-import { buildAdaptiveRecurringSearchPrompt } from '../../src/features/meta-search/domain/adaptiveSearchTask';
 import { buildSearchSetupReadSql } from '../../src/features/meta-search/domain/searchPrompts';
 
 test('AF-09 setup gates explicit migration, reads one safe handoff and records only setup receipts', () => {
@@ -16,10 +15,12 @@ test('AF-09 setup gates explicit migration, reads one safe handoff and records o
   sql(file('../../supabase/tests/opportunity_search_adaptive_setup.sql'));
 });
 
-test('AF-09 installed and client recurring instructions are byte-identical for the same fixed scope', () => {
+test('historical AF-09 recurring instructions retain the exact reviewed migration text', () => {
   const search = '11111111-1111-4111-8111-111111111111', project = 'abcdefghijklmnopqrst';
   const installed = JSON.parse(sql(`select to_jsonb(private.adaptive_search_recurring_prompt('${search}'::uuid,'${project}'::text));`));
-  assert.equal(installed, buildAdaptiveRecurringSearchPrompt(search, project));
+  const template = file('../../supabase/opportunity_search_adaptive_setup.sql').split('$adaptive_recurring$')[1];
+  assert(template, 'The historical reviewed recurring template is present.');
+  assert.equal(installed, template.replaceAll('{{search_id}}', search).replaceAll('{{project_ref}}', project));
   assert.equal((installed.match(/SELECT private\./gu) || []).length, 1);
   assert(!installed.includes('private.read_adaptive_search_setup('));
   assert(!installed.includes('private.ack_adaptive_search_setup('));

@@ -8,8 +8,9 @@ import {
   isRecord, readCvConfig, readCvContent, readCvState,
 } from '../../../documents/cv/domain/cvStateValidation';
 
-export const CV_CONTENT_JSON_FORMAT = 'cv-builder/content';
-export const CV_CONFIG_JSON_FORMAT = 'cv-builder/config';
+export const CV_CONTENT_JSON_FORMAT = 'cv-harness/content';
+export const CV_CONFIG_JSON_FORMAT = 'cv-harness/config';
+const LEGACY_CV_JSON_FORMATS = { [CV_CONTENT_JSON_FORMAT]: 'cv-builder/content', [CV_CONFIG_JSON_FORMAT]: 'cv-builder/config' } as const;
 export const CV_JSON_FORMAT_VERSION = 1;
 export const MAX_CV_JSON_FILE_BYTES = 5 * 1024 * 1024;
 
@@ -62,11 +63,11 @@ export function createCvConfigJson(state: CvState, exportedAt = new Date()) {
   return envelope(CV_CONFIG_JSON_FORMAT, cvConfig(state), exportedAt);
 }
 
-function parseEnvelope(text: string, format: string): unknown {
+function parseEnvelope(text: string, format: typeof CV_CONTENT_JSON_FORMAT | typeof CV_CONFIG_JSON_FORMAT): unknown {
   let parsed: unknown;
   try { parsed = JSON.parse(text, (key, value) => RESERVED_KEYS.has(key) ? undefined : value); }
   catch { throw new Error('The selected file is not valid JSON.'); }
-  if (!isRecord(parsed) || parsed.format !== format || parsed.formatVersion !== CV_JSON_FORMAT_VERSION
+  if (!isRecord(parsed) || (parsed.format !== format && parsed.format !== LEGACY_CV_JSON_FORMATS[format]) || parsed.formatVersion !== CV_JSON_FORMAT_VERSION
     || Object.keys(parsed).some((key) => !['format', 'formatVersion', 'cvVersion', 'exportedAt', 'data'].includes(key))) {
     throw new Error('This file uses an unsupported CV export format.');
   }

@@ -5,6 +5,7 @@ import { isSharedSearchTemplate, readSearchTemplate, searchTemplateContentKey } 
 import { SEARCH_DEADLINE_RULE, buildSearchSystemPrompt, buildSearchUserPrompt, buildRecurringSearchPrompt } from '../domain/searchPrompts';
 import type { SearchPromptOptions } from '../domain/searchPrompts';
 import { readAdaptiveSearchRunnerState } from '../domain/adaptiveSearchTask';
+import { searchCadenceFromCloud, searchScheduleFromTemplate } from '../domain/searchSchedule';
 export { isSearchTemplateSaved } from '../domain/searchPrompts';
 export type { SearchCloudTemplate } from '../searchTypes';
 
@@ -36,7 +37,7 @@ export function searchTemplateCloudCriteria(input: SearchTemplate): SearchCriter
 
 export function searchTemplateCloudSchedule(input: SearchTemplate): SearchCloudSchedule {
   const template = readSearchTemplate(input);
-  return { frequency: 'daily', intervalHours: 1, weekdays: [], time: template.dailyTime, timezone: template.timezone, runImmediately: true };
+  return searchScheduleFromTemplate(template);
 }
 function asCloudTemplate(value: unknown, userId: string): SearchCloudTemplate {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('The saved search response is invalid.');
@@ -55,7 +56,8 @@ export async function listCloudSearchTemplates(client: SupabaseClient, userId: s
 export function importCloudSearchTemplate(row: SearchCloudTemplate): SearchTemplate {
   if (row.meta_search?.version === 1) {
     const editor = row.meta_search.editor;
-    const template = readSearchTemplate({ ...editor, name: row.name, dailyTime: row.schedule.time, timezone: row.schedule.timezone, cloud: undefined });
+    const template = readSearchTemplate({ ...editor, name: row.name, dailyTime: row.schedule.time, timezone: row.schedule.timezone,
+      cadence: searchCadenceFromCloud(row.schedule), cloud: undefined });
     const currentShape = isSharedSearchTemplate(editor) && row.meta_search.active === true && template.active === true;
     // A converted profile document needs a committed save so the complete prompts
     // and criteria match its new shared representation before schedule replacement.
@@ -74,7 +76,8 @@ export function importCloudSearchTemplate(row: SearchCloudTemplate): SearchTempl
     context = parsed;
   }
   const common = { id: row.id, name: row.name, revision: row.revision, updatedAt: row.updated_at,
-    locationPreferences: row.criteria.locationsAndLanguages || '', dailyTime: row.schedule.time, timezone: row.schedule.timezone };
+    locationPreferences: row.criteria.locationsAndLanguages || '', dailyTime: row.schedule.time, timezone: row.schedule.timezone,
+    cadence: searchCadenceFromCloud(row.schedule) };
   const template = context ? readSearchTemplate({ ...common, professionalContext: context.professionalContext ?? '',
     researchInterests: context.researchInterests ?? '', profiles: context.profiles ?? [], userPrompt: row.criteria.researchAndReporting || '' })
     : readSearchTemplate({ ...common, active: true,

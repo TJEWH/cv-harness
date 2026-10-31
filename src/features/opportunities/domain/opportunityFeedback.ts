@@ -4,21 +4,23 @@ import {
   type OpportunityReview, type OpportunityReviewState,
 } from '../../../app/cloudTypes';
 
-export const OPPORTUNITY_INTEREST_METRIC_VERSION = 'opportunity-interest-v1';
-export const MAX_OPPORTUNITY_INTEREST_REASONS = 16;
+export const OPPORTUNITY_INTEREST_METRIC_VERSION = 'opportunity-interest-v2';
+export const MAX_OPPORTUNITY_INTEREST_REASONS = 24;
 export const MAX_OPPORTUNITY_INTEREST_TARGET_LENGTH = 120;
 
 /** Versioned product conventions, not probabilities or AI fit assessments. */
 export interface OpportunityInterestMetricPolicy {
   version: string;
   review_scores: Readonly<Record<Exclude<OpportunityReviewState, 'unreviewed'>, number>>;
+  application_score: number;
   submitted_score: number;
 }
 
 export const DEFAULT_OPPORTUNITY_INTEREST_POLICY: OpportunityInterestMetricPolicy = Object.freeze({
   version: OPPORTUNITY_INTEREST_METRIC_VERSION,
-  review_scores: Object.freeze({ strong_interest: 8, interested: 6, not_interested: 2 }),
-  submitted_score: 9,
+  review_scores: Object.freeze({ very_high_interest: 9, strong_interest: 8, interested: 6, not_interested: 2 }),
+  application_score: 9,
+  submitted_score: 9.5,
 });
 
 /** Only these application fields can participate in the interest metric. */
@@ -30,7 +32,7 @@ export interface ConfirmedOpportunitySubmission {
   submitted_at: string | null;
 }
 
-export type OpportunityInterestOrigin = 'explicit_rating' | 'categorical_review' | 'confirmed_submission' | 'none' | 'excluded';
+export type OpportunityInterestOrigin = 'explicit_rating' | 'categorical_review' | 'application' | 'confirmed_submission' | 'none' | 'excluded';
 
 /** One current, owner-scoped outcome. No comments, documents, contacts, or application context. */
 export interface OpportunityFeedbackOutcome {
@@ -94,7 +96,8 @@ export function normalizeOpportunityInterestReasons(value: unknown): Opportunity
   for (const entry of value) {
     if (!isRecord(entry) || Object.keys(entry).some(key => !['category', 'polarity', 'target'].includes(key))
       || !OPPORTUNITY_INTEREST_REASON_CATEGORIES.includes(entry.category as OpportunityInterestReason['category'])
-      || !['positive', 'negative'].includes(entry.polarity as string)) {
+      || !['positive', 'negative'].includes(entry.polarity as string)
+      || (['requirements', 'availability'].includes(entry.category as string) && entry.polarity !== 'negative')) {
       throw new TypeError('Invalid structured interest reason');
     }
     const reason: OpportunityInterestReason = {
@@ -159,11 +162,12 @@ export function confirmedOpportunitySubmission(
 
 function validatePolicy(policy: OpportunityInterestMetricPolicy): void {
   if (typeof policy.version !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/u.test(policy.version)
-    || !isOpportunityInterestRating(policy.submitted_score)
-    || !['strong_interest', 'interested', 'not_interested'].every(state => isOpportunityInterestRating(policy.review_scores?.[state as keyof typeof policy.review_scores]))) {
+    || !isOpportunityInterestRating(policy.application_score) || !isOpportunityInterestRating(policy.submitted_score)
+    || !OPPORTUNITY_REVIEW_STATES.filter(state => state !== 'unreviewed').every(state => isOpportunityInterestRating(policy.review_scores?.[state]))) {
     throw new TypeError('Invalid versioned interest metric policy');
   }
-  if (policy.version === OPPORTUNITY_INTEREST_METRIC_VERSION && (policy.submitted_score !== 9
+  if (policy.version === OPPORTUNITY_INTEREST_METRIC_VERSION && (policy.submitted_score !== 9.5 || policy.application_score !== 9
+    || policy.review_scores.very_high_interest !== 9
     || policy.review_scores.strong_interest !== 8 || policy.review_scores.interested !== 6 || policy.review_scores.not_interested !== 2)) {
     throw new TypeError('Changed interest conventions require a new metric version');
   }
@@ -212,23 +216,22 @@ export function deriveOpportunityFeedback(
     baseline_status: 'unavailable', interest_gap: null,
   };
   if (review?.feedback_excluded) return { ...result, interest_origin: 'excluded' };
-  const rating = parseOpportunityInterestRating(review?.interest_rating);
-  if (rating !== null) {
-    result.interest_score = rating;
-    result.interest_origin = 'explicit_rating';
+  if (confirmed) {
+    result.interest_score = policy.submitted_score;
+    result.interest_origin = 'confirmed_submission';
+  } else if (submissions.length) {
+    result.interest_score = policy.application_score;
+    result.interest_origin = 'application';
   } else if (review && review.state !== 'unreviewed') {
     result.interest_score = policy.review_scores[review.state];
     result.interest_origin = 'categorical_review';
-  } else if (confirmed) {
-    result.interest_score = policy.submitted_score;
-    result.interest_origin = 'confirmed_submission';
   }
   const verified = input.verified_prediction;
-  // Submission is a current derived fallback, not an explicit feedback revision.
-  // Its real, known time can match an independently verified ex-ante prediction.
-  // Explicit ratings/categories never gain a retrospective baseline this way.
-  const baseline = review?.prediction_baseline ?? (result.interest_origin === 'confirmed_submission' ? verified : null);
-  const observedAt = result.interest_origin === 'confirmed_submission' ? timestamp(result.submission_at) : feedbackAt;
+  // Application presence has no verified feedback time. A known submission time can
+  // match an ex-ante prediction; categorical feedback requires its frozen baseline.
+  const baseline = result.interest_origin === 'confirmed_submission' ? verified : review?.prediction_baseline;
+  const observedAt = result.interest_origin === 'confirmed_submission' ? timestamp(result.submission_at)
+    : result.interest_origin === 'categorical_review' ? feedbackAt : null;
   if (result.interest_score !== null && observedAt !== null
     && validBaseline(baseline, input.user_id, input.opportunity_id) && validBaseline(verified, input.user_id, input.opportunity_id)
     && baseline.score === verified.score && baseline.source_kind === verified.source_kind

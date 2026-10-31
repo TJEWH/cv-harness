@@ -18,8 +18,8 @@ import { useToastWatch, useSaveStateToast } from '../../../shared/ui/useToasts';
 import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import DesktopSidebarPortal from '../../../shared/ui/DesktopSidebarPortal.vue';
 import InfoHint from '../../../shared/ui/InfoHint.vue';
-import AdaptiveSearchPolicyHint from './AdaptiveSearchPolicyHint.vue';
 import AdaptiveSearchDashboard from './AdaptiveSearchDashboard.vue';
+import { MAX_SEARCH_INTERVAL_DAYS, MAX_SEARCH_INTERVAL_HOURS, readSearchScheduleControls, setSearchScheduleCadence, type SearchScheduleUnit } from '../domain/searchSchedule';
 
 const props = withDefaults(defineProps<{ userId: string; lang?: string; sidebarActive?: boolean; projectId?: string; client?: SupabaseClient | null }>(), { sidebarActive: true });
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -35,6 +35,55 @@ const controlsId = useId();
 const desktopSidebar = useDesktopSidebar();
 const connectedProjectId = computed(() => props.projectId || (supabaseConfiguration.status === 'ready' ? new URL(supabaseConfiguration.url).hostname.split('.')[0] : undefined));
 const form = ref<SearchTemplate | null>(null);
+const scheduleControls = computed(() => readSearchScheduleControls(form.value ?? {}));
+const ambiguousDailySchedule = computed(() => {
+  const cadence = form.value?.cadence;
+  return cadence?.frequency === 'daily' && cadence.intervalHours !== 1 && cadence.intervalHours % 24 !== 0;
+});
+const preservedSchedule = computed(() => {
+  const cadence = form.value?.cadence;
+  return cadence?.frequency === 'weekly' || cadence?.frequency === 'hourly' && cadence.intervalHours > MAX_SEARCH_INTERVAL_HOURS
+    || ambiguousDailySchedule.value;
+});
+const savedScheduleLabel = computed(() => {
+  const cadence = form.value?.cadence;
+  if (!cadence) return '';
+  if (cadence.frequency === 'hourly') return text(`Every ${cadence.intervalHours} hours`, `Alle ${cadence.intervalHours} Stunden`);
+  if (cadence.frequency === 'weekly') {
+    const formatter = new Intl.DateTimeFormat(props.lang === 'de' ? 'de' : 'en', { weekday: 'short', timeZone: 'UTC' });
+    const days = cadence.weekdays.map(day => formatter.format(new Date(Date.UTC(2023, 0, 1 + day)))).join(', ');
+    return text(`Weekly: ${days}`, `Wöchentlich: ${days}`);
+  }
+  return text('Existing daily schedule', 'Bestehender täglicher Zeitplan');
+});
+const scheduleIntervalDraft = ref('1');
+const scheduleIntervalDirty = ref(false);
+const scheduleMaximum = computed(() => scheduleControls.value.unit === 'hours' ? MAX_SEARCH_INTERVAL_HOURS : MAX_SEARCH_INTERVAL_DAYS);
+watch(scheduleControls, value => {
+  if (!scheduleIntervalDirty.value) scheduleIntervalDraft.value = String(value.interval);
+}, { immediate: true, flush: 'sync' });
+function commitScheduleInterval(): boolean {
+  if (!form.value || !scheduleIntervalDirty.value) return true;
+  const interval = /^\d+$/u.test(scheduleIntervalDraft.value) ? Number(scheduleIntervalDraft.value) : NaN;
+  try {
+    const cadence = setSearchScheduleCadence(form.value, scheduleControls.value.unit, interval);
+    scheduleIntervalDirty.value = false;
+    form.value.cadence = cadence;
+    return true;
+  } catch {
+    error.value = text(`Enter a whole number from 1 to ${scheduleMaximum.value}. Your interval is kept.`, `Gib eine ganze Zahl von 1 bis ${scheduleMaximum.value} ein. Deine Eingabe bleibt erhalten.`);
+    status.value = 'error';
+    return false;
+  }
+}
+function changeScheduleUnit(event: Event) {
+  if (!form.value) return;
+  const unit = (event.target as HTMLSelectElement).value as SearchScheduleUnit;
+  if (unit !== 'hours' && unit !== 'days') return;
+  scheduleIntervalDirty.value = false;
+  form.value.cadence = setSearchScheduleCadence(form.value, unit, 1);
+  void flushSave();
+}
 const status = ref<'saved' | 'unsaved' | 'saving' | 'error'>('saved');
 const error = ref('');
 const notice = ref('');
@@ -186,7 +235,7 @@ function commitSnapshot(forceCloud = false): Promise<boolean> {
 }
 function flushSave(): Promise<boolean> {
   commitPendingTextareas();
-  if (loadError.value) return Promise.resolve(false);
+  if (loadError.value || !commitScheduleInterval()) return Promise.resolve(false);
   if (loadingCloud.value && !dirty) return ready.then(() => commitSnapshot(), () => false);
   return commitSnapshot();
 }
@@ -213,7 +262,7 @@ watch(form, () => {
 }, { deep: true, flush: 'sync' });
 watch(() => props.userId, id => {
   if (form.value && (dirty || !isSearchTemplateSaved(form.value))) retainSearchDraft(editingOwner, form.value, baseline);
-  ownerGeneration++; editingOwner = id; copying.value = false;
+  ownerGeneration++; editingOwner = id; copying.value = false; scheduleIntervalDirty.value = false;
   pending = null; pendingKey = null; failedWrite = null; binding = undefined; queue = Promise.resolve();
   runner.value = null; runnerError.value = ''; preparingRunner.value = false; requestedSetupId = null; copiedSetup = null;
   error.value = ''; notice.value = ''; loadError.value = false; replace(null);
@@ -266,6 +315,8 @@ async function prepareRunner() {
     runner.value = requested;
     if (!await flushTextareas() || disposed || token !== ownerGeneration) return;
     if (!await commitSnapshot(true)) return;
+    await adaptiveDashboard.value?.reload?.();
+    if (disposed || token !== ownerGeneration) return;
     requestedSetupId = null;
     notice.value = text('Adaptive instructions prepared. Copy the replace prompt to update the selected task in ChatGPT.', 'Adaptive Anweisungen vorbereitet. Die Ersetzungsanweisung kopieren, um die ausgewählte Aufgabe in ChatGPT zu aktualisieren.');
   } catch (cause) { if (!disposed && token === ownerGeneration) runnerError.value = failureMessage(cause); }
@@ -277,6 +328,7 @@ async function copy() {
   try {
     const result = await copyPreparedText(async () => {
       if (!await flushTextareas() || !form.value || token !== ownerGeneration || disposed) return null;
+      if (ambiguousDailySchedule.value) throw new Error(text('Choose Hours or Days and set an interval before copying a task update. Your saved schedule is kept.', 'Wähle Stunden oder Tage und lege ein Intervall fest, bevor du ein Aufgaben-Update kopierst. Dein gespeicherter Zeitplan bleibt erhalten.'));
       const owner = editingOwner, search = form.value.cloud?.id, project = connectedProjectId.value, client = props.client;
       const inputVersion = typingVersion, draftVersion = modelVersion;
       if (!search || !project || !client) throw new Error(text('Connect the saved search to Supabase before copying its setup.', 'Die gespeicherte Suche vor dem Kopieren ihrer Einrichtung mit Supabase verbinden.'));
@@ -307,8 +359,8 @@ onBeforeUnmount(() => { if (form.value && status.value !== 'saved') retainSearch
 </script>
 <template>
   <section class="search-templates" :aria-busy="loadingCloud || status === 'saving'">
-    <header class="search-heading">
-      <h2>{{ text('Meta research', 'Metasuche') }}<InfoHint :lang="lang" :label="text('Meta research', 'Metasuche')" :text="text('One daily search with a shared profile. Reuse its research interests in motivation letters.', 'Eine tägliche Suche mit einem gemeinsamen Profil. Seine Forschungsinteressen auch für Motivationsschreiben verwenden.')" /></h2>
+    <header class="search-heading workspace-page-heading">
+      <h2>{{ text('Meta research', 'Metasuche') }}<InfoHint :lang="lang" :label="text('Meta research', 'Metasuche')" :text="text('Set your search criteria and schedule. You can reuse these interests in motivation letters.', 'Lege Suchkriterien und Zeitplan fest. Du kannst diese Interessen auch in Motivationsschreiben verwenden.')" /></h2>
     </header>
     <button v-if="error && !form" type="button" @click="retryLoad">{{ text('Retry loading search', 'Suche erneut laden') }}</button>
     <div class="search-layout" :class="{ 'search-layout--sidebar': desktopSidebar && sidebarActive }">
@@ -316,51 +368,71 @@ onBeforeUnmount(() => { if (form.value && status.value !== 'saved') retainSearch
         <aside class="search-library" :aria-label="text('Meta research actions', 'Metasuchaktionen')">
           <div class="search-action-row">
             <button class="search-primary" type="button" :disabled="copying || preparingRunner || loadingCloud || !client" @click="copy"><FontAwesomeIcon :icon="faCopy" aria-hidden="true" />{{ copying ? text('Preparing…', 'Vorbereiten…') : text('Copy replace prompt', 'Ersetzungsanweisung kopieren') }}</button>
-            <InfoHint :lang="lang" :label="text('Replace meta search', 'Metasuche ersetzen')" :text="text('Edits save to Supabase on blur or Enter. Copy this short instruction and paste it into ChatGPT to read the saved prompt and replace the existing meta-search scheduled task. Copying itself does not change the schedule.', 'Änderungen werden beim Verlassen des Felds oder mit Enter in Supabase gespeichert. Die kurze Anweisung kopieren und in ChatGPT einfügen, um den gespeicherten Prompt zu lesen und die bestehende geplante Metasuche zu ersetzen. Kopieren selbst ändert den Zeitplan nicht.')" />
+            <InfoHint :lang="lang" :label="text('Replace meta search', 'Metasuche ersetzen')" :text="text('Paste this instruction into ChatGPT to update the scheduled task. Use it after changing the schedule or preparing an instruction update.', 'Füge diese Anweisung in ChatGPT ein, um die geplante Aufgabe zu aktualisieren. Nutze sie nach Zeitplanänderungen oder einer vorbereiteten Anweisungsaktualisierung.')" />
           </div>
-          <AdaptiveSearchPolicyHint :lang="lang" />
         </aside>
       </DesktopSidebarPortal>
       <div v-if="form" class="search-editor">
       <form class="search-form" @submit.prevent="flushSave" @focusout="flushSave" @input.capture="onDraftInput">
         <button v-if="status === 'error'" type="button" @click="retrySave">{{ text('Retry save', 'Speichern erneut versuchen') }}</button>
         <details class="search-section" open>
-          <summary><FontAwesomeIcon :icon="faAlignLeft" aria-hidden="true" /><span>{{ text('Shared search profile', 'Gemeinsames Suchprofil') }}</span><InfoHint :lang="lang" :label="text('Shared search profile', 'Gemeinsames Suchprofil')" :text="text('Write entries in English, separated by semicolons. Research directions are alternatives: a position can match one direction or a useful combination. The system prompt applies verification, deduplication, scoring and the 72-hour deadline rule.', 'Einträge auf Englisch schreiben und mit Semikolons trennen. Forschungsrichtungen sind Alternativen: Eine Stelle kann zu einer Richtung oder einer sinnvollen Kombination passen. Der Systemprompt ergänzt Verifikation, Deduplizierung, Bewertungen und die 72-Stunden-Fristregel.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
+          <summary><FontAwesomeIcon :icon="faAlignLeft" aria-hidden="true" /><span>{{ text('Shared search profile', 'Gemeinsames Suchprofil') }}</span><InfoHint :lang="lang" :label="text('Shared search profile', 'Gemeinsames Suchprofil')" :text="text('Write in English and separate entries with semicolons. A job can match one research direction or a combination.', 'Schreibe auf Englisch und trenne Einträge mit Semikolons. Eine Stelle kann zu einer Forschungsrichtung oder einer Kombination passen.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
           <div class="search-fields">
-            <div class="hint-label-row"><label :for="`${controlsId}-opportunities`">{{ text('Opportunity / job types and sources', 'Stellenarten und Quellen') }}</label><InfoHint :lang="lang" :label="text('Opportunity / job types and sources', 'Stellenarten und Quellen')" :text="text('Separate entries with ;. Describe the roles you want and the job sources to search. Distinguish required conditions from preferences.', 'Einträge mit ; trennen. Gewünschte Stellenarten und zu durchsuchende Quellen beschreiben. Verbindliche Bedingungen von Präferenzen unterscheiden.')" /></div>
+            <div class="hint-label-row"><label :for="`${controlsId}-opportunities`">{{ text('Opportunity / job types and sources', 'Stellenarten und Quellen') }}</label><InfoHint :lang="lang" :label="text('Opportunity / job types and sources', 'Stellenarten und Quellen')" :text="text('Name the roles and sources you want to search. Mark must-have conditions as requirements.', 'Nenne die gewünschten Stellenarten und Quellen. Kennzeichne verbindliche Bedingungen als Anforderungen.')" /></div>
             <AutosaveTextarea :id="`${controlsId}-opportunities`" v-model.lazy="form.opportunityDescription" lang="en" rows="5" maxlength="12000" :placeholder="text('Role types; preferred job sources; source descriptions', 'Stellenarten; bevorzugte Quellen; Quellenbeschreibung')" @commit="flushSave" />
-            <div class="hint-label-row"><label :for="`${controlsId}-interests`">{{ text('Research interests, preferred and avoided tasks', 'Forschungsinteressen, bevorzugte und unerwünschte Aufgaben') }}</label><InfoHint :lang="lang" :label="text('Research interests', 'Forschungsinteressen')" :text="text('Separate directions, preferred tasks or methods, and avoided tasks with ;. A role may fit one direction or several; it need not fulfill every interest. State hard exclusions explicitly. These interests can also guide motivation letters, without claiming qualifications.', 'Forschungsrichtungen, bevorzugte Aufgaben oder Methoden und unerwünschte Aufgaben mit ; trennen. Eine Stelle kann zu einer oder mehreren Richtungen passen und muss nicht alle Interessen erfüllen. Harte Ausschlüsse ausdrücklich benennen. Diese Interessen können auch Motivationsschreiben anleiten, ohne Qualifikationen zu behaupten.')" /></div>
+            <div class="hint-label-row"><label :for="`${controlsId}-interests`">{{ text('Research interests, preferred and avoided tasks', 'Forschungsinteressen, bevorzugte und unerwünschte Aufgaben') }}</label><InfoHint :lang="lang" :label="text('Research interests', 'Forschungsinteressen')" :text="text('List research directions, tasks you want and tasks you want to avoid. Mark hard exclusions; a job can fit one direction.', 'Nenne Forschungsrichtungen, gewünschte und unerwünschte Aufgaben. Kennzeichne harte Ausschlüsse; eine passende Richtung reicht aus.')" /></div>
             <AutosaveTextarea :id="`${controlsId}-interests`" v-model.lazy="form.researchInterests" lang="en" rows="6" maxlength="12000" :placeholder="text('Alternative research directions; preferred tasks / methods; avoided tasks', 'Alternative Forschungsrichtungen; bevorzugte Aufgaben / Methoden; unerwünschte Aufgaben')" @commit="flushSave" />
-            <div class="hint-label-row"><label :for="`${controlsId}-funding`">{{ text('Salary, funding and conditions', 'Gehalt, Finanzierung und Bedingungen') }}</label><InfoHint :lang="lang" :label="text('Salary, funding and conditions', 'Gehalt, Finanzierung und Bedingungen')" :text="text('Separate salary or funding expectations, contract conditions, start preferences and other conditions with ;. Unspecified preferences do not create additional filters.', 'Erwartungen an Gehalt oder Finanzierung, Vertragsbedingungen, Startpräferenzen und weitere Bedingungen mit ; trennen. Nicht genannte Präferenzen erzeugen keine zusätzlichen Filter.')" /></div>
+            <div class="hint-label-row"><label :for="`${controlsId}-funding`">{{ text('Salary, funding and conditions', 'Gehalt, Finanzierung und Bedingungen') }}</label><InfoHint :lang="lang" :label="text('Salary, funding and conditions', 'Gehalt, Finanzierung und Bedingungen')" :text="text('State required funding, contract conditions and your preferred start date.', 'Nenne die erforderliche Finanzierung, Vertragsbedingungen und deinen bevorzugten Beginn.')" /></div>
             <AutosaveTextarea :id="`${controlsId}-funding`" v-model.lazy="form.fundingConditions" lang="en" rows="4" maxlength="12000" :placeholder="text('Salary / funding; contract conditions; preferred start', 'Gehalt / Finanzierung; Vertragsbedingungen; bevorzugter Beginn')" @commit="flushSave" />
+            <div class="hint-label-row"><label :for="`${controlsId}-strategy`">{{ text('Additional search instructions', 'Zusätzliche Suchanweisungen') }}</label><InfoHint :lang="lang" :label="text('Additional search instructions', 'Zusätzliche Suchanweisungen')" :text="text('Add search or reporting instructions in English.', 'Ergänze Such- oder Berichtsanweisungen auf Englisch.')" /></div>
+            <AutosaveTextarea :id="`${controlsId}-strategy`" v-model.lazy="form.userPrompt" lang="en" rows="5" maxlength="12000" @commit="flushSave" />
           </div>
         </details>
         <details class="search-section">
-          <summary><FontAwesomeIcon :icon="faGlobe" aria-hidden="true" /><span>{{ text('Regions and language priorities', 'Regionale und sprachliche Prioritäten') }}</span><InfoHint :lang="lang" :label="text('Regions and language priorities', 'Regionale und sprachliche Prioritäten')" :text="text('List preferred regions in priority order and distinguish preferences from exclusions.', 'Bevorzugte Regionen nach Priorität auflisten und Präferenzen von Ausschlüssen unterscheiden.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
+          <summary><FontAwesomeIcon :icon="faGlobe" aria-hidden="true" /><span>{{ text('Regions and language priorities', 'Regionale und sprachliche Prioritäten') }}</span><InfoHint :lang="lang" :label="text('Regions and language priorities', 'Regionale und sprachliche Prioritäten')" :text="text('List regions in priority order and name any location or language exclusions.', 'Ordne Regionen nach Priorität und nenne Ausschlüsse für Orte oder Sprachen.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
           <div class="search-fields"><label :for="`${controlsId}-locations`">{{ text('Region and language preferences', 'Regionale und sprachliche Präferenzen') }}</label><AutosaveTextarea :id="`${controlsId}-locations`" v-model.lazy="form.locationPreferences" lang="en" rows="5" maxlength="12000" @commit="flushSave" /></div>
         </details>
+      </form>
+      <details class="search-section search-adaptive">
+        <summary><FontAwesomeIcon :icon="faSliders" aria-hidden="true" /><span>{{ text('Adaptive search', 'Adaptive Suche') }}</span><InfoHint :lang="lang" :label="text('Adaptive search', 'Adaptive Suche')" :text="text('Use saved feedback to guide the next search. Manage adaptation, sources and the ChatGPT task here.', 'Nutze gespeichertes Feedback für die nächste Suche. Verwalte hier Anpassung, Quellen und die ChatGPT-Aufgabe.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
+        <AdaptiveSearchDashboard v-if="client && form.cloud?.id && connectedProjectId" ref="adaptiveDashboard" embedded :owner-id="userId" :search-id="form.cloud.id" :project-ref="connectedProjectId" :client="client" :lang="lang" @runner-changed="refreshRunnerState">
+          <template #task-setup>
+            <details class="search-section search-runner-setup">
+              <summary><span>{{ text('ChatGPT task setup', 'ChatGPT-Aufgabe einrichten') }}</span><InfoHint :lang="lang" :label="text('ChatGPT task setup', 'ChatGPT-Aufgabe einrichten')" :text="text('Prepare an update to enable adaptive search or install new task instructions, then copy the replace prompt into ChatGPT. Ratings and profile edits apply on the next run without this step.', 'Bereite ein Update zum Aktivieren der adaptiven Suche oder für neue Aufgabenanweisungen vor und kopiere danach die Ersetzungsanweisung in ChatGPT. Bewertungen und Profiländerungen gelten ohne diesen Schritt ab dem nächsten Lauf.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
+              <div class="search-fields">
+                <dl class="search-task-facts">
+                  <div><dt>{{ text('Task status', 'Aufgabenstatus') }}</dt><dd>{{ runner?.migration_requested ? text('Update prepared; ChatGPT confirmation pending', 'Update vorbereitet; ChatGPT-Bestätigung ausstehend') : runner?.mode === 'adaptive' ? text('Adaptive task confirmed', 'Adaptive Aufgabe bestätigt') : text('Adaptive setup required', 'Adaptive Einrichtung erforderlich') }}</dd></div>
+                  <div v-if="runner?.binding"><dt>{{ text('Task', 'Aufgabe') }}</dt><dd><code>{{ runner.binding.task_id }}</code></dd></div>
+                </dl>
+                <div class="search-runner-action">
+                  <button type="button" :disabled="preparingRunner || copying || loadingCloud || !client || !runner?.ready" @click="prepareRunner">{{ preparingRunner ? text('Preparing…', 'Vorbereiten…') : text('Prepare ChatGPT update', 'ChatGPT-Update vorbereiten') }}</button>
+                  <InfoHint v-if="!runner?.ready" :lang="lang" :label="text('Setup required', 'Einrichtung erforderlich')" :text="runner?.readiness_code === 'owner_not_authorized' ? text('Authorize this search under Automation authorization, then refresh.', 'Autorisiere diese Suche unter Automatische Suche autorisieren und lade die Ansicht erneut.') : text('Ask the workspace administrator to enable adaptive search for this project, then refresh.', 'Bitte die Workspace-Administration, die adaptive Suche für dieses Projekt zu aktivieren, und lade die Ansicht erneut.')" />
+                </div>
+              </div>
+            </details>
+          </template>
+        </AdaptiveSearchDashboard>
+        <p v-else class="search-fields">{{ text('Save your search in the connected workspace to configure adaptation.', 'Speichere deine Suche im verbundenen Workspace, um die Anpassung einzurichten.') }}</p>
+      </details>
+      <form class="search-form" @submit.prevent="flushSave" @focusout="flushSave" @input.capture="onDraftInput">
         <details class="search-section">
-          <summary><FontAwesomeIcon :icon="faAlignLeft" aria-hidden="true" /><span>{{ text('Additional search instructions', 'Zusätzliche Suchanweisungen') }}</span><InfoHint :lang="lang" :label="text('Additional search instructions', 'Zusätzliche Suchanweisungen')" :text="text('Optional English instructions that extend the shared profile. The installed search protocol still governs verification and saving.', 'Optionale englische Anweisungen, die das gemeinsame Profil ergänzen. Das installierte Suchprotokoll regelt weiterhin Verifikation und Speicherung.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
-          <div class="search-fields"><label :for="`${controlsId}-strategy`">{{ text('User prompt', 'Nutzerprompt') }}</label><AutosaveTextarea :id="`${controlsId}-strategy`" v-model.lazy="form.userPrompt" lang="en" rows="5" maxlength="12000" @commit="flushSave" /></div>
-        </details>
-        <details class="search-section">
-          <summary><FontAwesomeIcon :icon="faClock" aria-hidden="true" /><span>{{ text('Daily schedule', 'Täglicher Zeitplan') }}</span><InfoHint :lang="lang" :label="text('Daily schedule', 'Täglicher Zeitplan')" :text="text('Time and context save automatically. Copy the replacement instruction into ChatGPT to apply the saved schedule. Successful runs without new or materially changed strong matches stay quiet.', 'Uhrzeit und Kontext werden automatisch gespeichert. Die Ersetzungsanweisung in ChatGPT einfügen, um den gespeicherten Zeitplan anzuwenden. Erfolgreiche Läufe ohne neue oder wesentlich geänderte starke Treffer bleiben still.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
-          <div class="search-fields"><div class="search-schedule"><label>{{ text('Daily time', 'Tägliche Uhrzeit') }}<input v-model="form.dailyTime" type="time" required @change="flushSave" /></label><label>{{ text('Time zone', 'Zeitzone') }}<input v-model="form.timezone" placeholder="Europe/Tirane" required @change="flushSave" /></label></div></div>
-          <div class="search-fields search-runner-setup" :aria-label="text('Technical task setup', 'Technische Aufgaben-Einrichtung')">
-            <div class="hint-label-row"><strong>{{ text('Technical runner', 'Technischer Suchablauf') }}</strong><InfoHint :lang="lang" :label="text('Technical runner', 'Technischer Suchablauf')" :text="text('Prepare the adaptive contract once, then copy the replacement instruction. Current criteria and feedback load on every run; ordinary edits need no task replacement. Schedule or technical changes require an explicit task update. A saved binding records a task-tool receipt, not proof of unattended execution.', 'Den adaptiven Ablauf einmal vorbereiten und danach die Ersetzungsanweisung kopieren. Aktuelle Kriterien und Rückmeldungen werden bei jedem Lauf geladen; normale Änderungen benötigen keinen Aufgabenersatz. Zeitplan- oder technische Änderungen erfordern eine ausdrückliche Aktualisierung. Eine gespeicherte Bindung belegt eine Werkzeugbestätigung, keinen unbeaufsichtigten Erfolg.')" /></div>
-            <InfoHint :lang="lang" :label="text('Runner setup', 'Suchablauf-Einrichtung')" :text="runner?.mode === 'adaptive' ? text('Adaptive runner installed. Search edits take effect on the next run.', 'Adaptiver Ablauf eingerichtet. Suchänderungen gelten ab dem nächsten Lauf.') : runner?.migration_requested ? text('Adaptive update prepared; task-tool confirmation is pending.', 'Adaptive Aktualisierung vorbereitet; Aufgabenbestätigung steht aus.') : text('Existing runner preserved. Adaptive setup requires an explicit update.', 'Bisheriger Ablauf bleibt erhalten. Die adaptive Einrichtung erfordert eine ausdrückliche Aktualisierung.')" />
-            <p v-if="runner?.binding">{{ text('Bound task', 'Verknüpfte Aufgabe') }}: <code>{{ runner.binding.task_id }}</code></p>
-            <InfoHint v-if="runner && !runner.ready" :lang="lang" :label="text('Adaptive setup unavailable', 'Adaptive Einrichtung nicht verfügbar')" :text="runner.readiness_code" />
-            <button type="button" :disabled="preparingRunner || copying || loadingCloud || !client" @click="prepareRunner">{{ preparingRunner ? text('Preparing…', 'Vorbereiten…') : text('Prepare adaptive task update', 'Adaptive Aufgabenaktualisierung vorbereiten') }}</button>
+          <summary><FontAwesomeIcon :icon="faClock" aria-hidden="true" /><span>{{ text('Search schedule', 'Suchzeitplan') }}</span><InfoHint :lang="lang" :label="text('Search schedule', 'Suchzeitplan')" :text="text('Choose how often to search. Copy the replace prompt into ChatGPT to apply schedule changes.', 'Wähle das Suchintervall. Kopiere die Ersetzungsanweisung in ChatGPT, um Zeitplanänderungen anzuwenden.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
+          <div class="search-fields">
+            <div class="search-schedule">
+              <div v-if="preservedSchedule" class="search-saved-schedule"><div class="hint-label-row"><span>{{ text('Saved schedule', 'Gespeicherter Zeitplan') }}</span><InfoHint :lang="lang" :label="text('Saved schedule', 'Gespeicherter Zeitplan')" :text="text('Choose Hours or Days to replace this interval. Profile edits keep your saved schedule.', 'Wähle Stunden oder Tage, um dieses Intervall zu ersetzen. Profiländerungen behalten den gespeicherten Zeitplan bei.')" /></div><p>{{ savedScheduleLabel }}</p></div>
+              <label v-else :for="`${controlsId}-interval`">{{ text('Repeat every', 'Wiederholen alle') }}<input :id="`${controlsId}-interval`" type="number" min="1" :max="scheduleMaximum" step="1" :value="scheduleIntervalDraft" required @input="scheduleIntervalDraft = ($event.target as HTMLInputElement).value; scheduleIntervalDirty = true" @change="flushSave" @keydown.enter.prevent="flushSave" /></label>
+              <label :for="`${controlsId}-interval-unit`">{{ text('Interval unit', 'Intervalleinheit') }}<select :id="`${controlsId}-interval-unit`" :value="preservedSchedule ? 'preserved' : scheduleControls.unit" @change="changeScheduleUnit"><option v-if="preservedSchedule" value="preserved" disabled>{{ text('Keep saved schedule', 'Gespeicherten Zeitplan behalten') }}</option><option value="hours">{{ text('Hours', 'Stunden') }}</option><option value="days">{{ text('Days', 'Tage') }}</option></select></label>
+              <label :for="`${controlsId}-time`">{{ text('Time', 'Uhrzeit') }}<input :id="`${controlsId}-time`" v-model="form.dailyTime" type="time" required @change="flushSave" /></label>
+              <label :for="`${controlsId}-timezone`">{{ text('Time zone', 'Zeitzone') }}<input :id="`${controlsId}-timezone`" v-model="form.timezone" placeholder="Europe/Tirane" required @change="flushSave" /></label>
+            </div>
           </div>
         </details>
         <details class="search-section">
-          <summary><FontAwesomeIcon :icon="faSliders" aria-hidden="true" /><span>{{ text('Generated prompts', 'Generierte Prompts') }}</span><InfoHint :lang="lang" :label="text('Generated prompts', 'Generierte Prompts')" :text="text('These are the complete English prompts saved in Supabase. The short replacement instruction tells ChatGPT where to read them. Search execution keeps the existing research protocol.', 'Dies sind die vollständigen englischen Prompts in Supabase. Die kurze Ersetzungsanweisung zeigt ChatGPT, wo es sie lesen kann. Die Suchausführung verwendet weiterhin das bestehende Forschungsprotokoll.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
+          <summary><FontAwesomeIcon :icon="faSliders" aria-hidden="true" /><span>{{ text('Generated prompts', 'Generierte Prompts') }}</span><InfoHint :lang="lang" :label="text('Generated prompts', 'Generierte Prompts')" :text="text('Inspect the instructions ChatGPT reads for setup and research.', 'Prüfe die Anweisungen, die ChatGPT für Einrichtung und Recherche liest.')" /><FontAwesomeIcon :icon="faChevronDown" class="search-chevron" aria-hidden="true" /></summary>
           <div class="search-fields"><div class="search-prompt-title"><label :for="`${controlsId}-system`">System prompt</label></div><AutosaveTextarea :id="`${controlsId}-system`" :model-value="systemPreview" readonly lang="en" rows="10" /><div class="search-prompt-title"><label :for="`${controlsId}-user`">User prompt</label></div><AutosaveTextarea :id="`${controlsId}-user`" :model-value="userPreview" readonly lang="en" rows="10" /></div>
         </details>
         <div v-if="copiedFallback" class="search-fields"><label :for="`${controlsId}-fallback`">{{ text('Select and copy prompt', 'Prompt markieren und kopieren') }}</label><AutosaveTextarea :id="`${controlsId}-fallback`" :model-value="copiedFallback" readonly lang="en" rows="12" /></div>
       </form>
-      <AdaptiveSearchDashboard v-if="client && form.cloud?.id && connectedProjectId" ref="adaptiveDashboard" :owner-id="userId" :search-id="form.cloud.id" :project-ref="connectedProjectId" :client="client" :lang="lang" @runner-changed="refreshRunnerState" />
       </div>
       <InfoHint v-else :lang="lang" :label="text('Search recovery', 'Suchwiederherstellung')" :text="text('Your saved search could not be opened. Recover its backup before importing another file.', 'Deine gespeicherte Suche konnte nicht geöffnet werden. Stelle ihre Sicherung wieder her, bevor du eine weitere Datei importierst.')" />
     </div>
@@ -369,17 +441,21 @@ onBeforeUnmount(() => { if (form.value && status.value !== 'saved') retainSearch
 
 <style scoped>
 .search-templates { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 28px 32px; color: var(--ui-text); overflow: hidden; }
-.search-heading { margin-bottom: 20px; flex-shrink: 0; }
-.search-heading h2 { margin: 0 0 8px; font: 700 22px/1.3 var(--font-ui); color: var(--ui-text); text-shadow: none; text-transform: none; letter-spacing: 0; }
+.search-heading { margin: 0; padding-bottom: 10px; flex-shrink: 0; border-bottom: 1px solid var(--ui-divider); }
+.search-heading h2 { margin: 0; font: 700 22px/1.3 var(--font-ui); color: var(--ui-text); text-shadow: none; text-transform: none; letter-spacing: 0; }
 .search-templates p, .search-library p { margin: 0; max-width: 75ch; color: var(--ui-muted); font-size: 13px; line-height: 1.6; }
 .search-runner-setup { font-family: var(--font-ui); }
-.search-runner-setup strong { font-size: 13px; font-weight: 600; }
 .search-runner-setup code { overflow-wrap: anywhere; }
+.search-runner-action { display: flex; align-items: center; gap: 8px; }
+.search-task-facts { display: grid; gap: 8px; margin: 0; color: var(--ui-text); font-size: 13px; }
+.search-task-facts > div { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 3fr); gap: 12px; max-width: 640px; }
+.search-task-facts dt { color: var(--ui-muted); }
+.search-task-facts dd { margin: 0; overflow-wrap: anywhere; }
 .search-layout { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 24px; min-width: 0; min-height: 0; flex: 1 1 0; overflow: hidden; }
 .search-layout--sidebar { grid-template-columns: minmax(0, 1fr); }
 .search-library { display: grid; align-content: start; gap: 16px; min-width: 0; }
 .search-editor { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; overscroll-behavior: contain; }
-.search-form { min-width: 0; min-height: 0; }
+.search-form { min-width: 0; min-height: 0; margin: 0; }
 .search-action-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .search-action-row > button { flex: 1; min-width: 0; }
 .search-templates :is(button, input, select, textarea), .search-library :is(button, input, select) { box-sizing: border-box; min-width: 0; border: 1px solid var(--ui-border); border-radius: 7px; background: var(--ui-control); color: var(--ui-text); padding: 10px 12px; font: 400 14px/1.5 var(--font-ui); }
@@ -389,15 +465,20 @@ onBeforeUnmount(() => { if (form.value && status.value !== 'saved') retainSearch
 .search-templates button:disabled, .search-library button:disabled { opacity: .55; cursor: default; }
 .search-templates :is(button,input,select,textarea,summary):focus-visible, .search-library :is(button,select,summary):focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
 .search-templates label, .search-library label { display: grid; gap: 7px; color: var(--ui-text); font: 600 12px/1.4 var(--font-ui); }
+.search-editor > .search-form:first-child > .search-section:first-of-type { border-top: 0; }
 .search-section { border-top: 1px solid var(--ui-divider); min-width: 0; }
 .search-section > summary { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 16px; box-sizing: border-box; cursor: pointer; list-style: none; font: 600 14px/1.5 var(--font-ui); }
 .search-section > summary::-webkit-details-marker { display: none; }
 .search-section > summary::marker { content: ''; }
 .search-section > summary > svg { width: 16px; flex-shrink: 0; color: var(--ui-accent); }
 .search-section > summary > .search-chevron { margin-left: auto; width: 12px; color: var(--ui-muted); }
+.search-section > summary:hover { background: var(--ui-surface-hover); }
 .search-section[open] > summary > .search-chevron { transform: rotate(180deg); }
 .search-fields { display: grid; gap: 12px; padding: 4px 16px 22px; min-width: 0; }
 .search-fields > label:not(:first-child) { margin-top: 6px; }
+.search-saved-schedule { display: grid; gap: 7px; min-width: 0; }
+.search-saved-schedule .hint-label-row { color: var(--ui-text); font: 600 12px/1.4 var(--font-ui); }
+.search-saved-schedule p { color: var(--ui-text); padding-block: 10px; }
 .search-schedule { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: end; }
 .search-library .search-primary { color: var(--ui-accent); border-color: var(--ui-accent-border); }
 .search-library .search-copy-actions p { font-size: 12px; }
@@ -408,7 +489,6 @@ onBeforeUnmount(() => { if (form.value && status.value !== 'saved') retainSearch
 .search-templates textarea { resize: vertical; caret-color: var(--ui-accent); }
 @media (max-width: 760px) {
   .search-templates { padding: 20px 12px; overflow: auto; overscroll-behavior: contain; }
-  .search-heading { margin-bottom: 20px; }
   .search-layout { display: flex; flex-direction: column; flex: 0 0 auto; overflow: visible; }
   .search-editor { overflow: visible; }
   .search-schedule { grid-template-columns: minmax(0, 1fr); }

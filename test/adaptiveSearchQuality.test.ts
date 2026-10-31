@@ -297,3 +297,17 @@ test('confirmed official rolling opportunities have eligibility but no fabricate
   const uncertain = adaptiveDiscoveryLeadTime(now, deadline({ deadline: null, precision: 'unknown', rolling_confirmed: true, official_verified: false }), now);
   assert.equal(uncertain.precision, 'unknown'); assert.equal(uncertain.recommendation_eligible, null);
 });
+
+test('current quality metrics count applications and confirmed submissions as high-interest decisions', () => {
+  const result = calculateAdaptiveSearchQuality(input({ discoveries: [1, 2, 3].map(index => discovery(index)), feedback: [
+    feedback(1, { metric_version: 'opportunity-interest-v2', review_state: 'not_interested', interest_origin: 'application', interest_score: 9 }),
+    feedback(2, { metric_version: 'opportunity-interest-v2', review_state: 'not_interested', interest_origin: 'confirmed_submission', interest_score: 9.5, confirmed_submission: true }),
+    feedback(3, { metric_version: 'opportunity-interest-v2', review_state: 'very_high_interest', interest_origin: 'categorical_review', interest_score: 9 }),
+  ] }));
+  assert.equal(result.overall.reviewed, 3);
+  assert.equal(result.overall.explicit_high_interest, 3);
+  assert.equal(result.overall.mean_interest, 9.166667);
+  assert.equal(result.overall.application, 1);
+  assert.equal(result.overall.confirmed_submissions, 1);
+  assert.equal(result.overall.high_interest_rate, 1);
+});

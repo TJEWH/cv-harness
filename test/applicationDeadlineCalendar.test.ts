@@ -93,6 +93,7 @@ test('deadlines without a source timezone use the device timezone while known so
 
 test('every event includes a one-week-before display alarm and useful application details', () => {
   const { unfolded } = calendar({ deadline: '2026-12-31', deadline_timezone: 'Europe/Berlin', university: 'Example University', application_url: 'https://example.org/apply?id=42' });
+  assert.match(unfolded, /PRODID:-\/\/CV Harness\/\/Application Deadlines\/\/EN\r\n/);
   assert.match(unfolded, /DTSTAMP:20261010T123456Z\r\n/);
   assert.match(unfolded, /SUMMARY:Application deadline: Robotics PhD\r\n/);
   assert.match(unfolded, /DTSTART:20261231T225900Z\r\n/);

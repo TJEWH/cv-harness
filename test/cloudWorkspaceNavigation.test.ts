@@ -19,7 +19,8 @@ import { migrateOpportunityEvaluationDrafts } from '../src/features/opportunitie
 const normalizeOpportunity = (input: Record<string, unknown> & { id: string }) => readOpportunity(opportunityFixture(input));
 
 const filename = new URL('../src/app/components/CloudWorkspace.vue', import.meta.url);
-const { descriptor } = parse(readFileSync(filename, 'utf8'));
+const source = readFileSync(filename, 'utf8');
+const { descriptor } = parse(source);
 const compiled = compileScript(descriptor, { id: 'job-workspace-navigation-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const renderer = createRenderer<object, object>({
@@ -171,12 +172,16 @@ function mount(t: TestContext, options: { restoredOpportunityId?: string; active
     query: string; statusFilter: string; reviewFilter: string; showWithApplications: boolean; showLowInterest: boolean; sortBy: string; applicationSortBy: string; deadlineFilter: 'current' | 'past'; applicationDeadlineFilter: 'current' | 'past'; now: Date;
     statusLabel(status: string): string;
     reviewSelection(id: string): OpportunityReviewState;
+    saveReviewSelection(item: Opportunity, state: OpportunityReviewState): Promise<boolean>;
     changeReview(item: Opportunity, event: Event): Promise<void>;
     pendingReviewSelections: Map<string, { state: OpportunityReviewState; status: 'saving' | 'error' }>;
     startingApplication: object | null;
     notes: string; notesStatus: string; notesError: string; flushNotes(): Promise<boolean>;
     applicationWorkspace: { flush(): Promise<boolean> } | null; flushTextareas(): Promise<boolean>; flush(): Promise<boolean>;
     searchTemplates: { flush(): Promise<boolean> } | null;
+    opportunityView: 'catalogue' | 'searches' | 'insights'; showingInsights: boolean; showingOpportunitySubview: boolean;
+    selectOpportunityView(view: 'catalogue' | 'searches' | 'insights'): Promise<boolean>;
+    openInsightOpportunity(id: string): Promise<boolean>;
     opportunityFeedback: { flush(): Promise<boolean> } | null; applicationFeedback: { flush(): Promise<boolean> } | null;
     opportunityDisposition: { flush(): Promise<boolean> } | null;
     applicationDisposition: { flush(): Promise<boolean> } | null;
@@ -428,6 +433,37 @@ test('opportunity navigation saves evaluations and retains the current draft whe
   await setup.navigateDetail(-1);
   assert.equal(setup.selectedOpportunity?.id, opportunity.id);
   assert.equal(setup.opportunityComment, 'Ask about access to the robotics lab.');
+});
+
+test('active applications show locked very high interest and removal restores the saved opportunity choice', async t => {
+  const f = mount(t);
+  f.reviews.value = [{ user_id: f.props.userId, opportunity_id: f.opportunity.id, state: 'not_interested', reviewed_updated_at: null, created_at: '', updated_at: '' }];
+  f.applications.value = [f.application];
+  f.setup.showWithApplications = true;
+  f.setup.reviewFilter = 'very_high_interest';
+  await nextTick();
+  assert.equal(f.setup.reviewSelection(f.opportunity.id), 'very_high_interest');
+  assert.equal(f.setup.statusLabel('very_high_interest'), 'Very high');
+  assert.deepEqual(f.setup.filteredOpportunities.map(item => item.id), [f.opportunity.id]);
+  assert.equal(await f.setup.saveReviewSelection(f.opportunity, 'interested'), false);
+  assert.deepEqual(f.reviewUpdates, []);
+  assert.equal(f.reviews.value[0]?.state, 'not_interested');
+  f.setup.reviewFilter = 'all';
+  f.setup.showLowInterest = true;
+  f.applications.value = [];
+  await nextTick();
+  assert.equal(f.setup.reviewSelection(f.opportunity.id), 'not_interested');
+  assert.equal(await f.setup.saveReviewSelection(f.opportunity, 'very_high_interest'), true);
+  assert.equal(f.reviews.value[0]?.state, 'very_high_interest');
+});
+
+test('an application from another account cannot lock interest for the active account', async t => {
+  const f = mount(t);
+  f.applications.value = [{ ...f.application, user_id: 'other-owner' }];
+  await nextTick();
+  assert.equal(f.setup.reviewSelection(f.opportunity.id), 'unreviewed');
+  assert.equal(await f.setup.saveReviewSelection(f.opportunity, 'very_high_interest'), true);
+  assert.equal(f.setup.reviewSelection(f.opportunity.id), 'very_high_interest');
 });
 
 test('interest can remain pending or failed while navigating away and back without losing the choice', async t => {
@@ -1060,10 +1096,14 @@ test('show checkboxes include low-interest and applied opportunities independent
   applications.value = [{ ...application, opportunity_id: ignored.id }];
   assert.equal(setup.filteredOpportunities.length, 0);
   setup.showWithApplications = true;
+  assert.equal(setup.filteredOpportunities.length, 0, 'the applied opportunity now belongs to Very high interest');
+  setup.reviewFilter = 'very_high_interest';
   assert.deepEqual(setup.filteredOpportunities.map(item => item.id), [ignored.id]);
   setup.showLowInterest = false;
+  assert.deepEqual(setup.filteredOpportunities.map(item => item.id), [ignored.id]);
+  applications.value = [];
   assert.equal(setup.filteredOpportunities.length, 0);
-  assert.equal(setup.reviewFilter, 'not_interested', 'the checkbox preserves the chosen review filter');
+  assert.equal(setup.reviewFilter, 'very_high_interest', 'the checkbox preserves the chosen review filter');
 });
 
 test('application search matches server codes and full IDs, including applications without a code', async (t) => {
@@ -1626,4 +1666,120 @@ test('workspace replacement and disposal cannot flush a later child from an obso
     saving.resolve(true);
     assert.equal(await pending, false); assert.equal(laterFlushes, 0);
   });
+});
+
+test('Insights navigation commits pending textareas and awaits the current editor persistence', async t => {
+  const f = mount(t), saved = deferred<boolean>();
+  let commits = 0, started = 0;
+  const unregister = registerTextareaCommit(() => { commits++; });
+  t.after(unregister);
+  f.setup.searchTemplates = { flush: () => { started++; return saved.promise; } };
+  const navigation = f.setup.selectOpportunityView('insights');
+  await settleUntil(() => started === 1);
+  assert.equal(commits, 1);
+  assert.equal(f.setup.opportunityView, 'catalogue');
+  saved.resolve(true);
+  assert.equal(await navigation, true);
+  assert.equal(f.setup.opportunityView, 'insights');
+  assert.equal(f.setup.showingInsights, true);
+  assert.equal(f.setup.showingOpportunitySubview, true);
+});
+
+test('failed feedback persistence keeps the existing view instead of opening Insights', async t => {
+  const f = mount(t);
+  f.setup.opportunityFeedback = { flush: async () => false };
+  assert.equal(await f.setup.selectOpportunityView('insights'), false);
+  assert.equal(f.setup.opportunityView, 'catalogue');
+  assert.equal(f.setup.showingInsights, false);
+});
+
+test('Insights navigation rejects an obsolete account save and clears the view on account changes', async t => {
+  const f = mount(t), saved = deferred<boolean>();
+  let started = false;
+  f.setup.searchTemplates = { flush: () => { started = true; return saved.promise; } };
+  const navigation = f.setup.selectOpportunityView('insights');
+  await settleUntil(() => started);
+  f.props.userId = 'account-two'; await nextTick();
+  saved.resolve(true);
+  assert.equal(await navigation, false);
+  assert.equal(f.setup.opportunityView, 'catalogue');
+  f.setup.searchTemplates = null;
+  assert.equal(await f.setup.selectOpportunityView('insights'), true);
+  f.props.userId = 'account-three'; await nextTick();
+  assert.equal(f.setup.opportunityView, 'catalogue');
+  assert.equal(f.setup.showingInsights, false);
+});
+
+test('opening an Insights job flushes drafts and opens its complete opportunity despite Results filters', async t => {
+  const f = mount(t), saved = deferred<boolean>();
+  assert.equal(await f.setup.selectOpportunityView('insights'), true);
+  f.setup.query = 'A different opportunity';
+  assert.equal(f.setup.filteredOpportunities.length, 0);
+  let started = 0;
+  const progress: string[] = [];
+  const unregister = registerTextareaCommit(() => { progress.push('commit'); });
+  t.after(unregister);
+  f.setup.opportunityFeedback = { flush: () => { started++; progress.push('feedback'); return saved.promise; } };
+  const navigation = f.setup.openInsightOpportunity(f.opportunity.id);
+  await settleUntil(() => started === 1);
+  assert(progress.indexOf('commit') >= 0 && progress.indexOf('commit') < progress.indexOf('feedback'));
+  assert.equal(f.setup.opportunityView, 'insights');
+  assert.equal(f.setup.showingDetail, false);
+  saved.resolve(true);
+  assert.equal(await navigation, true);
+  await nextTick();
+  assert.equal(f.setup.opportunityView, 'catalogue');
+  assert.equal(f.setup.selectedOpportunity?.id, f.opportunity.id);
+  assert.equal(f.setup.showingDetail, true);
+  assert.equal(f.setup.query, 'A different opportunity', 'opening a selected job preserves Results filters');
+  assert.equal(f.receipts.at(-1)?.id, f.opportunity.id, 'the standard opportunity visit path is retained');
+});
+
+test('failed persistence or missing records cannot leave Insights through its opportunity action', async t => {
+  const f = mount(t);
+  assert.equal(await f.setup.selectOpportunityView('insights'), true);
+  let flushed = 0;
+  f.setup.opportunityFeedback = { flush: async () => { flushed++; return false; } };
+  assert.equal(await f.setup.openInsightOpportunity('not-in-this-catalogue'), false);
+  assert.equal(flushed, 0, 'an unknown record cannot trigger navigation persistence');
+  assert.equal(await f.setup.openInsightOpportunity(f.opportunity.id), false);
+  assert.equal(flushed, 1);
+  assert.equal(f.setup.opportunityView, 'insights');
+  assert.equal(f.setup.selectedOpportunity, undefined);
+  assert.equal(f.receipts.length, 0);
+});
+
+test('pending Insights opportunity navigation cannot outlive its account, view, or record', async t => {
+  for (const changed of ['account', 'tab', 'active', 'record', 'newer navigation'] as const) {
+    await t.test(changed, async current => {
+      const f = mount(current), saved = deferred<boolean>();
+      assert.equal(await f.setup.selectOpportunityView('insights'), true);
+      let started = 0;
+      f.setup.opportunityFeedback = { flush: () => { started++; return saved.promise; } };
+      const navigation = f.setup.openInsightOpportunity(f.opportunity.id);
+      await settleUntil(() => started === 1);
+      let replacement: Promise<boolean> | undefined;
+      if (changed === 'account') f.props.userId = 'account-two';
+      else if (changed === 'tab') f.props.tab = 'applications';
+      else if (changed === 'active') f.props.active = false;
+      else if (changed === 'record') f.opportunities.value = [];
+      else {
+        replacement = f.setup.selectOpportunityView('searches');
+        await settleUntil(() => started === 2);
+      }
+      await nextTick();
+      saved.resolve(true);
+      assert.equal(await navigation, false);
+      if (replacement) assert.equal(await replacement, true);
+      assert.equal(f.setup.selectedOpportunity, undefined);
+      assert.equal(f.receipts.length, 0);
+      assert.equal(f.setup.opportunityView, changed === 'account' ? 'catalogue' : changed === 'newer navigation' ? 'searches' : 'insights');
+    });
+  }
+});
+
+
+test('application interest is disabled in both result and detail selectors', () => {
+  assert.match(source, /:value="reviewSelection\(item.id\)" :disabled="applicationByOpportunity.has\(item.id\)"/);
+  assert.match(source, /:value="reviewSelection\(selectedOpportunity.id\)" :disabled="applicationByOpportunity.has\(selectedOpportunity.id\)"/);
 });

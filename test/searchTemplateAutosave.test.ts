@@ -19,6 +19,9 @@ interface Editor {
   flushSave(): Promise<boolean>; flushTextareas(): Promise<boolean>; flush(): Promise<boolean>;
   adaptiveDashboard: { flush(): Promise<boolean> } | null; copy(): Promise<void>; retrySave(): Promise<unknown>;
   onDraftInput(): void;
+  scheduleIntervalDraft: string; scheduleIntervalDirty: boolean;
+  preservedSchedule: boolean; savedScheduleLabel: string;
+  changeScheduleUnit(event: Event): void;
 }
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const ownerId = '90000000-0000-4000-8000-000000000001';
@@ -424,4 +427,95 @@ test('a newly mounted search dashboard is identity-guarded after its flush begin
   saving.release(); await settle(); assert.equal(capturedFlushes, 1);
   editor.adaptiveDashboard = { flush: async () => { replacementFlushes++; return true; } };
   dashboardSave.release(); assert.equal(await pending, false); assert.equal(replacementFlushes, 0);
+});
+
+
+test('interval drafts save on commit and copying uses the acknowledged cadence', async t => {
+  const { editor, saves, copied } = await fixture(t, { linked: true });
+  editor.changeScheduleUnit({ target: { value: 'hours' } } as unknown as Event);
+  await settle();
+  assert.equal(editor.form.cadence?.frequency, 'hourly');
+  const before = saves.length;
+  editor.scheduleIntervalDraft = '8'; editor.scheduleIntervalDirty = true; editor.onDraftInput();
+  await settle();
+  assert.equal(saves.length, before, 'typing an interval must not persist it');
+  assert.equal(await editor.flushSave(), true);
+  assert.equal(editor.form.cadence?.intervalHours, 8);
+  assert.equal(saves.at(-1)!.cadence?.intervalHours, 8);
+  await editor.copy();
+  assert.equal(copied.length, 1);
+  assert.equal(editor.status, 'saved');
+});
+
+test('invalid interval drafts block navigation and copy until corrected', async t => {
+  const { editor, saves, copied } = await fixture(t, { linked: true });
+  for (const value of ['', '0', '2.5', '366']) {
+    editor.scheduleIntervalDraft = value; editor.scheduleIntervalDirty = true; editor.onDraftInput();
+    assert.equal(await editor.flushTextareas(), false);
+    await editor.copy();
+    assert.equal(editor.scheduleIntervalDraft, value);
+    assert.equal(editor.status, 'error');
+    assert.match(editor.error, /whole number from 1 to 365/);
+    assert.equal(saves.length, 0); assert.equal(copied.length, 0);
+  }
+  editor.scheduleIntervalDraft = '3'; editor.scheduleIntervalDirty = true; editor.onDraftInput();
+  assert.equal(await editor.flushSave(), true);
+  assert.equal(editor.form.cadence?.frequency, 'daily');
+  assert.equal(editor.form.cadence?.intervalHours, 72);
+  assert.equal(saves.length, 1);
+});
+
+test('an interval draft cannot carry into another account', async t => {
+  const { editor, props } = await fixture(t, { linked: true });
+  editor.scheduleIntervalDraft = 'invalid'; editor.scheduleIntervalDirty = true; editor.onDraftInput();
+  props.userId = otherOwnerId; await settle();
+  assert.equal(editor.scheduleIntervalDraft, '1');
+  assert.equal(editor.scheduleIntervalDirty, false);
+  assert.equal(editor.form.cadence, undefined);
+});
+
+
+test('imported hourly and weekly schedules remain readable and unchanged until an explicit cadence choice', async t => {
+  for (const cadence of [
+    { frequency: 'hourly' as const, intervalHours: 48, weekdays: [], runImmediately: false },
+    { frequency: 'weekly' as const, intervalHours: 1, weekdays: [1, 3, 5], runImmediately: false },
+  ]) await t.test(cadence.frequency, async t => {
+    const remote = { ...clone(DEFAULT_SEARCH_TEMPLATES[0]!), cadence };
+    const { editor, saves } = await fixture(t, { linked: true, rows: [cloudRow(remote)] });
+    assert.equal(editor.preservedSchedule, true);
+    assert.match(editor.savedScheduleLabel, cadence.frequency === 'hourly' ? /Every 48 hours/ : /Weekly: Mon, Wed, Fri/);
+    assert.equal(saves.length, 0, 'opening an imported cadence cannot rewrite it');
+    assert.equal(await editor.flushSave(), true);
+    assert.equal(saves.length, 0, 'an unchanged flush preserves the existing schedule');
+    editor.form.researchInterests = 'Changed profile with preserved cadence';
+    assert.equal(await editor.flushSave(), true);
+    assert.deepEqual(saves.at(-1)!.cadence, cadence);
+    editor.changeScheduleUnit({ target: { value: 'days' } } as unknown as Event);
+    assert.equal(await editor.flushSave(), true);
+    assert.equal(editor.preservedSchedule, false);
+    assert.equal(editor.form.cadence?.frequency, 'daily');
+    assert.equal(editor.form.cadence?.intervalHours, 1);
+    assert.equal(editor.form.cadence?.runImmediately, false);
+  });
+});
+
+test('ambiguous historical daily metadata blocks task copying until an explicit valid replacement', async t => {
+  const cadence = { frequency: 'daily' as const, intervalHours: 2, weekdays: [], runImmediately: true };
+  const remote = { ...clone(DEFAULT_SEARCH_TEMPLATES[0]!), cadence };
+  const { editor, saves, copied } = await fixture(t, { linked: true, rows: [cloudRow(remote)] });
+  assert.equal(editor.preservedSchedule, true);
+  assert.equal(editor.savedScheduleLabel, 'Existing daily schedule');
+  assert.equal(await editor.flushSave(), true);
+  await editor.copy();
+  assert.equal(copied.length, 0);
+  assert.equal(saves.length, 0);
+  assert.match(editor.error, /Choose Hours or Days and set an interval/);
+  assert.deepEqual(editor.form.cadence, cadence);
+  editor.changeScheduleUnit({ target: { value: 'days' } } as unknown as Event);
+  assert.equal(await editor.flushSave(), true);
+  assert.equal(editor.preservedSchedule, false);
+  assert.equal(editor.form.cadence, undefined, 'an explicit one-day replacement restores the canonical daily default');
+  await editor.copy();
+  assert.equal(copied.length, 1);
+  assert.equal(saves.length, 1);
 });

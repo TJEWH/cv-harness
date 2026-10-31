@@ -35,6 +35,7 @@ function browserSessionStorage() {
 function createOptionalClient() {
   if (supabaseConfiguration.status !== 'ready') return null;
   const storage = createTabAuthStorage(browserSessionStorage());
+  // Keep the session namespace stable across product renames.
   const tabKey = 'cv-builder.supabase.tab';
   let tabId = storage.getItem(tabKey);
   if (!tabId || !/^[a-f0-9-]{36}$/.test(tabId)) {
