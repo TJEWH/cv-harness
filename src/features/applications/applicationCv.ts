@@ -26,7 +26,7 @@ export interface ApplicationCvRecord {
   letterHeaderSource?: LetterHeaderSource;
 }
 export interface CvDifference { path: string[]; label: string; before: unknown; after: unknown }
-/** Match FormBuilder defaults before pinning or comparing, without editing the source. */
+/** Match CvContentEditor defaults before pinning or comparing, without editing the source. */
 export function cloneCv(state: CvState): CvState {
   const copy = readCvState(JSON.parse(JSON.stringify(state)));
   normalizeContentState(copy);

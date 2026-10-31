@@ -1,7 +1,7 @@
 import { createApp, h, nextTick, ref, type App, type Component } from 'vue';
 import { PDFDocument } from 'pdf-lib';
 import ApplicationWorkspace from '../../src/features/applications/components/ApplicationWorkspace.vue';
-import LetterTemplates from '../../src/features/letter-templates/components/LetterTemplates.vue';
+import LetterTemplateEditor from '../../src/features/letter-templates/components/LetterTemplateEditor.vue';
 import AppToaster from '../../src/shared/ui/AppToaster.vue';
 import DesktopSidebar from '../../src/shared/ui/DesktopSidebar.vue';
 import { provideDesktopSidebar } from '../../src/shared/ui/desktopSidebar';
@@ -9,7 +9,7 @@ import { useToasts } from '../../src/shared/ui/useToasts';
 import { createPrivateRefinementCv, createSyntheticRefinementWorkspace } from '../refinementFixture';
 import { refinementSignature } from '../../src/features/refinement/applicationRefinement';
 import { createLetterRepository, DEFAULT_REFINEMENT_SYSTEM_PROMPT } from '../../src/documents/letter/motivationLetters';
-import { createSearchTemplateRepository } from '../../src/features/meta-search/data/useSearchTemplates';
+import { createSearchTemplateRepository } from '../../src/features/meta-search/data/searchTemplateRepository';
 import type { AnnotationReference, RefinementProposalRow, RefinementProposalV2 } from '../../src/features/refinement/refinementTypes';
 import type { Workspace } from '../refinementWorkflowHarness';
 import '../../src/assets/cv.css';
@@ -337,7 +337,7 @@ async function templateQuestionFlow() {
   await mount();
   fixture.props.application.context_json.requirements = ['Robot calibration experience is beneficial.'];
   app!.unmount(); root.replaceChildren();
-  app = createApp({ render: () => h(LetterTemplates, { userId: fixture.props.userId, lang: 'en' }) });
+  app = createApp({ render: () => h(LetterTemplateEditor, { userId: fixture.props.userId, lang: 'en' }) });
   app.mount(root); await nextTick();
   const sections = [...root.querySelectorAll<HTMLDetailsElement>('.template-section')];
   assert(sections.map(section => section.querySelector('summary span')?.textContent).join(',') === 'Main text,Tone,Feedback loop,Formalities', 'Template fields must be grouped into four named sections');
@@ -407,7 +407,7 @@ async function sharedLetterInterestFlow() {
   const shared = 'BCI; acoustics; robotics; preferred physical prototypes; avoided repetitive annotation';
   searches.saveTemplate({ ...original,researchInterests: shared },original);
   app!.unmount(); root.replaceChildren();
-  app = createApp({ render: () => h(LetterTemplates,{ userId: fixture.props.userId,lang: 'en' }) });
+  app = createApp({ render: () => h(LetterTemplateEditor,{ userId: fixture.props.userId,lang: 'en' }) });
   app.mount(root); await nextTick();
   assert(sharedInterestCheckbox().checked, 'Shared research interests must be enabled by default');
   assert(!root.querySelector('textarea[id$="-research-interests"]'), 'Enabled shared interests must hide the custom textarea');

@@ -330,14 +330,14 @@
     },
     {
       "path": "src/features/meta-search/domain/searchPrompts.ts",
-      "sha256": "4ad866f48995e24b66ec5cf7026e3eb3294f67437d7113c30cc91bad8810af85"
+      "sha256": "d8faa688165588205700c6c7d3eb9ce5059b6d8eb9d07f275de6310631937226"
     },
     {
       "path": "src/features/meta-search/searchTypes.ts",
       "sha256": "f3da1bfab7768eebce3414bb4f75f6fec433d7d3034763bc4737f0c537d7cd16"
     },
     {
-      "path": "src/features/meta-search/data/useSearchTemplates.ts",
+      "path": "src/features/meta-search/data/searchTemplateRepository.ts",
       "sha256": "f21da36a91d517c5268e4ee79e25698f37df0787d8266a74196116b0ef2e5a4a"
     },
     {
@@ -386,11 +386,11 @@
     },
     {
       "path": "src/features/meta-search/data/searchTemplateCloud.ts",
-      "sha256": "ee9b8b57cc4e0e3a1d3c6d2cd7cac39cde3d5b46322e71471c8b655e9c0836cd"
+      "sha256": "a4f7280cbc3c709b9a43bfb4dce0d82ad229b8a7b43764af498925e85e8adb09"
     },
     {
       "path": "src/documents/letter/searchLetterContext.ts",
-      "sha256": "b13713d122f1bca34108411f1988094d6f58991c7fcfd0439926dd6ebe072298"
+      "sha256": "4571e1126a94ffb842bfc31645bcdac7ce2518424529e5d4c97af3830427e000"
     },
     {
       "path": "src/features/meta-search/components/AdaptiveSearchDashboard.vue",
@@ -401,12 +401,12 @@
       "sha256": "4f989ce9aa310a2ab5d8cea026cdfa04fc37bf3f0a5ec965f682c0383a0b928b"
     },
     {
-      "path": "src/features/meta-search/components/SearchTemplates.vue",
-      "sha256": "39647038321fe03fb10b629ac8d3ceadee353919489de9137fd26dfccd55a7d5"
+      "path": "src/features/meta-search/components/MetaSearchEditor.vue",
+      "sha256": "3e9cc4f23c0e56959de4b231bd88733d69c9ca9bf3f9ab2060a9859ab186610e"
     },
     {
-      "path": "src/app/components/JobWorkspace.vue",
-      "sha256": "8c998ce4149821e912e74de1d451de0bb77178caadb635e17bfcf39b2cb232d7"
+      "path": "src/app/components/CloudWorkspace.vue",
+      "sha256": "67755767b886c6ccf47e56ed67d95ccb9ea265e820c66027268c7e7a7767a013"
     },
     {
       "path": "src/features/opportunities/components/OpportunityFeedbackControls.vue",

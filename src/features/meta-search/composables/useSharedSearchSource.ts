@@ -1,7 +1,7 @@
 import { onScopeDispose, ref, watch } from 'vue';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SearchTemplate } from '../searchTypes';
-import { createSearchTemplateRepository, searchTemplateStorageKey, type StorageAdapter } from '../data/useSearchTemplates';
+import { createSearchTemplateRepository, searchTemplateStorageKey, type StorageAdapter } from '../data/searchTemplateRepository';
 import { importCloudSearchTemplate, listCloudSearchTemplates } from '../data/searchTemplateCloud';
 import { isSearchTemplateSaved } from '../domain/searchPrompts';
 

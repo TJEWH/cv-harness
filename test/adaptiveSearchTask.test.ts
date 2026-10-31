@@ -7,7 +7,7 @@ import { buildAdaptiveRecurringSearchPrompt, loadAdaptiveSearchRunnerState, read
   usesAdaptiveSearchRunner, type AdaptiveSearchRunnerState } from '../src/features/meta-search/domain/adaptiveSearchTask';
 import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSetupReadSql, buildSearchSystemPrompt, buildSearchUserPrompt } from '../src/features/meta-search/domain/searchPrompts';
 import { saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
-import { DEFAULT_SEARCH_TEMPLATES, searchTemplateContentKey } from '../src/features/meta-search/data/useSearchTemplates';
+import { DEFAULT_SEARCH_TEMPLATES, searchTemplateContentKey } from '../src/features/meta-search/data/searchTemplateRepository';
 import { OPPORTUNITY_TOPIC_FORMAT_RULE } from '../src/features/opportunities/domain/opportunityTopics';
 
 const owner = '91000000-0000-4000-8000-000000000001';

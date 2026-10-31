@@ -4,7 +4,7 @@ import { createApp, defineComponent, h, ref } from 'vue';
 import OpportunityFeedbackControls from '../../src/features/opportunities/components/OpportunityFeedbackControls.vue';
 import OpportunityDispositionControls from '../../src/features/opportunities/components/OpportunityDispositionControls.vue';
 import type { OpportunityDispositionPatch, OpportunityFeedbackPatch, OpportunityReview } from '../../src/app/cloudTypes';
-import { normalizeOpportunity } from '../../src/app/composables/useJobWorkspace';
+import { normalizeOpportunity } from '../../src/app/composables/useCloudWorkspace';
 import { normalizeOpportunityInterestReasons, parseOpportunityInterestRating } from '../../src/features/opportunities/domain/opportunityFeedback';
 import { MAX_OPPORTUNITY_EVALUATION_LENGTH } from '../../src/features/opportunities/domain/opportunityEvaluation';
 import { useApplicationNotesAutosave } from '../../src/shared/editing/useApplicationNotesAutosave';

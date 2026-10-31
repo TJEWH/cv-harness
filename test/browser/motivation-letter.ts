@@ -10,7 +10,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { faGithub, faLinkedin } from '@fortawesome/free-brands-svg-icons';
 import LetterFormattingControls from '../../src/documents/letter/components/LetterFormattingControls.vue';
-import MotivationLetterPreview from '../../src/documents/letter/components/MotivationLetterPreview.vue';
+import LetterDocumentPreview from '../../src/documents/letter/components/LetterDocumentPreview.vue';
 import { createSampleDocument } from '../../src/features/cv-studio/domain/builtinConfigurations';
 import { DEFAULT_LETTER_FORMATTING } from '../../src/documents/letter/domain/letterFormatting';
 import type { LetterContent, LetterFormatting } from '../../src/documents/letter/letterTypes';
@@ -136,7 +136,7 @@ const app = createApp({
       h('p', { class: 'letter-fixture__mobile-hint' }, 'Open PDF preview to inspect the full letter on a small screen.'),
       downloadError.value ? h('p', { class: 'letter-fixture__error', role: 'alert' }, downloadError.value) : null,
       h('section', { class: 'letter-fixture__stage', 'aria-label': 'Letter PDF preview' }, [
-        h(MotivationLetterPreview, { ref: preview, cvState: state, content: renderedContent.value, formatting: formatting.value, lang: language.value, previewKey: 'synthetic-phd-letter', hideActions: true, downloading: downloading.value, downloadError: downloadError.value, onDownload: download }),
+        h(LetterDocumentPreview, { ref: preview, cvState: state, content: renderedContent.value, formatting: formatting.value, lang: language.value, previewKey: 'synthetic-phd-letter', hideActions: true, downloading: downloading.value, downloadError: downloadError.value, onDownload: download }),
       ]),
       h(LetterFormattingControls, { formatting: formatting.value, lang: language.value, onChange: (value: LetterFormatting | undefined) => { formatting.value = value; } }),
       h('details', { class: 'letter-fixture__edit' }, [

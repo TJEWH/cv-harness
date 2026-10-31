@@ -7,7 +7,7 @@ import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive } from 'vue';
 import type { Component } from 'vue';
 
-const filename = new URL('../src/documents/pdf/components/PdfPreview.vue', import.meta.url);
+const filename = new URL('../src/documents/pdf/components/PdfPageViewer.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'pdf-preview-gestures', inlineTemplate: true });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

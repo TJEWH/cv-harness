@@ -67,7 +67,7 @@ test('invalid or oversized profile snapshots fail explicitly without silently tr
 
 
 test('the default shared source replaces custom interests without publishing the local checkbox', async () => {
-  const { createSearchTemplate } = await import('../src/features/meta-search/data/useSearchTemplates');
+  const { createSearchTemplate } = await import('../src/features/meta-search/data/searchTemplateRepository');
   const search = createSearchTemplate(); search.active = false; search.researchInterests = 'Acoustic sensing; BCI; prefer prototyping; avoid routine administration';
   const source = { ...DEFAULT_LETTER_TEMPLATES[0]!, researchInterests: 'Keep this custom draft for opt-out.' };
   const captured = captureMetaSearchInterests(search)!;
@@ -85,7 +85,7 @@ test('the default shared source replaces custom interests without publishing the
 });
 
 test('opting out retains custom interests and long shared interests are never truncated', async () => {
-  const { createSearchTemplate } = await import('../src/features/meta-search/data/useSearchTemplates');
+  const { createSearchTemplate } = await import('../src/features/meta-search/data/searchTemplateRepository');
   const source = { ...DEFAULT_LETTER_TEMPLATES[0]!, useMetaSearchInterests: false, researchInterests: 'Custom interests only.' };
   assert.equal(letterTemplateWithSearchProfile(source, profile), source);
   const search = createSearchTemplate(); search.researchInterests = 'A'.repeat(12000);

@@ -3,18 +3,18 @@ import { designNumber, resolveDesign } from '../documents/cv/defaults';
 import type { CvState, CvDesign, SavedConfiguration, SaveStatus } from '../documents/cv/types';
 import type { RenderOptions } from '../documents/pdf/pdfTypes';
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue';
-import { debounce, loadLocal, saveLocal } from '../documents/cv/data/useStorage';
+import { debounce, loadLocal, saveLocal } from '../documents/cv/data/cvStorage';
 import { useCvDesign } from '../documents/cv/composables/useCvDesign';
 import { usePdfExport } from '../documents/pdf/composables/usePdfExport';
 import { useDocumentPdfPreview } from '../documents/pdf/composables/useDocumentPdfPreview';
 import { commitPendingTextareas } from '../shared/editing/textareaCommit';
 import { flushEditorSession, flushEditorSessionSync, type SyncEditorSession } from '../shared/editing/editorSession';
 import { CV_TEXTAREA_COMMIT } from '../documents/cv/composables/cvTextareaCommit';
-import FormBuilder from '../features/cv-studio/components/FormBuilder.vue';
-import CvPreview from '../documents/cv/components/CvPreview.vue';
+import CvContentEditor from '../features/cv-studio/components/CvContentEditor.vue';
+import CvDocument from '../documents/cv/components/CvDocument.vue';
 import InlineDocumentPreview from '../documents/pdf/components/InlineDocumentPreview.vue';
 import FullDocumentPreview from '../documents/pdf/components/FullDocumentPreview.vue';
-import BackupManager from '../features/cv-studio/components/BackupManager.vue';
+import CvVariantManager from '../features/cv-studio/components/CvVariantManager.vue';
 import DesignPanel from '../features/cv-studio/components/DesignPanel.vue';
 import AnonymizationPanel from '../documents/privacy/components/AnonymizationPanel.vue';
 import { makeT } from '../i18n/dict';
@@ -23,9 +23,9 @@ import { createEmptyDocument, EMPTY_DOCUMENT_ID, SAMPLE_DOCUMENT_ID, isBuiltinDo
 import { readCvState } from '../documents/cv/domain/cvStateValidation';
 import { createAnonymizedState } from '../documents/privacy/domain/anonymization';
 import SupabaseAuth from '../platform/auth/components/SupabaseAuth.vue';
-import JobWorkspace from './components/JobWorkspace.vue';
+import CloudWorkspace from './components/CloudWorkspace.vue';
 import { useSupabaseAuth } from '../platform/auth/useSupabaseAuth';
-import LetterTemplates from '../features/letter-templates/components/LetterTemplates.vue';
+import LetterTemplateEditor from '../features/letter-templates/components/LetterTemplateEditor.vue';
 import LocalAttachments from '../features/attachments/components/LocalAttachments.vue';
 import AppToaster from '../shared/ui/AppToaster.vue';
 import InfoHint from '../shared/ui/InfoHint.vue';
@@ -95,44 +95,44 @@ const workspaceGroups = computed(() => [
   { key: 'opportunities' as const, label: lang.value === 'de' ? 'Stellenangebote' : 'Opportunities', icon: 'briefcase' },
   { key: 'applications' as const, label: lang.value === 'de' ? 'Bewerbungen' : 'Applications', icon: 'envelope' },
 ]);
-const jobWorkspace = ref<InstanceType<typeof JobWorkspace> | null>(null);
+const cloudWorkspace = ref<InstanceType<typeof CloudWorkspace> | null>(null);
 let workspaceNavigationRequest = 0;
 async function selectWorkspace(workspace: Workspace) {
   const request = ++workspaceNavigationRequest;
-  const editor = jobWorkspace.value;
+  const editor = cloudWorkspace.value;
   if (!prepareConfigurationChange()) return;
-  if (!await flushJobEditor(request, editor)) return;
-  if (request !== workspaceNavigationRequest || editor !== jobWorkspace.value) return;
+  if (!await flushCloudEditor(request, editor)) return;
+  if (request !== workspaceNavigationRequest || editor !== cloudWorkspace.value) return;
   activeWorkspace.value = workspace; previewMode.value = false;
 }
 async function selectWorkspaceList(workspace: Workspace) {
   const request = ++workspaceNavigationRequest;
-  const editor = jobWorkspace.value;
+  const editor = cloudWorkspace.value;
   if (!prepareConfigurationChange()) return;
   const epoch = editorSessionEpoch;
   if (editor && !(workspace === 'cv-studio' ? await editor.flush() : await editor.openList(workspace))) return;
-  if (appDisposed || epoch !== editorSessionEpoch || request !== workspaceNavigationRequest || editor !== jobWorkspace.value) return;
+  if (appDisposed || epoch !== editorSessionEpoch || request !== workspaceNavigationRequest || editor !== cloudWorkspace.value) return;
   activeWorkspace.value = workspace; previewMode.value = false;
 }
-async function flushJobEditor(request: number, editor = jobWorkspace.value) {
+async function flushCloudEditor(request: number, editor = cloudWorkspace.value) {
   const epoch = editorSessionEpoch;
   const current = () => !appDisposed && epoch === editorSessionEpoch
-    && request === workspaceNavigationRequest && editor === jobWorkspace.value;
+    && request === workspaceNavigationRequest && editor === cloudWorkspace.value;
   const saved = await flushEditorSession({ current, steps: [() => editor ? editor.flush() : true] });
   return saved && current();
 }
 function saveCareerVariant(name: string, data: CvState) {
-  const saved = backupManager.value?.saveAsDocument(name, data) ?? false;
+  const saved = cvVariantManager.value?.saveAsDocument(name, data) ?? false;
   if (!saved) pdfExportError.value = lang.value === 'de' ? 'Karrierevariante konnte nicht gespeichert werden.' : 'The career variant could not be saved.';
 }
 function createVariant(name: string, data: CvState): string | null {
-  return backupManager.value?.createVariant(name, data) ?? null;
+  return cvVariantManager.value?.createVariant(name, data) ?? null;
 }
 async function openStudioVariant(id: string) {
   const request = ++workspaceNavigationRequest;
-  const editor = jobWorkspace.value;
-  if (!prepareConfigurationChange() || !await flushJobEditor(request, editor)) return;
-  if (!backupManager.value?.selectConfiguration(id)) return;
+  const editor = cloudWorkspace.value;
+  if (!prepareConfigurationChange() || !await flushCloudEditor(request, editor)) return;
+  if (!cvVariantManager.value?.selectConfiguration(id)) return;
   activeWorkspace.value = 'cv-studio'; activeBuilderGroup.value = 'content'; previewMode.value = false;
 }
 const savedConfigurations = ref<SavedConfiguration[]>([]);
@@ -144,8 +144,8 @@ watch(isEmptyDocument, (empty) => {
 }, { flush: 'sync' });
 const saveStatus = ref<SaveStatus>('saved');
 const lastSavedAt = ref<number | null>(null);
-const backupManager = ref<InstanceType<typeof BackupManager> | null>(null);
-const formBuilder = ref<InstanceType<typeof FormBuilder> | null>(null);
+const cvVariantManager = ref<InstanceType<typeof CvVariantManager> | null>(null);
+const cvContentEditor = ref<InstanceType<typeof CvContentEditor> | null>(null);
 const letterTemplates = ref<SyncEditorSession | null>(null);
 const localAttachments = ref<SyncEditorSession | null>(null);
 let editorSessionEpoch = 0;
@@ -160,10 +160,10 @@ function activeStudioLibrary() {
 }
 function flushStudioEdits() {
   const epoch = editorSessionEpoch;
-  const builder = formBuilder.value, library = activeStudioLibrary();
+  const builder = cvContentEditor.value, library = activeStudioLibrary();
   return flushEditorSessionSync({
     current: () => !appDisposed && epoch === editorSessionEpoch
-      && builder === formBuilder.value && library === activeStudioLibrary(),
+      && builder === cvContentEditor.value && library === activeStudioLibrary(),
     steps: [() => library ? library.flush() : true, flushStateSave, () => builder ? builder.flushSectionSaves() : true],
     settled: () => combinedSaveStatus.value === 'saved',
   });
@@ -174,11 +174,11 @@ const combinedSaveStatus = computed(() => {
   const statuses = [saveStatus.value, sectionSaveStatus.value];
   return statuses.includes('error') ? 'error' : statuses.includes('saving') ? 'saving' : 'saved';
 });
-const readSectionVersion = (id: string) => backupManager.value?.readConfigData(id);
-const saveSectionVersion = (id: string, data: CvState) => backupManager.value?.saveVersion(id, data) ?? false;
+const readSectionVersion = (id: string) => cvVariantManager.value?.readConfigData(id);
+const saveSectionVersion = (id: string, data: CvState) => cvVariantManager.value?.saveVersion(id, data) ?? false;
 function prepareConfigurationChange() {
   if (!flushStudioEdits()) return false;
-  const builder = formBuilder.value;
+  const builder = cvContentEditor.value;
   return builder ? builder.resetSectionVersions() : true;
 }
 const builderGroups = computed(() => [
@@ -195,7 +195,7 @@ function groupDisabled(key: string) {
 function readCloudVersion(id: string): CvState | null {
   if (!flushStudioEdits()) return null;
   if (id === selectedConfigurationId.value) return JSON.parse(JSON.stringify(state));
-  return backupManager.value?.readConfigData(id) || null;
+  return cvVariantManager.value?.readConfigData(id) || null;
 }
 const saveStatusLabel = computed(() => {
   const label = t({ saving: 'saving', saved: 'saved', error: 'saveFailed' }[combinedSaveStatus.value]);
@@ -220,7 +220,7 @@ onBeforeUnmount(() => clearTimeout(saveToastTimer));
 
 function persistState(): boolean {
   try {
-    const versionSaveResult = backupManager.value?.saveCurrent?.();
+    const versionSaveResult = cvVariantManager.value?.saveCurrent?.();
     const saved = typeof versionSaveResult === 'boolean'
       ? versionSaveResult
       : saveLocal(state);
@@ -234,7 +234,7 @@ function persistState(): boolean {
 }
 function retryStateSave(): boolean {
   commitPendingTextareas();
-  const sectionsSaved = formBuilder.value?.flushSectionSaves() !== false;
+  const sectionsSaved = cvContentEditor.value?.flushSectionSaves() !== false;
   const stateSaved = persistState();
   return sectionsSaved && stateSaved && combinedSaveStatus.value === 'saved';
 }
@@ -272,13 +272,13 @@ normalizeContentState(state);
 
 onMounted(async () => {
   try {
-    const cached = backupManager.value?.restoreActiveConfig?.() || loadLocal();
+    const cached = cvVariantManager.value?.restoreActiveConfig?.() || loadLocal();
     if (cached) {
       mergeIn(cached);
       return;
     }
 
-    const sample = backupManager.value?.readConfigData(SAMPLE_DOCUMENT_ID);
+    const sample = cvVariantManager.value?.readConfigData(SAMPLE_DOCUMENT_ID);
     if (sample) {
       selectedConfigurationId.value = SAMPLE_DOCUMENT_ID;
       mergeIn(sample);
@@ -580,10 +580,10 @@ function selectBuilderGroup(group: string) {
   <main class="cv-harness-app" :class="{ 'is-preview-mode': previewMode, 'is-cloud-workspace': isCloudTab, 'has-mobile-context-row': !isCloudTab || !!cloudUser }" @pointerdown.capture="onPreviewSliderPointerDown" @pointerup.capture="commitDeferredSliderPreview" @pointercancel.capture="commitDeferredSliderPreview">
     <AppToaster :lang="lang" />
     <div ref="pdfRenderSource" class="pdf-render-source" aria-hidden="true">
-      <CvPreview :state="state" export-source />
+      <CvDocument :state="state" export-source />
     </div>
     <div ref="anonymizedPdfRenderSource" class="pdf-render-source" aria-hidden="true">
-      <CvPreview :state="anonymizedState" export-source />
+      <CvDocument :state="anonymizedState" export-source />
     </div>
 
     <FullDocumentPreview v-model="previewMode" v-model:page="activeFullPreviewPage" v-model:mode="fullPreviewMode"
@@ -591,7 +591,7 @@ function selectBuilderGroup(group: string) {
       :preview-error="activeFullPreviewError" @retry="retryFullPreview"
       :modes="[{ value: 'normal', label: t('normalPdf') }, { value: 'anonymized', label: t('privacyPdf') }, { value: 'html', label: t('rawHtml') }]"
       :downloading="isActiveFullPreviewExporting" :download-label="activeFullPreviewDownloadLabel" :title="t('liveCvPreview')" :error="pdfExportError" @download="exportActiveFullPreview">
-      <template #html><CvPreview :state="isAnonymizedFullPreview ? anonymizedState : state" /></template>
+      <template #html><CvDocument :state="isAnonymizedFullPreview ? anonymizedState : state" /></template>
     </FullDocumentPreview>
 
     <section v-show="!previewMode" class="builder-shell">
@@ -626,8 +626,8 @@ function selectBuilderGroup(group: string) {
       </DesktopSidebarPortal>
       <section v-if="isCloudTab && !cloudUser" class="workspace-sign-in"><h1>{{ activeWorkspace === 'opportunities' ? (lang === 'de' ? 'Stellenangebote entdecken' : 'Discover opportunities') : (lang === 'de' ? 'Bewerbungen vorbereiten' : 'Prepare applications') }}<InfoHint :lang="lang" :label="lang === 'de' ? 'Anmeldung' : 'Sign in'" :text="lang === 'de' ? 'Melde dich bei Supabase an, um auf deinen Bewerbungsbereich zuzugreifen. Das CV-Studio ist auch ohne Anmeldung verfügbar.' : 'Sign in to Supabase to access your application workspace. CV Studio remains available without an account.'" /></h1></section>
 
-      <JobWorkspace
-        ref="jobWorkspace"
+      <CloudWorkspace
+        ref="cloudWorkspace"
         v-if="cloudUser"
         v-show="isCloudTab"
         :key="cloudUser.id"
@@ -655,10 +655,10 @@ function selectBuilderGroup(group: string) {
       <section v-show="!isCloudTab" id="builder-group-cv-studio" class="builder-layout" :class="{ 'builder-layout--library': !studioHasPreview }">
         <div class="builder-layout__controls">
           <Transition name="builder-group">
-            <BackupManager
+            <CvVariantManager
               v-show="activeBuilderGroup === 'versions'"
               id="builder-group-versions"
-              ref="backupManager"
+              ref="cvVariantManager"
               class="builder-group-panel"
               :state="state"
               :lang="lang"
@@ -676,9 +676,9 @@ function selectBuilderGroup(group: string) {
             />
           </Transition>
           <Transition name="builder-group">
-            <FormBuilder v-show="activeBuilderGroup === 'content' && !isEmptyDocument" id="builder-group-content" ref="formBuilder" class="builder-group-panel" :toolbar-target="isMobile ? '#cv-studio-content-tools' : '#desktop-sidebar-major'" :toolbar-visible="!isCloudTab && activeBuilderGroup === 'content' && !isEmptyDocument" :state="state" :configurations="selectableConfigurations" :selected-id="selectedConfigurationId" :read-version="readSectionVersion" :save-version="saveSectionVersion" @section-save-status="sectionSaveStatus = $event">
+            <CvContentEditor v-show="activeBuilderGroup === 'content' && !isEmptyDocument" id="builder-group-content" ref="cvContentEditor" class="builder-group-panel" :toolbar-target="isMobile ? '#cv-studio-content-tools' : '#desktop-sidebar-major'" :toolbar-visible="!isCloudTab && activeBuilderGroup === 'content' && !isEmptyDocument" :state="state" :configurations="selectableConfigurations" :selected-id="selectedConfigurationId" :read-version="readSectionVersion" :save-version="saveSectionVersion" @section-save-status="sectionSaveStatus = $event">
               <template #before-content><div v-if="isMobile" id="cv-studio-content-tools" /></template>
-            </FormBuilder>
+            </CvContentEditor>
           </Transition>
           <Transition name="builder-group">
             <DesignPanel
@@ -700,7 +700,7 @@ function selectBuilderGroup(group: string) {
               :lang="lang"
             />
           </Transition>
-          <LetterTemplates ref="letterTemplates" v-show="activeBuilderGroup === 'templates'" class="builder-group-panel studio-templates" :client="supabaseClient" :user-id="cloudUser?.id || 'local'" :lang="lang" :sidebar-active="!isCloudTab && activeBuilderGroup === 'templates'" />
+          <LetterTemplateEditor ref="letterTemplates" v-show="activeBuilderGroup === 'templates'" class="builder-group-panel studio-templates" :client="supabaseClient" :user-id="cloudUser?.id || 'local'" :lang="lang" :sidebar-active="!isCloudTab && activeBuilderGroup === 'templates'" />
           <LocalAttachments ref="localAttachments" v-show="activeBuilderGroup === 'attachments'" class="builder-group-panel studio-attachments" :user-id="cloudUser?.id || ''" :client="supabaseClient" :lang="lang" :active="!isCloudTab && activeBuilderGroup === 'attachments'" :sidebar-active="!isCloudTab && activeBuilderGroup === 'attachments'" />
         </div>
 

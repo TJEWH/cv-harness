@@ -1,6 +1,6 @@
 import type { LetterSearchProfile, LetterTemplate } from './letterTypes';
 import type { SearchTemplate } from '../../features/meta-search/searchTypes';
-import { searchTemplateContentKey } from '../../features/meta-search/data/useSearchTemplates';
+import { searchTemplateContentKey } from '../../features/meta-search/data/searchTemplateRepository';
 
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 

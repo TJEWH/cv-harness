@@ -4,7 +4,7 @@ import type { CvState, CvJsonKind, SavedConfiguration } from '../../../documents
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { makeT } from '../../../i18n/dict';
 import InfoHint from '../../../shared/ui/InfoHint.vue';
-import { STORAGE_KEY } from '../../../documents/cv/data/useStorage';
+import { STORAGE_KEY } from '../../../documents/cv/data/cvStorage';
 import { builtinConfigurations, createEmptyDocument, createSampleDocument, EMPTY_DOCUMENT_ID, SAMPLE_DOCUMENT_ID } from '../domain/builtinConfigurations';
 import { createNormalizedContentState } from '../../../documents/layout/contentLayout';
 import { applicationRefinementParents, normalizeVariantIndex } from '../domain/careerVariants';

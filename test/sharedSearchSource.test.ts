@@ -4,7 +4,7 @@ import { effectScope, ref, shallowRef } from 'vue';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SearchCloudTemplate, SearchTemplate } from '../src/features/meta-search/searchTypes';
 import { useSharedSearchSource } from '../src/features/meta-search/composables/useSharedSearchSource';
-import { createSearchTemplate, searchTemplateContentKey, searchTemplateStorageKey, type StorageAdapter } from '../src/features/meta-search/data/useSearchTemplates';
+import { createSearchTemplate, searchTemplateContentKey, searchTemplateStorageKey, type StorageAdapter } from '../src/features/meta-search/data/searchTemplateRepository';
 import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
 
 const cloudId = '40000000-0000-4000-8000-000000000001';

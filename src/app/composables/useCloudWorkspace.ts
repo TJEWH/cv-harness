@@ -59,7 +59,7 @@ function cloudSnapshot(value: unknown, account: string): CloudCvSnapshot {
 }
 
 /** Cloud state is ephemeral and account-scoped; this never changes the local CV store. */
-export function useJobWorkspace(client: SupabaseClient | null, userId: MaybeRefOrGetter<string | null | undefined>) {
+export function useCloudWorkspace(client: SupabaseClient | null, userId: MaybeRefOrGetter<string | null | undefined>) {
   const opportunities = ref<Opportunity[]>([]);
   const applications = ref<Application[]>([]);
   const cvVariants = ref<CloudCvVariant[]>([]);

@@ -5,7 +5,7 @@ import { designNumber, resolveDesign } from '../defaults';
 import { useDocumentPdfPreview } from '../../pdf/composables/useDocumentPdfPreview';
 import { useToastWatch } from '../../../shared/ui/useToasts';
 import { createAnonymizedState } from '../../privacy/domain/anonymization';
-import CvPreview from './CvPreview.vue';
+import CvDocument from './CvDocument.vue';
 import InlineDocumentPreview from '../../pdf/components/InlineDocumentPreview.vue';
 import FullDocumentPreview from '../../pdf/components/FullDocumentPreview.vue';
 
@@ -54,10 +54,10 @@ defineExpose({ getPdfBlob, download, open });
     </InlineDocumentPreview>
     <FullDocumentPreview v-model="expanded" v-model:mode="mode" v-model:page="page" :pages="pages" :is-updating="busy" :lang="state.lang" :modes="modes" :downloading="downloading" :download-disabled="downloadDisabled" :error="error" :title="state.lang === 'de' ? 'Bewerbungs-CV' : 'Application CV'" @download="download">
       <template v-if="$slots.default" #header><slot /></template>
-      <template #html><CvPreview :state="state" /></template>
+      <template #html><CvDocument :state="state" /></template>
     </FullDocumentPreview>
-    <div ref="source" class="document-preview__source" aria-hidden="true"><CvPreview :state="state" export-source /></div>
-    <div ref="privacySource" class="document-preview__source" aria-hidden="true"><CvPreview :state="privacyState" export-source /></div>
+    <div ref="source" class="document-preview__source" aria-hidden="true"><CvDocument :state="state" export-source /></div>
+    <div ref="privacySource" class="document-preview__source" aria-hidden="true"><CvDocument :state="privacyState" export-source /></div>
   </div>
 </template>
 

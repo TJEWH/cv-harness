@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SearchCloudSchedule, SearchCloudTemplate, SearchTemplate } from '../src/features/meta-search/searchTypes';
-import { createSearchTemplate, readSearchTemplate, searchTemplateContentKey } from '../src/features/meta-search/data/useSearchTemplates';
+import { createSearchTemplate, readSearchTemplate, searchTemplateContentKey } from '../src/features/meta-search/data/searchTemplateRepository';
 import { importCloudSearchTemplate, saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
 import { readSearchScheduleCadence, readSearchScheduleControls, searchCadenceFromCloud, setSearchScheduleCadence } from '../src/features/meta-search/domain/searchSchedule';
 import { buildReplaceSearchPrompt } from '../src/features/meta-search/domain/searchPrompts';

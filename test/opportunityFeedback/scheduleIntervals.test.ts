@@ -3,7 +3,7 @@ import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
-import { createSearchTemplate } from '../../src/features/meta-search/data/useSearchTemplates';
+import { createSearchTemplate } from '../../src/features/meta-search/data/searchTemplateRepository';
 import { importCloudSearchTemplate, saveSearchTemplate, searchTemplateCloudSchedule } from '../../src/features/meta-search/data/searchTemplateCloud';
 import { setSearchScheduleCadence } from '../../src/features/meta-search/domain/searchSchedule';
 import { file, reset, sql } from './db';

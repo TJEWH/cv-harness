@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { DocumentPreviewPage } from '../pdfTypes';
 import { makeT } from '../../../i18n/dict';
-import PdfPreview from './PdfPreview.vue';
+import PdfPageViewer from './PdfPageViewer.vue';
 import PdfPagination from './PdfPagination.vue';
 
 const props = withDefaults(defineProps<{
@@ -69,7 +69,7 @@ onBeforeUnmount(() => {
         <div class="document-full-preview__content" :class="{ 'document-full-preview__content--with-header': !!$slots.header }">
           <div v-if="$slots.header" class="document-full-preview__header"><slot name="header" /></div>
           <div class="document-full-preview__viewport">
-            <PdfPreview v-if="showPdf" :key="mode" :pages="pages" :page="page" :is-updating="isUpdating" :error="previewError" :lang="lang" gesture-navigation :pinch-zoom="mobile || touchInput" @retry="emit('retry')" @update:page="emit('update:page', $event)" />
+            <PdfPageViewer v-if="showPdf" :key="mode" :pages="pages" :page="page" :is-updating="isUpdating" :error="previewError" :lang="lang" gesture-navigation :pinch-zoom="mobile || touchInput" @retry="emit('retry')" @update:page="emit('update:page', $event)" />
             <div v-else class="document-full-preview__html"><slot name="html" /></div>
           </div>
         </div>

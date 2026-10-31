@@ -1,8 +1,8 @@
 // Compile-only regressions: removing a contract must make an expect-error fail.
 import type { ItemField } from '../src/documents/cv/types';
 import type SectionList from '../src/features/cv-studio/components/SectionList.vue';
-import type BackupManager from '../src/features/cv-studio/components/BackupManager.vue';
-import type FormBuilder from '../src/features/cv-studio/components/FormBuilder.vue';
+import type CvVariantManager from '../src/features/cv-studio/components/CvVariantManager.vue';
+import type CvContentEditor from '../src/features/cv-studio/components/CvContentEditor.vue';
 import type PdfPagination from '../src/documents/pdf/components/PdfPagination.vue';
 
 export function checkFieldContracts(accept: (field: ItemField) => void) {
@@ -17,8 +17,8 @@ export function checkFieldContracts(accept: (field: ItemField) => void) {
 }
 
 export function checkEventContracts(
-  list: InstanceType<typeof SectionList>, backup: InstanceType<typeof BackupManager>,
-  builder: InstanceType<typeof FormBuilder>, pagination: InstanceType<typeof PdfPagination>,
+  list: InstanceType<typeof SectionList>, backup: InstanceType<typeof CvVariantManager>,
+  builder: InstanceType<typeof CvContentEditor>, pagination: InstanceType<typeof PdfPagination>,
 ) {
   list.$emit('update:modelValue', [{ id: 'item' }]);
   backup.$emit('save-result', true);

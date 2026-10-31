@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SEARCH_CRITERIA_KEYS } from '../searchTypes';
 import type { SearchCloudSchedule, SearchCloudTemplate, SearchCriteria, SearchTemplate, SearchMetaSearchDocument } from '../searchTypes';
-import { isSharedSearchTemplate, readSearchTemplate, searchTemplateContentKey } from './useSearchTemplates';
+import { isSharedSearchTemplate, readSearchTemplate, searchTemplateContentKey } from './searchTemplateRepository';
 import { SEARCH_DEADLINE_RULE, buildSearchSystemPrompt, buildSearchUserPrompt, buildRecurringSearchPrompt } from '../domain/searchPrompts';
 import type { SearchPromptOptions } from '../domain/searchPrompts';
 import { readAdaptiveSearchRunnerState } from '../domain/adaptiveSearchTask';

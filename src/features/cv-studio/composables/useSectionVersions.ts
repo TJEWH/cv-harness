@@ -8,7 +8,7 @@ interface SectionVersionsOptions {
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue';
 import { createNormalizedContentState } from '../../../documents/layout/contentLayout.ts';
 import { readCvState } from '../../../documents/cv/domain/cvStateValidation';
-import { debounce } from '../../../documents/cv/data/useStorage.ts';
+import { debounce } from '../../../documents/cv/data/cvStorage.ts';
 import { isBuiltinDocument } from '../domain/builtinConfigurations';
 
 const builtInSections = ['header', 'about', 'education', 'jobs', 'languages', 'hobbies'];

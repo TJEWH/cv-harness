@@ -5,7 +5,7 @@ import { supabaseConfiguration } from '../../../platform/supabase/supabase';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { faAlignLeft, faChevronDown, faClock, faCopy, faGlobe, faSliders } from '@fortawesome/free-solid-svg-icons';
 import type { SearchTemplate, SearchTemplateCloudBinding } from '../searchTypes';
-import { createSearchTemplateRepository, readSearchTemplate, searchTemplateContentKey } from '../data/useSearchTemplates';
+import { createSearchTemplateRepository, readSearchTemplate, searchTemplateContentKey } from '../data/searchTemplateRepository';
 import { buildReplaceSearchPrompt, buildSearchSystemPrompt, buildSearchUserPrompt, isSearchTemplateSaved } from '../domain/searchPrompts';
 import { listCloudSearchTemplates, importCloudSearchTemplate, saveSearchTemplate } from '../data/searchTemplateCloud';
 import { loadAdaptiveSearchRunnerState, requestAdaptiveSearchRunner, type AdaptiveSearchRunnerState } from '../domain/adaptiveSearchTask';

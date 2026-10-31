@@ -8,13 +8,13 @@ import { createRenderer, h, provide, reactive, type Component } from 'vue';
 import type { CvState } from '../src/documents/cv/types';
 import { createTestState } from './helpers';
 
-const requireFromComponents = createRequire(new URL('../src/features/cv-studio/components/FormBuilder.vue', import.meta.url));
+const requireFromComponents = createRequire(new URL('../src/features/cv-studio/components/CvContentEditor.vue', import.meta.url));
 const { CV_TEXTAREA_COMMIT } = requireFromComponents('../../../documents/cv/composables/cvTextareaCommit') as typeof import('../src/documents/cv/composables/cvTextareaCommit');
 const { registerTextareaCommit } = requireFromComponents('../../../shared/editing/textareaCommit') as typeof import('../src/shared/editing/textareaCommit');
 const { privacyFieldKey } = requireFromComponents('../../../documents/privacy/domain/privacyOverrides') as typeof import('../src/documents/privacy/domain/privacyOverrides');
 
 const componentPaths = {
-  FormBuilder: '../src/features/cv-studio/components/FormBuilder.vue',
+  CvContentEditor: '../src/features/cv-studio/components/CvContentEditor.vue',
   AnonymizationPanel: '../src/documents/privacy/components/AnonymizationPanel.vue',
 } as const;
 function component(name: keyof typeof componentPaths) {
@@ -27,7 +27,7 @@ function component(name: keyof typeof componentPaths) {
   new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} } : requireComponent(path), exports);
   return { ...exports.default, render: () => null };
 }
-const FormBuilder = component('FormBuilder');
+const CvContentEditor = component('CvContentEditor');
 const AnonymizationPanel = component('AnonymizationPanel');
 const renderer = createRenderer<object, object>({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}),
@@ -78,7 +78,7 @@ test('CV textarea commits flush alternate versions immediately and preserve the 
   const saves: CvState[] = [];
   let fail = false;
   let parentCommits = 0;
-  const f = mount<FormSetup>(t, FormBuilder, {
+  const f = mount<FormSetup>(t, CvContentEditor, {
     state, selectedId: 'current', configurations: [{ id: 'current', name: 'Current' }, { id: 'alternate', name: 'Alternate' }],
     readVersion: () => alternate,
     saveVersion: (_id: string, value: CvState) => { if (fail) return false; saves.push(value); return true; },

@@ -3,7 +3,7 @@ import InfoHint from '../../../shared/ui/InfoHint.vue';
 import { computed, inject, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue';
 import { FIELD_PRIVACY_TYPES, type CvState, type FieldPrivacyType } from '../../cv/types';
 import { makeT } from '../../../i18n/dict';
-import FormBuilder from '../../../features/cv-studio/components/FormBuilder.vue';
+import CvContentEditor from '../../../features/cv-studio/components/CvContentEditor.vue';
 import { applyPrivacyEditorChanges, createPrivacyEditorState, privacyFieldEntries } from '../domain/privacyOverrides';
 import { automaticMaskForField } from '../domain/privacyEditorMasking';
 import { PRIVACY_EDITOR } from '../composables/privacyEditorContext';
@@ -127,7 +127,7 @@ function resetEdits() {
 </script>
 
 <template>
-  <FormBuilder class="anonymization-panel" :state="draft" privacy-mode :toolbar-visible="false" :read-version="() => null" :save-version="() => false">
+  <CvContentEditor class="anonymization-panel" :state="draft" privacy-mode :toolbar-visible="false" :read-version="() => null" :save-version="() => false">
     <template #before-tabs>
       <header class="workspace-page-heading"><h2>{{ t('privacy') }}</h2></header>
       <div class="privacy-editor-intro">
@@ -147,7 +147,7 @@ function resetEdits() {
         <button v-if="hasEdits" class="btn privacy-reset" type="button" @click="resetEdits">{{ t('privacyResetAll') }}</button>
       </div>
     </template>
-  </FormBuilder>
+  </CvContentEditor>
 </template>
 
 <style scoped>

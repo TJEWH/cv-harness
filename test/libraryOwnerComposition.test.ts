@@ -95,7 +95,7 @@ function fixture(t: TestContext, kind: 'letter' | 'attachments') {
   const instances: TextareaInstance[] = [];
   const textareaDefinition = compile('shared/ui/AutosaveTextarea.vue', false, name => name.endsWith('/textareaCommit') ? textareaCommit : undefined);
   const Textarea = { ...textareaDefinition, setup(props: object, context: unknown) { instances.push(getCurrentInstance()! as TextareaInstance); return textareaDefinition.setup(props, context); }, render: () => null };
-  const definition = compile(kind === 'letter' ? 'features/letter-templates/components/LetterTemplates.vue' : 'features/attachments/components/LocalAttachments.vue', true,
+  const definition = compile(kind === 'letter' ? 'features/letter-templates/components/LetterTemplateEditor.vue' : 'features/attachments/components/LocalAttachments.vue', true,
     name => name.endsWith('/AutosaveTextarea.vue') ? { default: Textarea }
       : name.endsWith('.vue') ? { default: noopComponent }
         : name === '@fortawesome/vue-fontawesome' ? { FontAwesomeIcon: noopComponent }

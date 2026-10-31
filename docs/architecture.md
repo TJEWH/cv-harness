@@ -1,12 +1,12 @@
 # Architecture and source ownership
 
-Organize source by the workflow or document capability it belongs to. The first structural pass moved files and updated imports and path references while preserving application behavior, persistence formats, and protocol contracts. It retained existing module names and mixed responsibilities for later refactoring.
+Organize source by the workflow or document capability it belongs to. Names distinguish editor screens, document renderers, preview controllers, and storage adapters. Folder and naming changes preserve application behavior, persistence formats, and protocol contracts; modules that still mix responsibilities are listed below.
 
 ## Source map
 
 | Folder | Ownership |
 | --- | --- |
-| `src/app/` | `App.vue`, the combined `JobWorkspace` screen, workspace state coordination, and `cloudTypes.ts`. |
+| `src/app/` | `App.vue`, the combined `CloudWorkspace` screen, workspace state coordination, and `cloudTypes.ts`. |
 | `src/features/cv-studio/` | CV editing, variants and backups, section versions, and design controls. |
 | `src/features/opportunities/` | Opportunity presentation, deadlines, evaluations, feedback, disposition, and card interactions. |
 | `src/features/applications/` | Application preparation and tracking, working CV copies, document packages, and the deadline calendar. |
@@ -39,7 +39,22 @@ Use these subfolders where they help distinguish responsibilities:
 - `data/`: repositories, persistence, and remote transport.
 - `interaction/`: DOM interaction controllers such as opportunity-card swiping and scroll tracking.
 
-Keep PascalCase for Vue component filenames and descriptive camelCase for TypeScript modules. Use `use…` for new Vue composables. The structural pass retained older names such as `data/useSearchTemplates.ts` and `data/useStorage.ts`; those modules are repositories/storage helpers despite the prefix. Module location describes their current role.
+Keep PascalCase for Vue component filenames and descriptive camelCase for TypeScript modules. Reserve `use…` for Vue composables. Name persistence modules for the data they own, such as `data/searchTemplateRepository.ts` and `data/cvStorage.ts`.
+
+Name components for their role:
+
+| Name | Role |
+| --- | --- |
+| `CvContentEditor` | CV content fields, sections, and editor controls. |
+| `CvVariantManager` | Saved CV variants, selection, JSON import, and backup export. |
+| `MetaSearchEditor` | The shared meta-search profile and its persistence. |
+| `LetterTemplateEditor` | Reusable letter-template editing. |
+| `CloudWorkspace` / `useCloudWorkspace` | The combined opportunities/applications screen and its account-scoped data coordination. |
+| `CvDocument` | CV HTML rendering, including the source used for PDF export. |
+| `CvDocumentPreview` / `LetterDocumentPreview` | Document-specific source, preview lifecycle, and export integration. |
+| `InlineDocumentPreview` / `FullDocumentPreview` | Shared inline and full-size presentation shells. |
+| `PdfPageViewer` | The selected rendered page, including zoom and page gestures. |
+| `PdfCanvasPage` | PDF.js canvas, text layer, and links for an existing PDF page. |
 
 Keep domain types beside their owner. `opportunityTypes.ts` contains generated catalogue types; update its schema and generator together. Keep declaration files such as `env.d.ts`, `vendor.d.ts`, and `components.d.ts` at the source root.
 
@@ -47,18 +62,18 @@ Use explicit imports to the owning module. The current structure has no import-b
 
 ## Current cross-boundaries
 
-CV content editors share `features/cv-studio/components/CvSectionFrame.vue` for the section shell, collapse target, visibility, title editing, heading size, completion, and keep-together controls. `SectionList` supplies item editing; `FormBuilder` supplies custom body/sidebar fields. Privacy headings, version selectors, and section-specific actions use slots. The callers own editor state, IDs, focus restoration, and persistence; the frame only emits control actions.
+CV content editors share `features/cv-studio/components/CvSectionFrame.vue` for the section shell, collapse target, visibility, title editing, heading size, completion, and keep-together controls. `SectionList` supplies item editing; `CvContentEditor` supplies custom body/sidebar fields. Privacy headings, version selectors, and section-specific actions use slots. The callers own editor state, IDs, focus restoration, and persistence; the frame only emits control actions.
 
 `features/meta-search/composables/useSharedSearchSource.ts` owns the shared search-profile read policy, local/cloud precedence, cached hydration, and account-scoped stale-result protection. Letter templates request a fresh cloud preview when no local source exists; applications can explicitly refresh an acknowledged local source. Application actions still decide when to capture or replace the independent `letter.searchProfile` snapshot. Loading the shared source performs no storage or cloud writes.
 
 The folders describe ownership. Several modules still combine responsibilities, and existing imports cross those folders:
 
-- `app/App.vue` coordinates navigation, local CV persistence, and previews. `app/components/JobWorkspace.vue` coordinates both opportunities and applications. `app/composables/useJobWorkspace.ts` owns their shared account lifecycle, cancellation, and ordered cloud mutations. Keep that coordination intact when extracting repositories in a later pass.
+- `app/App.vue` coordinates navigation, local CV persistence, and previews. `app/components/CloudWorkspace.vue` coordinates both opportunities and applications. `app/composables/useCloudWorkspace.ts` owns their shared account lifecycle, cancellation, and ordered cloud mutations. Keep that coordination intact when extracting repositories in a later pass.
 - `app/cloudTypes.ts` contains application, opportunity-review, and CV-snapshot contracts. Other features and document modules still import those contracts.
 - `features/applications/applicationCv.ts` combines application CV persistence with copy/difference helpers. `features/refinement/applicationRefinement.ts` combines protocol validation, request/proposal operations, prompt construction, and cloud persistence. Both remain at their feature root until their responsibilities can be separated.
 - `documents/letter/motivationLetters.ts` combines template defaults, validation, local persistence, compatibility upgrades, and document revisions. `documents/letter/searchLetterContext.ts` imports meta-search contracts and content-key calculation to capture research interests for a letter.
-- `features/meta-search/data/useSearchTemplates.ts` combines defaults, compatibility conversion, validation, and the local repository. The search and letter repositories share the pure field merge in `shared/lib/mergeRecordChanges.ts`; each repository owns validation, conflict errors, metadata, revision and no-op rules, and writes.
-- `documents/cv/data/useStorage.ts` owns CV session storage and also exports a debounce helper used elsewhere. `documents/layout/webFonts.ts` includes browser font-loading behavior.
+- `features/meta-search/data/searchTemplateRepository.ts` combines defaults, compatibility conversion, validation, and the local repository. The search and letter repositories share the pure field merge in `shared/lib/mergeRecordChanges.ts`; each repository owns validation, conflict errors, metadata, revision and no-op rules, and writes.
+- `documents/cv/data/cvStorage.ts` owns CV session storage and also exports a debounce helper used elsewhere. `documents/layout/webFonts.ts` includes browser font-loading behavior.
 - `features/opportunities/domain/opportunityContext.ts` imports presentation builders that refer back to its node types through type-only imports. The structural pass preserved those type relationships.
 
 CV Studio, application CVs, and letters share `documents/pdf/composables/useDocumentPdfPreview.ts` for render scheduling, stale-work cancellation, completed-page caching, input commit deferral, export coordination, and cleanup. Studio uses independent normal/privacy controllers with its existing timing and page-retention policies; it owns the shared export-error surface and renderer resource cleanup. Document source selection, signatures, render options, and visibility remain with each caller.
@@ -73,7 +88,7 @@ Follow the [textarea behavior](textarea-behavior.md). Use `shared/ui/AutosaveTex
 
 `shared/editing/editorSession.ts` defines the runtime `flush()` contract and its synchronous counterpart for local stores. A session publishes textarea drafts, drains ordered persistence steps, and returns an explicit safe-to-leave result. Owners capture their account/record lifecycle and child editors; the coordinator checks that scope, composition readiness, and the native draft revision before and after each step. New typing during an asynchronous save stays unpublished and prevents navigation. Existing method names remain compatibility aliases.
 
-CV Studio, job/application workspaces, search templates, CV sections, refinement annotations, and opportunity feedback/status controls use that coordination while retaining their own queues, snapshots, validation, recovery, and retries. Letter templates expose local-save flush; attachments expose private text-recovery flush only. A successful attachment flush does not save a file, share metadata, or approve disclosure. Failed local library drafts remain scoped to their account; forced account changes retain an in-memory recovery snapshot for that owner to revisit. Native library editor instances are keyed by account so an unfinished composition cannot cross into the incoming owner’s draft.
+CV Studio, opportunities/applications workspaces, search templates, CV sections, refinement annotations, and opportunity feedback/status controls use that coordination while retaining their own queues, snapshots, validation, recovery, and retries. Letter templates expose local-save flush; attachments expose private text-recovery flush only. A successful attachment flush does not save a file, share metadata, or approve disclosure. Failed local library drafts remain scoped to their account; forced account changes retain an in-memory recovery snapshot for that owner to revisit. Native library editor instances are keyed by account so an unfinished composition cannot cross into the incoming owner’s draft.
 
 `shared/editing/useApplicationNotesAutosave.ts` supports application notes and opportunity text drafts. Keep its account/record scoping, queued snapshots, recovery, and retries when reusing it.
 

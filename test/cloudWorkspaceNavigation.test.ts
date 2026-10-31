@@ -9,7 +9,7 @@ import ts from 'typescript';
 import { createRenderer, h, nextTick, reactive, ref } from 'vue';
 import type { Component } from 'vue';
 import type { Application, ApplicationStage, Opportunity, OpportunityFeedbackPatch, OpportunityReview, OpportunityReviewState } from '../src/app/cloudTypes';
-import { normalizeOpportunity as readOpportunity } from '../src/app/composables/useJobWorkspace';
+import { normalizeOpportunity as readOpportunity } from '../src/app/composables/useCloudWorkspace';
 import { useSaveStateToast, useToasts, useToastWatch } from '../src/shared/ui/useToasts';
 import { commitPendingTextareas, markTextareaDraftChanged, registerTextareaCommit } from '../src/shared/editing/textareaCommit';
 import { flushEditorSession } from '../src/shared/editing/editorSession';
@@ -18,7 +18,7 @@ import { migrateOpportunityEvaluationDrafts } from '../src/features/opportunitie
 
 const normalizeOpportunity = (input: Record<string, unknown> & { id: string }) => readOpportunity(opportunityFixture(input));
 
-const filename = new URL('../src/app/components/JobWorkspace.vue', import.meta.url);
+const filename = new URL('../src/app/components/CloudWorkspace.vue', import.meta.url);
 const source = readFileSync(filename, 'utf8');
 const { descriptor } = parse(source);
 const compiled = compileScript(descriptor, { id: 'job-workspace-navigation-test' });
@@ -155,7 +155,7 @@ function mount(t: TestContext, options: { restoredOpportunityId?: string; active
   const exports: { default?: Component } = {};
   const requireFromComponent = createRequire(filename);
   new Function('require', 'exports', code)((path: string) => path.endsWith('.vue') ? { default: {} }
-    : path === '../composables/useJobWorkspace' ? { useJobWorkspace: () => workspace }
+    : path === '../composables/useCloudWorkspace' ? { useCloudWorkspace: () => workspace }
     : path === '../../shared/editing/textareaCommit' ? { commitPendingTextareas }
     : path === '../../shared/editing/editorSession' ? { flushEditorSession }
     : path === '../../shared/ui/useToasts' ? { useSaveStateToast, useToasts, useToastWatch } : requireFromComponent(path), exports);

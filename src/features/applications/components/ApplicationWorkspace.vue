@@ -15,9 +15,9 @@ import { addIncomingDraft, createApplicationLetter, createLetterRepository, DEFA
 import { currentRefinementRequestId, applyRefinementProposal, createRefinementRepository, describeCvOperation, parseRefinementProposal, prepareRefinement, reconstructRefinementProposal, refinementSignature, sanitizeRefinementSetup, sanitizeRefinementText, validateLocalRefinementSource } from '../../refinement/applicationRefinement';
 import { applicationStage, applicationStatusLabel, applicationStatusTone, applicationTrackingStarted } from '../domain/applicationTracking';
 import { formatOpportunityDeadline } from '../../opportunities/domain/opportunityDeadline';
-import FormBuilder from '../../cv-studio/components/FormBuilder.vue';
-import DocumentCvPreview from '../../../documents/cv/components/DocumentCvPreview.vue';
-import MotivationLetterPreview from '../../../documents/letter/components/MotivationLetterPreview.vue';
+import CvContentEditor from '../../cv-studio/components/CvContentEditor.vue';
+import CvDocumentPreview from '../../../documents/cv/components/CvDocumentPreview.vue';
+import LetterDocumentPreview from '../../../documents/letter/components/LetterDocumentPreview.vue';
 import LetterFormattingControls from '../../../documents/letter/components/LetterFormattingControls.vue';
 import { resolveLetterFormatting } from '../../../documents/letter/domain/letterFormatting';
 import { applyLetterHeader, captureLetterHeaderSource, resolveApplicationLetterState } from '../../../documents/letter/domain/letterContact';
@@ -45,7 +45,7 @@ import { flushEditorSession } from '../../../shared/editing/editorSession';
 import { copyPreparedText } from '../../../shared/lib/preparedClipboard';
 import { captureMetaSearchInterests, letterTemplateWithSearchProfile } from '../../../documents/letter/searchLetterContext';
 import { useSharedSearchSource } from '../../meta-search/composables/useSharedSearchSource';
-import { SEARCH_TEMPLATES_UPDATED_EVENT } from '../../meta-search/data/useSearchTemplates';
+import { SEARCH_TEMPLATES_UPDATED_EVENT } from '../../meta-search/data/searchTemplateRepository';
 
 const props = withDefaults(defineProps<{
   projectId?: string; active?: boolean; checklistSaving?: boolean;
@@ -207,8 +207,8 @@ const notice = ref('');
 const saveError = ref('');
 const cloudLoaded = ref(false);
 const historyOpen = ref(false);
-const preview = ref<InstanceType<typeof DocumentCvPreview> | null>(null);
-const letterPreview = ref<InstanceType<typeof MotivationLetterPreview> | null>(null);
+const preview = ref<InstanceType<typeof CvDocumentPreview> | null>(null);
+const letterPreview = ref<InstanceType<typeof LetterDocumentPreview> | null>(null);
 const documentReadiness = ref({ included: 0, missing: 0 });
 const repository = createRefinementRepository(props.client, () => props.userId);
 const letterRepository = createLetterRepository(localStorage, props.userId);
@@ -513,7 +513,7 @@ watch(() => refinementSignature(currentCvState.value || record.value?.state), ()
 watch(cvEditorState, state => {
   if (syncingCvEditor || !state || !record.value || cvApproved.value || busy.value
     || refinementSignature(state) === refinementSignature(currentCvState.value)) return;
-  // FormBuilder publishes textarea changes on commit. Materialize the displayed
+  // CvContentEditor publishes textarea changes on commit. Materialize the displayed
   // selection together with that edit locally, without publishing or approving.
   record.value = { ...record.value, state: cloneCv(state), revision: record.value.revision + 1, updatedAt: new Date().toISOString() };
   reviewComparison.value = 'proposed';
@@ -1666,14 +1666,14 @@ useToastWatch(() => shortInstructionError.value, { tone: 'error' });
             </template>
           <details class="disclosure-row"><summary><FontAwesomeIcon :icon="faPenToSquare" class="disclosure-prefix" aria-hidden="true" />{{ text('Edit manually', 'Manuell bearbeiten') }}<InfoHint v-if="pane === 'cv'" :lang="lang" :label="text('Edit manually', 'Manuell bearbeiten')" :text="text('Edit the current CV, including active changes. Previous stays unchanged.', 'Aktuellen CV einschließlich aktiver Änderungen bearbeiten. Der vorherige Stand bleibt unverändert.')" /></summary>
 
-          <section v-if="cvEditorState" v-show="pane === 'cv'" class="working-document"><fieldset :disabled="cvApproved || busy"><FormBuilder :state="cvEditorState" :read-version="() => null" :save-version="() => false" /></fieldset></section>
+          <section v-if="cvEditorState" v-show="pane === 'cv'" class="working-document"><fieldset :disabled="cvApproved || busy"><CvContentEditor :state="cvEditorState" :read-version="() => null" :save-version="() => false" /></fieldset></section>
           <section v-if="letter" v-show="pane === 'letter'" class="working-document"><label>{{ text('Complete letter text', 'Vollständiger Brieftext') }}<AutosaveTextarea :model-value="letterText" :model-modifiers="{ lazy: true }" rows="18" :disabled="letterApproved || busy || reviewActive" @input="markInitialLetterDraftInput" @update:model-value="updateLetter" /></label><p :class="{ warning: words > setup.maxWords }">{{ words }} / {{ setup.maxWords }} {{ text('target words (complete letter)', 'Zielwörter (vollständiger Brief)') }}</p><InfoHint v-if="words > setup.maxWords" :lang="lang" :label="text('Target words', 'Zielwortzahl')" :text="text('Over the target. Review the tender limit; approval and export remain available.', 'Über der Zielwortzahl. Vorgabe prüfen; Freigabe und Export bleiben möglich.')" /><p v-if="unresolved.length" class="app-hint warning">{{ text('Resolve placeholders:', 'Platzhalter auflösen:') }} {{ unresolved.join(', ') }}</p><LetterFormattingControls :formatting="letter.formatting" :base-formatting="selectedTemplate.formatting" :lang="lang" :disabled="letterApproved || busy || reviewActive" @change="updateLetterFormatting" /></section>
           </details>
           <RefinementHistory :scope="pane" :requests="requests" :proposals="proposals" :local-requests="localRequests" :current-request-id="currentRequestId" :active-id="selectedProposalId" :review-active="reviewActive" :accepted="proposalAlreadyApplied" :publication-status="publicationStatus" :open="historyOpen" :lang="lang" :busy="busy || refreshing || syncing" :can-clear="canClearHistory" @clear="clearRefinementHistory" @select="selectReviewProposal" @details="historyOpen = $event" @export-request="exportRequest" @export-proposal="exportProposal" />
         </div>
         <div class="refinement-preview">
-          <DocumentCvPreview v-if="previewCvState" v-show="pane === 'cv'" ref="preview" :preview-key="documentPreviewKey" :state="previewCvState" :active="active && tab === 'refinement' && feedbackScope === 'cv'" hide-actions :download-disabled="!cvApproved || showCvReview" />
-          <MotivationLetterPreview v-if="previewLetterContent" v-show="pane === 'letter'" ref="letterPreview" :preview-key="documentPreviewKey" :cv-state="previewLetterCvState" :content="previewLetterContent" :formatting="effectiveLetterFormatting" :lang="previewLetterLanguage" :active="active && tab === 'refinement' && feedbackScope === 'letter'" hide-actions :download-disabled="!letterApproved || showReviewPreview" />
+          <CvDocumentPreview v-if="previewCvState" v-show="pane === 'cv'" ref="preview" :preview-key="documentPreviewKey" :state="previewCvState" :active="active && tab === 'refinement' && feedbackScope === 'cv'" hide-actions :download-disabled="!cvApproved || showCvReview" />
+          <LetterDocumentPreview v-if="previewLetterContent" v-show="pane === 'letter'" ref="letterPreview" :preview-key="documentPreviewKey" :cv-state="previewLetterCvState" :content="previewLetterContent" :formatting="effectiveLetterFormatting" :lang="previewLetterLanguage" :active="active && tab === 'refinement' && feedbackScope === 'letter'" hide-actions :download-disabled="!letterApproved || showReviewPreview" />
         </div>
       </section>
       <ApplicationDocuments v-show="tab === 'review'" :client="client" :active="active && tab === 'review'" mode="review" :application-id="application.id" :user-id="userId" :lang="lang" :cv-state="record?.state || null" :cv-ready="cvApproved" :export-ready="cvApproved && letterApproved" :get-cv-pdf="getCvPdf" :get-letter-pdf="getLetterPdf" :letter-ready="letterApproved" :letter-revision="letterRevision" @readiness="documentReadiness = $event">

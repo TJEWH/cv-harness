@@ -14,7 +14,7 @@ import { createNormalizedContentState } from '../src/documents/layout/contentLay
 import { isMainCvVariant } from '../src/features/cv-studio/domain/careerVariants';
 import { useToasts, useToastWatch } from '../src/shared/ui/useToasts';
 
-const filename = new URL('../src/features/cv-studio/components/BackupManager.vue', import.meta.url);
+const filename = new URL('../src/features/cv-studio/components/CvVariantManager.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
 const compiled = compileScript(descriptor, { id: 'backup-manager-test' });
 const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
