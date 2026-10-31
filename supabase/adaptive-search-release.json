@@ -376,11 +376,11 @@
     },
     {
       "path": "src/features/opportunities/components/OpportunityFeedbackControls.vue",
-      "sha256": "b372341805931319b5ae5eff8cd26e4a459c1a431a985dc0781d9874da071f47"
+      "sha256": "a2b1ab6652d59c732172d239f13af2070da52cb07362268e24c0a0e48a5b8441"
     },
     {
       "path": "src/features/opportunities/components/OpportunityDispositionControls.vue",
-      "sha256": "caf4abf87d0f1a436332e7572481d67d951b6e235f149f8a499fbb1442bf543c"
+      "sha256": "b0f2202d70daa5ebf577c2d163f3d291a4ac7a9b1eca5f2ef17367d38111e0a2"
     },
     {
       "path": "src/features/opportunities/domain/opportunityDisposition.ts",

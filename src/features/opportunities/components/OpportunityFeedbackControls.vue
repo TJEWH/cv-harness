@@ -203,7 +203,7 @@ defineExpose({ flush });
 <template>
   <section class="feedback-controls" :aria-label="text('Search feedback', 'Suchfeedback')">
     <div class="feedback-summary">
-      <div class="feedback-heading"><label :for="evaluationInputId || `${controlsId}-summary`">{{ text('Personal evaluation', 'Persönliche Einschätzung') }}</label><InfoHint :lang="lang" :label="text('Personal evaluation', 'Persönliche Einschätzung')" :text="evaluationHint" /><span class="feedback-summary-count">{{ summaryLength }} / {{ MAX_OPPORTUNITY_EVALUATION_LENGTH }} {{ text('characters', 'Zeichen') }}</span></div>
+      <div class="feedback-heading"><label :for="evaluationInputId || `${controlsId}-summary`">{{ text('Qualitative evaluation', 'Qualitative Einschätzung') }}</label><InfoHint :lang="lang" :label="text('Qualitative evaluation', 'Qualitative Einschätzung')" :text="evaluationHint" /><span class="feedback-summary-count">{{ summaryLength }} / {{ MAX_OPPORTUNITY_EVALUATION_LENGTH }} {{ text('characters', 'Zeichen') }}</span></div>
       <AutosaveTextarea :id="evaluationInputId || `${controlsId}-summary`" v-model="summaryDraft" :aria-labelledby="evaluationLabelledby" rows="3" :aria-invalid="summaryInvalid || undefined" @commit="flushSummary" />
       <details v-if="summaryLength > 600 && summaryEligible" class="feedback-excerpt"><summary>{{ text('Search feedback excerpt — first 600 characters', 'Suchfeedback-Auszug — erste 600 Zeichen') }}</summary><p>{{ summaryExcerpt }}</p></details>
       <button v-if="summaryError" class="btn" type="button" @click="flushSummary">{{ text('Retry save', 'Speichern erneut versuchen') }}</button>
@@ -227,7 +227,7 @@ defineExpose({ flush });
 </template>
 
 <style scoped>
-.feedback-controls { display: grid; gap: 18px; min-width: 0; color: var(--ui-text); padding-block: 14px; }
+.feedback-controls { display: grid; gap: 18px; min-width: 0; color: var(--ui-text); }
 .feedback-heading { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .feedback-controls label, .feedback-reasons legend { color: var(--ui-text); font: 600 12px/1.5 var(--font-ui); }
 .feedback-controls label:not(.feedback-category) { display: grid; gap: 6px; }

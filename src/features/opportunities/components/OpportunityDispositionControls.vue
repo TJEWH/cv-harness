@@ -146,7 +146,7 @@ defineExpose({ flush });
 </template>
 
 <style scoped>
-.opportunity-disposition { display: grid; gap: 10px; padding-block: 14px; border-top: 1px solid var(--ui-divider); color: var(--ui-text); font: 400 13px/1.5 var(--font-ui); }
+.opportunity-disposition { display: grid; gap: 10px; padding-block: 14px; color: var(--ui-text); font: 400 13px/1.5 var(--font-ui); }
 .disposition-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 8px 24px; }
 .disposition-heading { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .opportunity-disposition .disposition-check { display: flex; align-items: center; gap: 8px; min-width: 0; }
