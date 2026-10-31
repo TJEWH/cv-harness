@@ -1,6 +1,6 @@
 # Opportunity meta research
 
-The Opportunities sidebar contains one meta-research workspace per account, with one shared profile and region priorities. The profile has three semicolon-separated textareas: opportunity/job types and sources; research interests including preferred tasks/methods and avoided tasks; salary, funding and conditions. English system and user prompts are generated from those fields. Research directions are alternatives: a role can match one direction or a useful combination, without fulfilling every interest. Explicit hard exclusions remain binding.
+The Opportunities sidebar contains one meta-research workspace per account, with one shared profile and region priorities. Shared search profile contains opportunity/job types and sources; research interests including preferred tasks/methods and avoided tasks; salary, funding and conditions; and optional additional search instructions at the bottom. English system and user prompts are generated from those fields. Research directions are alternatives: a role can match one direction or a useful combination, without fulfilling every interest. Explicit hard exclusions remain binding.
 
 ## Edit, autosave, replace
 
@@ -10,6 +10,12 @@ The Opportunities sidebar contains one meta-research workspace per account, with
 4. Paste that instruction into ChatGPT. Setup normally reads one bounded handoff as a flat SQL row. Connector envelopes and JSON strings are decoded locally; a lost, truncated or unusable transport response permits one identical read retry with the same setup UUID. Contract errors and permission denials stop setup. When no task is bound, select the target or approve creating one explicitly. Only explicitly selected superseded task IDs may be disabled. Confirm the replacement is usable before retiring an older task.
 
 Copying itself does not alter ChatGPT tasks. Setup performs no research and creates no search run. Adaptive setup allows one additional, idempotent acknowledgement after a real successful task-tool receipt; it records the returned task ID and schedule. An uncertain or denied task-tool action stops setup. This acknowledgement belongs only to setup and is never part of the daily read chain.
+
+## Schedule and adaptive setup
+
+**Adaptive search** sits above **Search schedule** and contains feedback controls, the search policy and **ChatGPT task setup**. **Prepare ChatGPT update** prepares a one-time activation or instruction upgrade; finish it with **Copy replace prompt** in ChatGPT. Ratings and profile edits load on the next run without this step.
+
+Choose an interval in hours (1–23) for multiple runs per day, or days (1–365) at the chosen local time. Day intervals follow calendar days across daylight-saving changes. Saved imported weekly/hourly schedules remain intact until you choose a replacement. Invalid interval drafts block copying and navigation until corrected. Schedule changes save to the workspace, then require the copied task update in ChatGPT before the external task follows them.
 
 ## Technical runner migration
 
@@ -47,7 +53,7 @@ Letter templates have a **Use research interests from meta search** checkbox, en
 
 ## Adaptive controls and history
 
-The adjacent **Adaptive feedback** panel keeps base editing independent from feedback, source and preference revisions. Feedback is shared by default for your searches. Query adaptation and retaining verified source listings remain separate choices. Pausing adaptation preserves the base search, saved sources, outcomes and schedule. Excluding an opportunity withholds its evaluation and structured signals from feedback.
+The **Adaptive feedback** panel inside **Adaptive search** keeps base editing independent from feedback, source and preference revisions. Feedback is shared by default for your searches. Query adaptation and retaining verified source listings remain separate choices. Pausing adaptation preserves the base search, saved sources, outcomes and schedule. Excluding an opportunity withholds its evaluation and structured signals from feedback.
 
 Each opportunity's **Personal Evaluation** disclosure contains one evaluation/search-feedback editor, an optional 0–10 interest slider, and two category multiselects: Prefer and Avoid. Category changes save directly; details belong in the personal evaluation rather than a separate reason description. Application preparation shares the same opportunity draft. Existing evaluation text, distinct saved feedback and recoverable drafts are preserved. Saved text is included in search feedback by default; the shared **Exclude this opportunity from search feedback** checkbox removes both text and structured signals. Longer evaluations provide a clearly labelled first-600-codepoint excerpt, while the full evaluation remains saved. Full-source content safeguards run before excerpting, so cutting off a contact address cannot leak a partial address. The full evaluation allows 12,000 Unicode codepoints. Failed alignment retains the draft and blocks navigation until saved.
 

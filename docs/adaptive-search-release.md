@@ -63,6 +63,8 @@ The dashboard distinguishes the confirmed legacy/adaptive task mode from authori
 
 The additive `opportunity_search_adaptive_payload_contract.sql` upgrade runs after the current canonical and feedback-default contracts. It publishes complete batch, execution-report and completion instructions through startup `protocol_text`; the scheduled prompt points to those instructions without duplicating them. Exact PostgreSQL 17 function fingerprints guard installation. Existing pinned bundles and their hashes remain unchanged, and the validator accepts only the previous reviewed protocol or the current one. A scheduled run still needs its own execution verification.
 
+The additive `opportunity_search_schedule_intervals.sql` upgrade follows the payload-contract repair. It widens the existing interval bound to 8,760 hours and lets legacy setup read the optional editor cadence. Exact function hashes guard both changes; existing rows, task bindings and ACLs remain intact. The editor offers 1–23 hours or 1–365 calendar days, preserves imported cadences until an explicit edit, and requires a copied setup update to apply a changed external schedule.
+
 Two optional learning paths remain limited:
 
 - Useful-source retention runs at completion and requires qualifying interest or submission already present; later ratings do not retry that decision. The initial explicit institution listings and feedback-based query priorities work independently.
@@ -82,6 +84,8 @@ The payload-contract upgrade was deployed after isolated database tests, indepen
 
 The setup acknowledgement now records the existing task as `adaptive-batch-v1`, confirmed at 21:08 Europe/Tirane, with no migration request pending. The daily 09:00 schedule, research profile and existing catalogue/run records were preserved; the preflight created no retained research records. This acknowledgement is a task-tool attestation rather than independent scheduler inspection. No adaptive research run had executed at the time of this check, so unattended execution and notification delivery remain unverified. The 09:00 failed run shown in the dashboard predates activation and remains legacy history.
 
+The interval compatibility upgrade was also deployed and verified against the reviewed function hashes. Existing search definitions, task bindings, runner configuration and run count matched their pre-upgrade hashes; the daily task cadence remains unchanged.
+
 ## Local release gate
 
 With installed dependencies and the documented PostgreSQL 17.6 fixture:
@@ -95,6 +99,7 @@ npm run test:adaptive-search-release
 npm run test:opportunity-feedback-defaults
 npm run test:adaptive-search-payload-contract
 npm run test:adaptive-search-dashboard-settings
+npm run test:search-schedule-intervals
 npm run typecheck
 npm test
 npm run build
