@@ -577,7 +577,7 @@ function selectBuilderGroup(group: string) {
 </script>
 
 <template>
-  <main class="cv-builder-app" :class="{ 'is-preview-mode': previewMode, 'is-cloud-workspace': isCloudTab, 'has-mobile-context-row': !isCloudTab || !!cloudUser }" @pointerdown.capture="onPreviewSliderPointerDown" @pointerup.capture="commitDeferredSliderPreview" @pointercancel.capture="commitDeferredSliderPreview">
+  <main class="cv-harness-app" :class="{ 'is-preview-mode': previewMode, 'is-cloud-workspace': isCloudTab, 'has-mobile-context-row': !isCloudTab || !!cloudUser }" @pointerdown.capture="onPreviewSliderPointerDown" @pointerup.capture="commitDeferredSliderPreview" @pointercancel.capture="commitDeferredSliderPreview">
     <AppToaster :lang="lang" />
     <div ref="pdfRenderSource" class="pdf-render-source" aria-hidden="true">
       <CvPreview :state="state" export-source />
@@ -727,7 +727,7 @@ body,
   overflow: hidden;
 }
 
-.cv-builder-app {
+.cv-harness-app {
   font-family: var(--font-ui);
   /* Spacing: 8px within controls, 16–24px around editor regions. */
   --workspace-inset: clamp(16px, 2vw, 24px);
@@ -742,7 +742,7 @@ body,
   overscroll-behavior: none;
 }
 
-.cv-builder-app.is-preview-mode {
+.cv-harness-app.is-preview-mode {
   overflow: auto;
 }
 
@@ -913,20 +913,20 @@ body,
 @media (max-width: 760px) {
   .builder-layout__controls .studio-templates { overflow-y: auto; }
   .builder-layout__controls .builder-group-panel { padding: 8px; }
-  .cv-builder-app {
+  .cv-harness-app {
     --mobile-tabs-height: calc(72px + env(safe-area-inset-bottom, 0px));
     --mobile-context-row-height: 53px;
     --mobile-context-row-space: 0px;
     padding: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) calc(var(--mobile-tabs-height) + var(--mobile-context-row-space) + 8px) max(8px, env(safe-area-inset-left, 0px));
   }
 
-  .cv-builder-app.has-mobile-context-row { --mobile-context-row-space: var(--mobile-context-row-height); }
+  .cv-harness-app.has-mobile-context-row { --mobile-context-row-space: var(--mobile-context-row-height); }
   #cv-studio-content-tools { min-width: 0; padding: 8px 0 12px; border-bottom: 1px solid var(--ui-divider); }
   #cv-studio-content-tools button, .builder-layout__controls .backup-manager__actions :is(button, select) { min-height: 44px; }
   .builder-layout__controls .backup-manager__actions { flex-wrap: nowrap; margin-bottom: 8px; }
   .builder-layout__controls .backup-manager__actions select { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--ui-border); border-radius: 7px; background: var(--ui-control); color: var(--ui-text); font: inherit; font-size: 16px; }
   .builder-layout__controls .backup-manager__actions .btn { flex-shrink: 0; }
-  .cv-builder-app.is-preview-mode { overflow: hidden; }
+  .cv-harness-app.is-preview-mode { overflow: hidden; }
   .cv-studio-navigation { position: fixed; inset: auto 0 var(--mobile-tabs-height); z-index: 35; display: flex; align-items: center; gap: 8px; height: var(--mobile-context-row-height); padding: 4px max(8px, env(safe-area-inset-right, 0px)) 4px max(8px, env(safe-area-inset-left, 0px)); border-top: 1px solid #2b424b; background: #101c24; }
   .cv-studio-navigation .cv-studio-open-preview { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border: 0; border-left: 1px solid #2b424b; border-radius: 0; background: transparent; color: var(--ui-text); font-size: 20px; }
   .cv-studio-navigation .btn:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; }
@@ -960,7 +960,7 @@ body,
 }
 
 @media (min-width: 761px) {
-  .cv-builder-app { padding: 0; }
+  .cv-harness-app { padding: 0; }
   .builder-shell { --topbar-tab-height: 66px; display: grid; grid-template-columns: var(--workspace-sidebar-width) minmax(0, 1fr); grid-template-rows: var(--topbar-tab-height) minmax(0, 1fr); gap: 0; width: 100%; max-width: none; }
   .builder-shell > .desktop-sidebar { grid-column: 1; grid-row: 1 / 3; }
   .builder-shell > .builder-topbar { grid-column: 2; grid-row: 1; display: block; min-width: 0}

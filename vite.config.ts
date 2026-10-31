@@ -21,6 +21,6 @@ export default defineConfig(({ mode }) => {
     envPrefix: [],
     define: { __SUPABASE_CONFIGURATION__: JSON.stringify(configuration) },
     // GitHub Pages serves project sites below the repository name.
-    base: '/cv-builder/',
+    base: '/cv-harness/',
   };
 });

@@ -26,7 +26,7 @@ off when you switch versions and never changes configuration imports.
 **Import configuration** replaces design and settings while retaining the CV's text,
 entries and custom sections. Each action accepts only its matching format. Invalid files
 leave the document unchanged. You cannot import the old `cv-builder/cv` format, raw state
-objects, or browser-storage wrappers. There is no combined export.
+objects, or browser-storage wrappers. Existing split `cv-builder/content` and `cv-builder/config` files remain valid imports; new exports use `cv-harness` names. There is no combined export.
 
 Filenames use the selected version title, for example `engineering-2026-content-v7.json`
 and `engineering-2026-config-v7.json`. Unsaved drafts use the `cv-backup` prefix.
@@ -37,7 +37,7 @@ A minimal valid content file is:
 
 ```json
 {
-  "format": "cv-builder/content",
+  "format": "cv-harness/content",
   "formatVersion": 1,
   "cvVersion": 7,
   "exportedAt": "2026-09-19T12:00:00.000Z",
@@ -94,7 +94,7 @@ to "supervised by a qualified person", without changing the Content field.
 
 ## Configuration file
 
-Configuration files use the same wrapper with `"format": "cv-builder/config"`.
+Configuration files use the same wrapper with `"format": "cv-harness/config"`.
 Their `data` object contains exactly:
 
 | Property | Meaning |

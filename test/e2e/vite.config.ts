@@ -7,7 +7,7 @@ import pdfPreviewAssets from '../../build/pdfPreviewAssets';
 
 // Deliberately independent of the app's .env and production Supabase configuration.
 export default defineConfig({
-  root: fileURLToPath(new URL('../..', import.meta.url)), base: '/cv-builder/', envDir: false, envPrefix: [],
+  root: fileURLToPath(new URL('../..', import.meta.url)), base: '/cv-harness/', envDir: false, envPrefix: [],
   define: { __SUPABASE_CONFIGURATION__: JSON.stringify({ status: 'missing' }) },
   plugins: [vue(), responsivePdfRenderer(), vectorFontDecompression(), pdfPreviewAssets()],
   resolve: { alias: [{ find: /^vue$/, replacement: 'vue/dist/vue.runtime.esm-bundler.js' }] },

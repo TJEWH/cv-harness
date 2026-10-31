@@ -82,7 +82,7 @@ export async function renderVectorPdf(snapshot: VectorSnapshot) {
     autoFirstPage: false,
     font: null,
     compress: true,
-    info: { Creator: 'CV Builder', Producer: 'CV Builder vector export' },
+    info: { Creator: 'CV Harness', Producer: 'CV Harness vector export' },
   });
   const blob = toBlob(doc as unknown as PDFKit.PDFDocument);
   // Attach a handler immediately, including when a drawing error aborts export.

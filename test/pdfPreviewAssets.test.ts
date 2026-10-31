@@ -32,16 +32,16 @@ function setup(base: string) {
 }
 
 test('PDF.js support assets use the configured base and proper content types', () => {
-  const request = setup('/cv-builder/');
-  const wasm = request('/cv-builder/pdfjs/wasm/openjpeg.wasm?version=1');
+  const request = setup('/cv-harness/');
+  const wasm = request('/cv-harness/pdfjs/wasm/openjpeg.wasm?version=1');
   assert.equal(wasm.statusCode, 200);
   assert.equal(wasm.headers.get('Content-Type'), 'application/wasm');
   assert.deepEqual(wasm.body, readFileSync(require.resolve('pdfjs-dist/wasm/openjpeg.wasm')));
-  assert.equal(request('/cv-builder/pdfjs/wasm/openjpeg_nowasm_fallback.js').headers.get('Content-Type'), 'text/javascript');
-  assert.equal(request('/cv-builder/pdfjs/standard_fonts/LiberationSans-Regular.ttf').headers.get('Content-Type'), 'font/ttf');
-  assert.equal(request('/cv-builder/pdfjs/iccs/CGATS001Compat-v2-micro.icc').headers.get('Content-Type'), 'application/vnd.iccprofile');
+  assert.equal(request('/cv-harness/pdfjs/wasm/openjpeg_nowasm_fallback.js').headers.get('Content-Type'), 'text/javascript');
+  assert.equal(request('/cv-harness/pdfjs/standard_fonts/LiberationSans-Regular.ttf').headers.get('Content-Type'), 'font/ttf');
+  assert.equal(request('/cv-harness/pdfjs/iccs/CGATS001Compat-v2-micro.icc').headers.get('Content-Type'), 'application/vnd.iccprofile');
   assert.equal(request('/pdfjs/wasm/openjpeg.wasm').passed, true);
-  const head = request('/cv-builder/pdfjs/wasm/openjpeg.wasm', 'HEAD');
+  const head = request('/cv-harness/pdfjs/wasm/openjpeg.wasm', 'HEAD');
   assert.equal(head.statusCode, 200);
   assert.equal(head.body, undefined);
   assert.equal(head.headers.get('Content-Length'), wasm.body!.length);
@@ -49,14 +49,14 @@ test('PDF.js support assets use the configured base and proper content types', (
 });
 
 test('PDF.js asset serving rejects malformed paths and cannot leave its allowlisted files', () => {
-  const request = setup('/cv-builder/');
+  const request = setup('/cv-harness/');
   for (const path of ['../package.json', '%2e%2e/package.json', 'cmaps/%2e%2e/package.json', 'wasm%5c..%5cpackage.json', '%00', '%ZZ']) {
-    const response = request(`/cv-builder/pdfjs/${path}`);
+    const response = request(`/cv-harness/pdfjs/${path}`);
     assert.equal(response.statusCode, 400, path);
     assert.equal(response.body, undefined, path);
   }
   for (const path of ['package.json', 'wasm/missing.wasm', 'cmaps//Identity-H.bcmap']) {
-    const response = request(`/cv-builder/pdfjs/${path}`);
+    const response = request(`/cv-harness/pdfjs/${path}`);
     assert.equal(response.statusCode, 404, path);
     assert.equal(response.body, undefined, path);
   }
@@ -69,10 +69,10 @@ test('production PDF.js assets preserve nested paths and match development bytes
   const generate = callable(plugin.generateBundle!);
   generate.call(context as never, {} as never, {}, false);
   assert.ok(assets.size > 100);
-  const request = setup('/cv-builder/');
+  const request = setup('/cv-harness/');
   for (const path of ['pdfjs/cmaps/Adobe-Japan1-UCS2.bcmap', 'pdfjs/standard_fonts/LiberationSans-Regular.ttf', 'pdfjs/wasm/openjpeg.wasm', 'pdfjs/iccs/CGATS001Compat-v2-micro.icc']) {
     assert.ok(assets.has(path), path);
-    assert.deepEqual(assets.get(path), request(`/cv-builder/${path}`).body);
+    assert.deepEqual(assets.get(path), request(`/cv-harness/${path}`).body);
   }
   assert.equal(assets.has('pdfjs/package.json'), false);
 });

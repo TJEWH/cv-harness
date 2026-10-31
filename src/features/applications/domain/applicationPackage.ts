@@ -39,7 +39,7 @@ export async function composeApplicationPackage(manifest: ApplicationPackageMani
   const { PDFDocument, PDFDict, PDFName, PageSizes, pushGraphicsState, popGraphicsState, rectangle, clip, endPath } = await import('pdf-lib');
   const output = await PDFDocument.create();
   output.setTitle('Application documents');
-  output.setCreator('CV Builder');
+  output.setCreator('CV Harness');
   const documents: PackageCompositionResult['documents'] = [];
   const attachmentPages: PDFPage[] = [];
   let cvSize: [number, number] | undefined;

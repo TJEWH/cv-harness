@@ -76,8 +76,9 @@ export function buildApplicationDeadlineCalendar(
     ? `${german ? 'Angenommene Frist' : 'Assumed deadline'}: ${deadline.date} 23:59 (${deadline.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone})` : '';
   const description = [summary, assumedDeadline, institution, reference ? `${german ? 'Referenz' : 'Reference'}: ${reference}` : ''].filter(Boolean).join('\n');
   const url = safeWebUrl(context.application_url) || safeWebUrl(context.official_url);
+  // Keep event identity stable across product renames to avoid duplicate calendar entries.
   const lines = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//CV Builder//Application Deadlines//EN', 'CALSCALE:GREGORIAN',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//CV Harness//Application Deadlines//EN', 'CALSCALE:GREGORIAN',
     'BEGIN:VEVENT', `UID:${escapeText(`application-deadline-${application.id}@cv-builder`)}`, `DTSTAMP:${calendarTimestamp(now)}`,
   ];
   lines.push(`DTSTART:${calendarTimestamp(timestamp)}`);

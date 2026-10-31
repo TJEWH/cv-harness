@@ -19,7 +19,7 @@ try {
     });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
-    const goto = name => page.goto(`http://127.0.0.1:5177/cv-builder/test/browser/${name}.html`, { waitUntil: 'networkidle' });
+    const goto = name => page.goto(`http://127.0.0.1:5177/cv-harness/test/browser/${name}.html`, { waitUntil: 'networkidle' });
     const fits = async () => assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'no horizontal overflow');
     const openHelp = async button => {
       await button.scrollIntoViewIfNeeded();

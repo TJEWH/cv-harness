@@ -53,7 +53,7 @@ The owner starts each application with copies from a reusable document library a
 
 ## Brand Commitments
 
-The owner chose **CV Harness** as the product name. Existing UI, repository metadata, and documentation still use the legacy name **CV Builder**. This document records the chosen name; it does not rename those references.
+The product name is **CV Harness**, with the repository and published path `cv-harness`. Active UI, exports, package metadata and documentation use this name. Historical protocol artifacts and persistent storage identifiers retain compatibility names so saved files, sessions and existing calendar events keep working.
 
 The initial product brief specified no voice, visual identity, or other aesthetic constraints.
 

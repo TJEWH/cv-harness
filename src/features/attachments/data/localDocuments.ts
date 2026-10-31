@@ -18,6 +18,7 @@ let databasePromise: Promise<IDBDatabase> | undefined;
 function database(): Promise<IDBDatabase> {
   if (!globalThis.indexedDB) return Promise.reject(new Error('Browser document storage is unavailable. Enable browser storage to keep documents locally.'));
   if (!databasePromise) databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
+    // Preserve the physical database name so existing local files remain available.
     const request = indexedDB.open('cv-builder-local-documents', 1);
     request.onupgradeneeded = () => {
       const store = request.result.createObjectStore('records', { keyPath: 'key' });

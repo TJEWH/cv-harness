@@ -15,9 +15,9 @@ catch (error) {
   if (!process.env.PLAYWRIGHT_MODULE_PATH) throw new Error('Use an installed Playwright runtime through PLAYWRIGHT_MODULE_PATH.', { cause: error });
   playwright = require(process.env.PLAYWRIGHT_MODULE_PATH);
 }
-const url = new URL(process.env.OPPORTUNITY_FEEDBACK_FIXTURE_URL ?? 'http://localhost:5177/cv-builder/test/browser/opportunity-feedback.html');
+const url = new URL(process.env.OPPORTUNITY_FEEDBACK_FIXTURE_URL ?? 'http://localhost:5177/cv-harness/test/browser/opportunity-feedback.html');
 assert.ok(['localhost', '127.0.0.1'].includes(url.hostname), 'Browser acceptance may use only a local synthetic fixture.');
-assert.ok(['/cv-builder/test/browser/opportunity-feedback.html', '/test/browser/opportunity-feedback.html'].includes(url.pathname));
+assert.ok(['/cv-harness/test/browser/opportunity-feedback.html', '/test/browser/opportunity-feedback.html'].includes(url.pathname));
 const screenshotDirectory = join(tmpdir(), 'cv-opportunity-feedback-browser');
 await mkdir(screenshotDirectory, { recursive: true });
 const browser = await playwright.chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });

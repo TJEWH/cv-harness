@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite (default: [localhost:5173/cv-builder/](http://localhost:5173/cv-builder/)). You can leave Supabase unconfigured for local CV editing and PDF export.
+Open the URL printed by Vite (default: [localhost:5173/cv-harness/](http://localhost:5173/cv-harness/)). You can leave Supabase unconfigured for local CV editing and PDF export.
 
 ## Workspaces
 
@@ -118,7 +118,7 @@ The PDF renderer uses build-time adapters for pinned dependencies. After changin
 
 The [GitHub Actions workflow](.github/workflows/deploy.yml) builds and deploys to GitHub Pages after a push to `main`. Configure Pages to use **GitHub Actions** and supply the public Supabase build variables through the `phd-workflow` GitHub environment.
 
-The build targets `/cv-builder/` and writes to `dist/`. For another static host, run `npm run build` and serve that directory. Change `base` in [`vite.config.ts`](vite.config.ts) to match the hosting path, using `/` for a domain root.
+The build targets `/cv-harness/` and writes to `dist/`. For another static host, run `npm run build` and serve that directory. Change `base` in [`vite.config.ts`](vite.config.ts) to match the hosting path, using `/` for a domain root.
 
 ## Documentation
 

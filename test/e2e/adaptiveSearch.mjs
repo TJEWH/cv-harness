@@ -16,7 +16,7 @@ try {
       external.push(route.request().url()); return route.abort();
     });
     const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
-    await page.goto('http://127.0.0.1:5177/cv-builder/test/browser/adaptive-search.html', { waitUntil: 'networkidle' });
+    await page.goto('http://127.0.0.1:5177/cv-harness/test/browser/adaptive-search.html', { waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: /^Meta research/u }).waitFor();
     await page.getByText('Daily schedule', { exact: true }).click();
     await page.evaluate(() => window.adaptiveFixture.holdRequest());
@@ -151,7 +151,7 @@ try {
     console.log(`PASS setup, draft recovery, feedback/source controls, exact preview and English/German keyboard UI at ${width}px`);
   }
   const context = await browser.newContext(); const page = await context.newPage();
-  await page.goto('http://127.0.0.1:5177/cv-builder/test/browser/adaptive-search.html?readinessFailure=1', { waitUntil: 'networkidle' });
+  await page.goto('http://127.0.0.1:5177/cv-harness/test/browser/adaptive-search.html?readinessFailure=1', { waitUntil: 'networkidle' });
   await page.getByRole('button', { name: 'Retry save', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Copy replace prompt', exact: true }).click();
   assert.equal(await page.evaluate(() => window.adaptiveFixture.snapshot().copied), '');
@@ -161,7 +161,7 @@ try {
   await context.close();
   console.log('PASS unknown readiness blocks copying until successful reload');
   const legacyContext = await browser.newContext(); const legacyPage = await legacyContext.newPage();
-  await legacyPage.goto('http://127.0.0.1:5177/cv-builder/test/browser/adaptive-search.html?breadthUpgradeMissing=1', { waitUntil: 'networkidle' });
+  await legacyPage.goto('http://127.0.0.1:5177/cv-harness/test/browser/adaptive-search.html?breadthUpgradeMissing=1', { waitUntil: 'networkidle' });
   await legacyPage.getByRole('heading', { name: 'Adaptive feedback', exact: true }).waitFor();
   assert.equal(await legacyPage.getByRole('slider', { name: 'Search breadth', exact: true }).isDisabled(), true);
   const upgradeInfo = legacyPage.getByRole('button', { name: 'Information: Search breadth', exact: true });

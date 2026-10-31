@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
-const base = new URL(process.env.MANUAL_PAST_FIXTURE_URL || 'http://127.0.0.1:5177/cv-builder/test/browser/job-workspace.html?flow=manual-past');
+const base = new URL(process.env.MANUAL_PAST_FIXTURE_URL || 'http://127.0.0.1:5177/cv-harness/test/browser/job-workspace.html?flow=manual-past');
 assert(['localhost', '127.0.0.1'].includes(base.hostname));
-assert(['/cv-builder/test/browser/job-workspace.html', '/test/browser/job-workspace.html'].includes(base.pathname));
+assert(['/cv-harness/test/browser/job-workspace.html', '/test/browser/job-workspace.html'].includes(base.pathname));
 assert.equal(base.searchParams.get('flow'), 'manual-past');
 const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
 try {

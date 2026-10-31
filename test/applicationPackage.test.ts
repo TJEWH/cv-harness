@@ -48,6 +48,7 @@ test('composition follows manifest order, fits attachments to CV size, preserves
   const composed = await PDFDocument.load(await result.blob.arrayBuffer());
   assert.deepEqual(composed.getPages().map((page) => page.getWidth()), [410, 410, 420]);
   assert.equal(result.pageCount, 3);
+  assert.equal(composed.getCreator(), 'CV Harness');
   assert.equal(letterCalls, 0);
   assert.deepEqual(result.documents.map(({ firstPage, pageCount }) => [firstPage, pageCount]), [[1, 1], [2, 2]]);
   for (const page of composed.getPages()) assert.ok(page.node.Resources()?.get(PDFName.of('Font')), 'Original vector/text resources must remain, without rasterizing PDF pages');
