@@ -8,16 +8,16 @@ The additive migration is `supabase/opportunity_feedback_signals.sql`. It extend
 
 | Field | Meaning |
 | --- | --- |
-| `interest_rating` | Optional finite 0–10 numeric user rating, including zero and decimals |
-| `interest_reasons` | At most 16 explicit structured reason tags; defaults to `[]` |
+| `interest_rating` | Legacy finite 0–10 numeric override; retained in storage and historical v1 packets, ignored by current v2 feedback |
+| `interest_reasons` | At most 24 explicit structured reason tags under v2; defaults to `[]` |
 | `feedback_excluded` | Suppresses the adaptive score and gap; defaults to false |
 | `feedback_revision` | Server-maintained meaningful explicit feedback revision; legacy rows start at 0 |
 | `feedback_updated_at` | Server-maintained meaningful explicit feedback time; legacy time stays unknown |
 | `prediction_baseline` | Optional frozen, independently proven historical prediction |
 
-Reason categories are `topic`, `method`, `hardware`, `location`, `funding`, `timing`, and `other`, with `positive` or `negative` polarity. Only topic/method tags may carry an explicit target of 1–120 Unicode code points. Targets trim surrounding ASCII spaces and reject control characters. Tags form a normalized, deterministically ordered set. Private comments are neither parsed for targets nor included in metric outputs.
+Current reason categories are `topic`, `method`, `background_fit`, `project_context`, `hardware` (Tools+hardware), `location`, `funding` (Salary), `timing`, and `other`, with `positive` or `negative` polarity. `requirements` and `availability` are negative-only. Stored `hardware` and `funding` keys remain compatible with saved reasons. Only topic/method tags may carry an explicit target of 1–120 Unicode code points. Targets trim surrounding ASCII spaces and reject control characters. Tags form a normalized, deterministically ordered set. Private comments are neither parsed for targets nor included in metric outputs.
 
-`opportunity-interest-v1` returns both score and origin: explicit rating first, then strong interest 8 / interested 6 / not interested 2, then confirmed submission 9, otherwise null. These are product conventions. They never replace canonical AI assessments. An excluded item has no score or gap.
+`opportunity-interest-v2` returns both score and origin: confirmed submission 9.5 first, then an existing application 9, then Very high 9 / High 8 / Medium 6 / Low 2, otherwise null. Current feedback ignores the retired numeric override; immutable v1 packets keep their original scores and origins. The upgrade is `supabase/opportunity_interest_v2.sql`. These are product conventions. They never replace canonical AI assessments. An excluded item has no score or gap.
 
 Confirmed submission requires a valid `submitted_at`, exact current `submitted` status, or exact `submitted` history entry. Later employer statuses alone do not establish submission. An explicit submitted status with an unknown time still confirms submission, while its time remains null. Removing or correcting actual evidence recomputes the fallback. The existing UI grouping helper remains unchanged.
 
@@ -33,7 +33,7 @@ Runtime roles cannot write a baseline or forge revision/time. A reviewed managem
 
 ## Existing integration and privacy
 
-The optional TypeScript fields support clients awaiting the additive migration. Existing review/comment/view RPCs remain intact. Stale view replies preserve newer explicit feedback. Application removal keeps its existing category-reset behavior and, on upgraded databases, reads back the resulting owner-scoped review revision. If that read fails, deletion still succeeds and the stale cached outcome is withheld until refresh.
+The optional TypeScript fields support clients awaiting the additive migration. Existing review/comment/view RPCs remain intact. Stale view replies preserve newer explicit feedback. Application creation and removal preserve every saved opportunity review field. While an application exists, Opportunities and Review display a disabled Very high selection. Removing it restores the saved selection and categorical feedback.
 
 Existing review grants and RLS policies are unchanged. New helpers use `security invoker`, fixed empty search paths, and have no runtime-role EXECUTE grant. `private.opportunity_interest_metric(owner, opportunity)` is an internal reference implementation, not a new runner or public feedback API. No UI, approved text sharing, compiler, adaptive search plan, scheduled task or deployment is included. Canonical opportunity v5 JSON, private application snapshots and CVs are unchanged.
 

@@ -18,6 +18,10 @@ Then apply [`opportunity_evaluation.sql`](opportunity_evaluation.sql) before rol
 
 Apply [`opportunity_feedback_defaults.sql`](opportunity_feedback_defaults.sql) after the evaluation upgrade. It includes feedback by default, with one per-opportunity exclusion control, and removes the retired search-level sharing setting, consent metadata and APIs. It preserves saved reviews and independent adaptation, pause, source-reuse and runner controls.
 
+Apply [`opportunity_interest_v2.sql`](opportunity_interest_v2.sql) after the current feedback/defaults, payload and schedule upgrades, before rolling out the Very high interest choice. It adds the choice and evaluation reasons, derives current feedback as Low 2, Medium 6, High 8, Very high/application 9 and confirmed submission 9.5, and retires numeric overrides from current scoring. Existing reviews, application records and historical packets remain intact; deleting an application reveals its saved opportunity choice again. The upgrade preserves owner permissions and marks current feedback/plans for refresh at the next authorized run. This upgrade was installed in **phd-workflow** on **2026-10-31** as migration `20261031222038` (`opportunity_interest_v2`). Live verification found zero scoring or origin mismatches across all 202 review/application outcomes; all 202 reviews and 32 applications, historical snapshots and function permissions retained identical checksums. Security advisors introduced no new findings.
+
+Run `node --import tsx --test test/opportunityFeedback/interestV2.test.ts` against the labelled, network-disabled fixture described in [the feedback test guide](../docs/opportunity-feedback-signals.md). It verifies the upgrade preserves records, snapshots and grants; application creation/submission/removal restores the saved choice; both current implementations emit identical packet content; and dashboard/quality scores use the same convention.
+
 These upgrades were installed in **phd-workflow** on **2026-10-30**:
 
 | Upgrade | Installed migration |
