@@ -1,6 +1,6 @@
 # Adaptive search release
 
-AF-01–AF-11 extend the single shared Meta research editor with owner-scoped feedback, reusable sources, execution history and a separately versioned runner. The feature is implemented in the repository. This release work does not install it in Supabase, replace a ChatGPT task, or establish unattended execution.
+AF-01–AF-11 extend the single shared Meta research editor with owner-scoped feedback, reusable sources, execution history and a separately versioned runner. Installation and task activation are separate operations; source verification alone does not establish unattended execution.
 
 The specification reference is commit `f475d364fb16508b4ef8e1568b9d72fd80e3ddf2`; the complete AF-11 implementation before the breadth upgrade is `fbbe4c2a28a9a776e6040b92a9af2c28876efb21`. Current source hashes and installation order are recorded in [`supabase/adaptive-search-release.json`](../supabase/adaptive-search-release.json). That manifest is source evidence, not a record of production deployment.
 
@@ -57,6 +57,31 @@ Append `opportunity_feedback_defaults.sql` after the evaluation upgrade. It remo
 
 The one shared opportunity exclusion controls evaluation text and structured feedback. Text is bounded to the first 600 Unicode codepoints and includes source length and truncation metadata. Content safeguards inspect the full source before excerpting. Release and runner authorization remain required for execution. Feedback previews and snapshots include eligible examples independently of adaptation being enabled or paused. No synthetic approval timestamp is generated, and no raw technical note is exported. Tests use only isolated synthetic rows.
 
+## Dashboard interpretation and runtime limits
+
+The dashboard distinguishes the confirmed legacy/adaptive task mode from authorization and adaptation settings. Settings apply to an active adaptive run; changing them does not upgrade a legacy task. Legacy runs can save queries and verified opportunities without creating adaptive query plans, per-check execution records, reusable-source entries or preference suggestions. Empty adaptive tables are not evidence that research did not run. Keep the feedback preview, task setup and actual run history available; hide empty advanced panels while preserving retained drafts and known omissions.
+
+The additive `opportunity_search_adaptive_payload_contract.sql` upgrade runs after the current canonical and feedback-default contracts. It publishes complete batch, execution-report and completion instructions through startup `protocol_text`; the scheduled prompt points to those instructions without duplicating them. Exact PostgreSQL 17 function fingerprints guard installation. Existing pinned bundles and their hashes remain unchanged, and the validator accepts only the previous reviewed protocol or the current one. A scheduled run still needs its own execution verification.
+
+Two optional learning paths remain limited:
+
+- Useful-source retention runs at completion and requires qualifying interest or submission already present; later ratings do not retry that decision. The initial explicit institution listings and feedback-based query priorities work independently.
+- Deferred/awaiting proposals do not promote automatically, and source/query proposals have no application path. An inert proposal must not be presented as an active preference.
+
+Authorization requires the management release to be bound to the exact project. An absent binding is an administrator setup prerequisite, not a retryable save failure. The dashboard keeps authorization unavailable for known release/project/capability blockers, preserves revocation, and rechecks configuration on Refresh. Ordinary settings changes remain separate from authorization and task replacement.
+
+A separately verified partial result remains saved even if the run later fails. The dashboard currently receives run counts and coverage, but not the legacy diagnostic notes; an unexplained failed run needs inspection of its recorded summary. Do not infer a database outage from that lifecycle label.
+
+Legacy runs without execution reports show unknown feedback/preference revisions and structured backlog. Their zero failed-check and incomplete-source counts reflect absent execution records, not proven coverage. Deadline counts also require discovery records, and notification delivery has no independent receipt.
+
+Task replacement is a one-time activation step. Each new adaptive run loads current saved feedback and approved preferences; rating an opportunity does not require copying another setup prompt. Future changes to the scheduled task's fixed instructions may require another replacement.
+
+### Activation status on 2026-10-31
+
+The payload-contract upgrade was deployed after isolated database tests, independent review and a rolled-back preflight against the saved search. Project release configuration, owner runner authorization, query adaptation and useful-source retention are enabled.
+
+The setup acknowledgement now records the existing task as `adaptive-batch-v1`, confirmed at 21:08 Europe/Tirane, with no migration request pending. The daily 09:00 schedule, research profile and existing catalogue/run records were preserved; the preflight created no retained research records. This acknowledgement is a task-tool attestation rather than independent scheduler inspection. No adaptive research run had executed at the time of this check, so unattended execution and notification delivery remain unverified. The 09:00 failed run shown in the dashboard predates activation and remains legacy history.
+
 ## Local release gate
 
 With installed dependencies and the documented PostgreSQL 17.6 fixture:
@@ -68,6 +93,8 @@ docker run --detach --name cv-adaptive-feedback-test \
 npm run adaptive:release:check
 npm run test:adaptive-search-release
 npm run test:opportunity-feedback-defaults
+npm run test:adaptive-search-payload-contract
+npm run test:adaptive-search-dashboard-settings
 npm run typecheck
 npm test
 npm run build
