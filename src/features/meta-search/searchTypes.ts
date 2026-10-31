@@ -19,6 +19,8 @@ export interface SearchTemplate {
   userPrompt: string;
   dailyTime: string;
   timezone: string;
+  /** The saved row's schedule remains authoritative when importing from the cloud. */
+  cadence?: SearchScheduleCadence;
   cloud?: SearchTemplateCloudBinding;
   /** Recovery-only retired configuration; excluded from search prompts and letter context. */
   legacySearchArchive?: string;
@@ -34,6 +36,7 @@ export interface SearchCloudSchedule {
   timezone: string;
   runImmediately: boolean;
 }
+export type SearchScheduleCadence = Omit<SearchCloudSchedule, 'time' | 'timezone'>;
 export interface SearchCloudTemplate {
   id: string;
   user_id: string;

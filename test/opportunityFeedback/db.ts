@@ -77,7 +77,7 @@ export function reset(options: { searchProtocol?: boolean } = {}) {
 
 /** Explicit latest-contract fixture upgrade; prefix suites keep their historical setup. */
 export function upgradeCurrentFeedbackContract(beforeDefaults?: () => void) {
-  for (const name of ['opportunity_description.sql', 'application_removal_review.sql', 'opportunity_evaluation.sql', 'opportunity_feedback_defaults.sql', 'opportunity_search_adaptive_payload_contract.sql']) {
+  for (const name of ['opportunity_description.sql', 'application_removal_review.sql', 'opportunity_evaluation.sql', 'opportunity_feedback_defaults.sql', 'opportunity_search_adaptive_payload_contract.sql', 'opportunity_search_schedule_intervals.sql']) {
     if (name === 'opportunity_feedback_defaults.sql') beforeDefaults?.();
     sql(file(`../../supabase/${name}`));
   }

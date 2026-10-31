@@ -58,11 +58,11 @@ export function buildAdaptiveSearchReleaseManifest() {
     bootstrap_provenance: bootstrap,
     existing_workspace_upgrade: ADAPTIVE_RELEASE_MIGRATIONS.map((name, index) => ({ order: index + 1, ...artifact(`supabase/${name}`),
       migration_only: true, scheduler_operations: false })),
-    current_contract_upgrades: ['opportunity_description.sql', 'application_removal_review.sql', 'opportunity_evaluation.sql', 'opportunity_feedback_defaults.sql', 'opportunity_search_adaptive_payload_contract.sql']
+    current_contract_upgrades: ['opportunity_description.sql', 'application_removal_review.sql', 'opportunity_evaluation.sql', 'opportunity_feedback_defaults.sql', 'opportunity_search_adaptive_payload_contract.sql', 'opportunity_search_schedule_intervals.sql']
       .map(name => ({ ...artifact(`supabase/${name}`), migration_only: true, scheduler_operations: false })),
     installed_definition_prerequisites: { encoding: 'sha256-utf8-pg_get_functiondef-pg17-v1', tested_postgres_major: 17, functions: prerequisites },
     runner_artifacts: ['src/features/meta-search/domain/adaptiveSearchProtocol.ts','src/features/meta-search/domain/adaptiveSearchTask.ts',
-      'src/features/meta-search/domain/adaptiveSearchStartup.ts','src/features/opportunities/domain/opportunityResultSchema.ts','supabase/opportunity_schema_v6.json',
+      'src/features/meta-search/domain/adaptiveSearchStartup.ts','src/features/meta-search/domain/searchSchedule.ts','src/features/meta-search/domain/searchPrompts.ts','src/features/meta-search/searchTypes.ts','src/features/meta-search/data/useSearchTemplates.ts','src/features/opportunities/domain/opportunityResultSchema.ts','supabase/opportunity_schema_v6.json',
       'src/features/opportunities/domain/opportunityFeedback.ts','src/features/opportunities/domain/opportunityFeedbackPrivacy.ts','src/features/opportunities/domain/opportunityTopics.ts','src/features/meta-search/domain/adaptiveFeedbackSnapshots.ts',
       'src/features/meta-search/domain/adaptiveSearchPlans.ts','src/features/meta-search/domain/adaptiveSearchPlanner.ts','src/features/meta-search/domain/adaptiveSearchSources.ts',
       'src/features/meta-search/domain/adaptiveSearchQuality.ts','src/features/meta-search/composables/adaptiveSearchDashboard.ts','src/features/meta-search/data/searchTemplateCloud.ts',

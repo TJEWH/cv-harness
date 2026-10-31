@@ -1,5 +1,6 @@
 import { mergeRecordChanges } from '../../../shared/lib/mergeRecordChanges';
 import type { SearchTemplate } from '../searchTypes';
+import { readSearchScheduleCadence } from '../domain/searchSchedule';
 
 export interface StorageAdapter { getItem(key: string): string | null; setItem(key: string, value: string): void }
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -75,6 +76,8 @@ export function readSearchTemplate(input: unknown): SearchTemplate {
   try { new Intl.DateTimeFormat('en', { timeZone: timezone }).format(); } catch { throw new Error('Choose a valid IANA timezone.'); }
   const updatedAt = textField(value, 'updatedAt', 100);
   if (!Number.isFinite(Date.parse(updatedAt))) throw new Error('Invalid meta-search update date.');
+  const cadence = value.cadence === undefined ? undefined : readSearchScheduleCadence(value.cadence);
+  const customCadence = cadence && !(cadence.frequency === 'daily' && cadence.intervalHours === 1 && !cadence.weekdays.length && cadence.runImmediately);
   let cloud: SearchTemplate['cloud'];
   if (value.cloud !== undefined) {
     if (!isObject(value.cloud) || typeof value.cloud.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.cloud.id)
@@ -84,7 +87,8 @@ export function readSearchTemplate(input: unknown): SearchTemplate {
   return { id, name: name.trim(), revision: Number(value.revision), updatedAt, active: value.active,
     opportunityDescription: textField(value, 'opportunityDescription'), researchInterests: textField(value, 'researchInterests'),
     fundingConditions: textField(value, 'fundingConditions'), locationPreferences: value.locationPreferences === undefined ? '' : textField(value, 'locationPreferences'),
-    userPrompt: textField(value, 'userPrompt'), dailyTime, timezone, ...(cloud ? { cloud } : {}),
+    userPrompt: textField(value, 'userPrompt'), dailyTime, timezone,
+    ...(customCadence ? { cadence } : {}), ...(cloud ? { cloud } : {}),
     ...(value.legacySearchArchive !== undefined ? { legacySearchArchive: textField(value, 'legacySearchArchive', 2000000) } : {}) };
 }
 

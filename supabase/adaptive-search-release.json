@@ -251,6 +251,12 @@
       "sha256": "63c0ca36f6c48875e7ea830e54362ca91f8bfc209a5cbdba8acf222a5e6d1f7e",
       "migration_only": true,
       "scheduler_operations": false
+    },
+    {
+      "path": "supabase/opportunity_search_schedule_intervals.sql",
+      "sha256": "ef42accfbf3f8b785c4c9941b484af775a300e63e5d872b617094986ea914c5c",
+      "migration_only": true,
+      "scheduler_operations": false
     }
   ],
   "installed_definition_prerequisites": {
@@ -313,6 +319,22 @@
       "sha256": "360993a9c8e347562312713a5a991c4ecc1c2835439346536e41c0fcc20453c9"
     },
     {
+      "path": "src/features/meta-search/domain/searchSchedule.ts",
+      "sha256": "faf331da0cb0605edd8511fc4b4f60aad19307ebae3f5bb39ec3a6d4a872f088"
+    },
+    {
+      "path": "src/features/meta-search/domain/searchPrompts.ts",
+      "sha256": "4ad866f48995e24b66ec5cf7026e3eb3294f67437d7113c30cc91bad8810af85"
+    },
+    {
+      "path": "src/features/meta-search/searchTypes.ts",
+      "sha256": "f3da1bfab7768eebce3414bb4f75f6fec433d7d3034763bc4737f0c537d7cd16"
+    },
+    {
+      "path": "src/features/meta-search/data/useSearchTemplates.ts",
+      "sha256": "f21da36a91d517c5268e4ee79e25698f37df0787d8266a74196116b0ef2e5a4a"
+    },
+    {
       "path": "src/features/opportunities/domain/opportunityResultSchema.ts",
       "sha256": "10c19a48e5a6118a05005387c15d093c4176b053303f639af11e4f5c627b9648"
     },
@@ -358,7 +380,7 @@
     },
     {
       "path": "src/features/meta-search/data/searchTemplateCloud.ts",
-      "sha256": "21b480b8abe963737229070632aa824fdd7273922ba277ad1a91581f303fe222"
+      "sha256": "ee9b8b57cc4e0e3a1d3c6d2cd7cac39cde3d5b46322e71471c8b655e9c0836cd"
     },
     {
       "path": "src/documents/letter/searchLetterContext.ts",

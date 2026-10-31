@@ -33,7 +33,8 @@
     "adaptive:release:check": "node --import tsx scripts/adaptiveSearchRelease.ts --check",
     "test:adaptive-search-release": "node --import tsx --test test/opportunityFeedback/release.test.ts",
     "test:adaptive-search-dashboard-settings": "node --import tsx --test test/opportunityFeedback/dashboardSettings.test.ts",
-    "test:adaptive-search-payload-contract": "node --import tsx --test test/opportunityFeedback/payloadContract.test.ts"
+    "test:adaptive-search-payload-contract": "node --import tsx --test test/opportunityFeedback/payloadContract.test.ts",
+    "test:search-schedule-intervals": "node --import tsx --test test/opportunityFeedback/scheduleIntervals.test.ts"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.1.0",
