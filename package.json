@@ -8,10 +8,8 @@
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
     "test": "tsx --test test/*.test.ts",
-    "test:opportunity-merge": "tsx --test test/opportunityMerge/merge.test.ts",
     "test:opportunity-canonical": "tsx --test test/opportunityCanonical/canonical.test.ts",
     "test:opportunity-feedback": "tsx --test test/opportunityFeedback/database.test.ts",
-    "test:opportunity-feedback-sharing": "tsx --test test/opportunityFeedback/sharing.test.ts",
     "test:opportunity-feedback-defaults": "node --import tsx --test test/opportunityFeedback/defaults.test.ts",
     "test:adaptive-feedback-snapshots": "tsx --test test/opportunityFeedback/snapshots.test.ts",
     "test:adaptive-search-plans": "tsx --test test/opportunityFeedback/plans.test.ts",
@@ -34,7 +32,11 @@
     "test:adaptive-search-release": "node --import tsx --test test/opportunityFeedback/release.test.ts",
     "test:adaptive-search-dashboard-settings": "node --import tsx --test test/opportunityFeedback/dashboardSettings.test.ts",
     "test:adaptive-search-payload-contract": "node --import tsx --test test/opportunityFeedback/payloadContract.test.ts",
-    "test:search-schedule-intervals": "node --import tsx --test test/opportunityFeedback/scheduleIntervals.test.ts"
+    "test:search-schedule-intervals": "node --import tsx --test test/opportunityFeedback/scheduleIntervals.test.ts",
+    "db:schema:write": "node --import tsx scripts/databaseSchema.ts --write",
+    "db:schema:check": "node --import tsx scripts/databaseSchema.ts --check",
+    "adaptive:release:write": "node --import tsx scripts/adaptiveSearchRelease.ts --write",
+    "test:database": "node --import tsx --test --test-concurrency=1 test/opportunityCanonical/*.test.ts test/opportunityFeedback/*.test.ts"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.1.0",

@@ -71,12 +71,14 @@ test('literal SQL parsing supports quotes, backslashes, Unicode and SQL-looking 
     `select private.save_refinement_proposal('${fixture.request.requestId}'::uuid, '${stableId('proposal')}'::uuid, $payload$${payload}$payload$::jsonb) as result;`]) {
     assert.equal(parseProtocolSql(sql).values[2], payload);
   }
-  assert.equal(parseProtocolSql(refinementSql('resolve', ["  APP-Obrien'\\x  ", 'cv'])).values[0], "  APP-Obrien'\\x  ");
 });
 
 for (const sql of [
   'select pg_get_functiondef(1);', 'select * from information_schema.tables;', 'select * from pg_proc;',
   "select public.resolve_application_reference('APP-123');", "select private.read_refinement_request((select id from public.applications));",
+  `select private.read_refinement_request('${stableId('request')}'::uuid);`,
+  `select private.read_refinement_protocol('${stableId('request')}'::uuid, 'cv');`,
+  "select private.resolve_application_reference('APP-123', 'cv');",
   `select private.read_refinement_request('${stableId('request')}'::uuid); SELECT 1;`,
   `select private.read_refinement_request('${stableId('request')}'::uuid) from public.applications;`,
   "set role postgres;", "select private.resolve_application_reference('APP-123') || current_user;",

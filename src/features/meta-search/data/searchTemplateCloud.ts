@@ -9,7 +9,6 @@ import { searchCadenceFromCloud, searchScheduleFromTemplate } from '../domain/se
 export { isSearchTemplateSaved } from '../domain/searchPrompts';
 export type { SearchCloudTemplate } from '../searchTypes';
 
-const LEGACY_PAYLOAD_MARKER = 'CV Harness meta-search context v1\n';
 const SHARED_PAYLOAD_MARKER = 'CV Harness shared-search intent v2\n';
 export const SEARCH_META_SEARCH_PAYLOAD_MAX_BYTES = 512 * 1024;
 const stable = (value: unknown): string => Array.isArray(value) ? `[${value.map(stable).join(',')}]` : value && typeof value === 'object'
@@ -39,12 +38,23 @@ export function searchTemplateCloudSchedule(input: SearchTemplate): SearchCloudS
   const template = readSearchTemplate(input);
   return searchScheduleFromTemplate(template);
 }
+function readMetaSearchDocument(value: unknown): SearchMetaSearchDocument {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('The saved search uses an unsupported meta-search document.');
+  const document = value as SearchMetaSearchDocument;
+  if (document.version !== 1 || typeof document.active !== 'boolean' || !isSharedSearchTemplate(document.editor)
+    || [document.systemPrompt, document.userPrompt, document.recurringPrompt].some(prompt => typeof prompt !== 'string')) {
+    throw new Error('The saved search uses an unsupported meta-search document.');
+  }
+  readSearchTemplate(document.editor);
+  return document;
+}
 function asCloudTemplate(value: unknown, userId: string): SearchCloudTemplate {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('The saved search response is invalid.');
   const row = value as SearchCloudTemplate;
   if (row.user_id !== userId || typeof row.id !== 'string' || typeof row.name !== 'string' || !Number.isInteger(row.revision) || row.revision < 1
     || !row.criteria || typeof row.criteria !== 'object' || !row.schedule || typeof row.schedule !== 'object'
     || SEARCH_CRITERIA_KEYS.some(key => row.criteria[key] !== undefined && typeof row.criteria[key] !== 'string')) throw new Error('The saved search does not match the signed-in owner.');
+  readMetaSearchDocument(row.meta_search);
   return row;
 }
 export async function listCloudSearchTemplates(client: SupabaseClient, userId: string): Promise<SearchCloudTemplate[]> {
@@ -54,37 +64,11 @@ export async function listCloudSearchTemplates(client: SupabaseClient, userId: s
   return data.map(item => asCloudTemplate(item, userId));
 }
 export function importCloudSearchTemplate(row: SearchCloudTemplate): SearchTemplate {
-  if (row.meta_search?.version === 1) {
-    const editor = row.meta_search.editor;
-    const template = readSearchTemplate({ ...editor, name: row.name, dailyTime: row.schedule.time, timezone: row.schedule.timezone,
-      cadence: searchCadenceFromCloud(row.schedule), cloud: undefined });
-    const currentShape = isSharedSearchTemplate(editor) && row.meta_search.active === true && template.active === true;
-    // A converted profile document needs a committed save so the complete prompts
-    // and criteria match its new shared representation before schedule replacement.
-    return { ...template, active: true, cloud: { id: row.id, revision: row.revision, contentKey: currentShape ? searchTemplateContentKey(template) : '' } };
-  }
-  let context: Record<string, unknown> | null = null;
-  let sharedActive: boolean | undefined;
-  if (row.criteria.fitAndExclusions?.startsWith(SHARED_PAYLOAD_MARKER)) {
-    const marker = JSON.parse(row.criteria.fitAndExclusions.slice(SHARED_PAYLOAD_MARKER.length).split('\n')[0]!);
-    if (marker.version !== 2 || typeof marker.active !== 'boolean') throw new Error('This saved shared-search intent is unsupported.');
-    sharedActive = marker.active;
-  }
-  if (row.criteria.fitAndExclusions?.startsWith(LEGACY_PAYLOAD_MARKER)) {
-    const parsed = JSON.parse(row.criteria.fitAndExclusions.slice(LEGACY_PAYLOAD_MARKER.length));
-    if (parsed.version !== 1) throw new Error('This saved meta-search context version is unsupported.');
-    context = parsed;
-  }
-  const common = { id: row.id, name: row.name, revision: row.revision, updatedAt: row.updated_at,
-    locationPreferences: row.criteria.locationsAndLanguages || '', dailyTime: row.schedule.time, timezone: row.schedule.timezone,
-    cadence: searchCadenceFromCloud(row.schedule) };
-  const template = context ? readSearchTemplate({ ...common, professionalContext: context.professionalContext ?? '',
-    researchInterests: context.researchInterests ?? '', profiles: context.profiles ?? [], userPrompt: row.criteria.researchAndReporting || '' })
-    : readSearchTemplate({ ...common, active: true,
-      opportunityDescription: ['No professional profiles are enabled. Do not run this search or recommend opportunities.', 'This shared meta search is inactive. Do not run a search or recommend opportunities.'].includes(row.criteria.opportunityTypes) ? '' : row.criteria.opportunityTypes || '', researchInterests: row.criteria.topicsAndMethods || '', fundingConditions: row.criteria.fundingAndConditions || '',
-      userPrompt: [row.criteria.researchAndReporting, row.criteria.sourcesAndQueries, sharedActive === undefined ? row.criteria.fitAndExclusions : row.criteria.fitAndExclusions.slice(SHARED_PAYLOAD_MARKER.length).split('\n').slice(1).join('\n')].filter(Boolean).join('\n\n'),
-      legacySearchArchive: JSON.stringify({ criteria: row.criteria, schedule: row.schedule }) });
-  return { ...template, active: true, cloud: { id: row.id, revision: row.revision, contentKey: '' } };
+  const document = readMetaSearchDocument(row.meta_search);
+  const template = readSearchTemplate({ ...document.editor, name: row.name, dailyTime: row.schedule.time, timezone: row.schedule.timezone,
+    cadence: searchCadenceFromCloud(row.schedule), cloud: undefined });
+  return { ...template, active: true, cloud: { id: row.id, revision: row.revision,
+    contentKey: document.active && template.active ? searchTemplateContentKey(template) : '' } };
 }
 
 async function stableCloudId(userId: string, localId: string) {

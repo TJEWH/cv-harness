@@ -20,7 +20,7 @@ begin
   plan_doc:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(
     jsonb_build_object('query_id',query_main,'query','synthetic physical sensing','text_hash',encode(sha256(convert_to('synthetic physical sensing','UTF8')),'hex'),'role','core','manual',false),
     jsonb_build_object('query_id',query_idle,'query','unexecuted synthetic query','text_hash',encode(sha256(convert_to('unexecuted synthetic query','UTF8')),'hex'),'role','core','manual',false)));
-  result:=private.publish_opportunity_search_plan(owner_a,search_a,query_anchor,plan_doc,1,0,0,protocol);plan_id:=(result->>'id')::uuid;
+  result:=private.publish_opportunity_search_plan(owner_a,search_a,query_anchor,plan_doc,1,(private.compile_opportunity_feedback_snapshot(owner_a,search_a)->>'feedback_revision')::bigint,0,protocol);plan_id:=(result->>'id')::uuid;
   perform set_config('request.jwt.claims',jsonb_build_object('sub',owner_a,'is_anonymous',false)::text,true);execute 'set local role authenticated';
   perform public.save_opportunity_search_source(search_a,registry,'{"listing_url":"https://example.invalid/Jobs","enabled":true,"pinned":true,"mandatory":true,"check_interval_hours":24}');
   execute 'reset role';
@@ -76,9 +76,9 @@ begin
   assert metrics#>'{overall,unique_discoveries}'='1'::jsonb and metrics#>'{overall,unique_encounters}'='1'::jsonb,'Metrics double-counted rediscoveries';
   assert (select q->'executions' from jsonb_array_elements(metrics->'queries') q where q->>'query_id'=query_idle::text)='0'::jsonb,'Saved query received invented execution credit';
   perform public.review_job_opportunity(opportunity,(select updated_at from public.opportunities where id=opportunity),'strong_interest');
-  perform public.save_opportunity_feedback(opportunity,'{"interest_rating":0}');
+  perform public.review_job_opportunity(opportunity,null,'not_interested');
   metrics:=public.read_opportunity_search_metrics(search_a);
-  assert metrics#>'{overall,reviewed}'='1'::jsonb and metrics#>'{overall,mean_interest}'='0'::jsonb,'Current explicit zero did not update deduplicated aggregates';
+  assert metrics#>'{overall,reviewed}'='1'::jsonb and metrics#>'{overall,mean_interest}'='2'::jsonb,'Current categorical choice did not update deduplicated aggregates';
   perform public.save_opportunity_feedback(opportunity,'{"feedback_excluded":true}');
   metrics:=public.read_opportunity_search_metrics(search_a);
   assert metrics#>'{overall,reviewed}'='0'::jsonb and metrics#>'{overall,explicit_high_interest}'='0'::jsonb and metrics#>'{overall,confirmed_submissions}'='0'::jsonb,'Excluded feedback penalized preference rates';

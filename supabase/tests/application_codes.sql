@@ -1,4 +1,4 @@
--- Run as postgres after application_codes.sql. All fixtures and test-only triggers roll back.
+-- Run as postgres against supabase/schema.sql; synthetic fixtures roll back.
 begin;
 
 -- Force the first generated code to collide with another owner's code. nextval is

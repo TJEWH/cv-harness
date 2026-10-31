@@ -1229,9 +1229,10 @@ test('history reset rejects another owner, another application, and malformed ba
   const workspace = scope.run(() => useCloudWorkspace(client, ref('account-a')))!;
   await settleUntil(() => !workspace.loading.value);
   while (invalidRows.length) {
+    const unsupportedStatus = (invalidRows[0] as { status: unknown }).status === 'unknown';
     assert.equal(await workspace.resetApplicationHistory(original.id), null);
     assert.deepEqual(workspace.applications.value, [original]);
-    assert.match(workspace.error.value, /history reset could not be confirmed/);
+    assert.match(workspace.error.value, unsupportedStatus ? /unsupported status/ : /history reset could not be confirmed/);
   }
 });
 

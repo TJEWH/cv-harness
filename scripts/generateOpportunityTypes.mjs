@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const schemaPath = new URL('../supabase/opportunity_schema_v6.json', import.meta.url);
+const schemaPath = new URL('../supabase/contracts/opportunity.schema.json', import.meta.url);
 const outputPath = new URL('../src/features/opportunities/opportunityTypes.ts', import.meta.url);
 const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
 const name = value => `Opportunity${value.split('_').map(word => word[0].toUpperCase() + word.slice(1)).join('')}`;
@@ -23,7 +23,7 @@ function typeOf(node, depth = 0, required = new Set(node.required || [])) {
 const definitions = Object.entries(schema.$defs).map(([key, value]) => `export type ${name(key)} = ${typeOf(value)};`);
 const root = typeOf(schema, 0, new Set(Object.keys(schema.properties)));
 const version = schema['x-canonical-version'];
-const output = `// Generated from supabase/opportunity_schema_v6.json by scripts/generateOpportunityTypes.mjs.\n// Edit the schema and regenerate; catalogue consumers use these structured values directly.\n\nexport const OPPORTUNITY_SCHEMA_VERSION = ${version} as const;\n\n${definitions.join('\n\n')}\n\nexport type Opportunity = ${root} & {\n  id: string;\n  record_type: 'opportunity';\n  metadata_schema_version: typeof OPPORTUNITY_SCHEMA_VERSION;\n  created_at: string | null;\n  updated_at: string | null;\n};\n`;
+const output = `// Generated from supabase/contracts/opportunity.schema.json by scripts/generateOpportunityTypes.mjs.\n// Edit the schema and regenerate; catalogue consumers use these structured values directly.\n\nexport const OPPORTUNITY_SCHEMA_VERSION = ${version} as const;\n\n${definitions.join('\n\n')}\n\nexport type Opportunity = ${root} & {\n  id: string;\n  record_type: 'opportunity';\n  metadata_schema_version: typeof OPPORTUNITY_SCHEMA_VERSION;\n  created_at: string | null;\n  updated_at: string | null;\n};\n`;
 if (process.argv.includes('--check')) {
   if (readFileSync(outputPath, 'utf8') !== output) throw new Error('Opportunity types are stale. Run node scripts/generateOpportunityTypes.mjs.');
 } else writeFileSync(outputPath, output);

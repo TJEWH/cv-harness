@@ -1,16 +1,12 @@
-import { test } from 'node:test';
+import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { file, reset, sql, sqlAsync, upgradeCurrentFeedbackContract } from './db';
-import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
+import { file, reset, sql, sqlAsync } from './db';
+
+before(() => reset());
 import { projectAdaptiveSearchStartup } from '../../src/features/meta-search/domain/adaptiveSearchStartup';
 
 test('AF-07 one startup call returns a bounded authorized bundle with pinned revisions and privacy-safe retries', () => {
-  reset({ searchProtocol: true });
-  for (const path of ['opportunity_feedback_signals.sql', 'opportunity_feedback_sharing.sql',
-    'opportunity_feedback_projection.sql', 'opportunity_feedback_snapshots.sql', 'opportunity_search_plans.sql',
-    'opportunity_search_attribution.sql', 'opportunity_search_prediction_baselines.sql', 'opportunity_search_quality_metrics.sql',
-    'opportunity_search_preferences.sql', 'opportunity_search_adaptation_sources.sql', 'opportunity_search_adaptive_startup.sql']) sql(file(`../../supabase/${path}`));
   sql(file('../../supabase/tests/opportunity_search_adaptive_startup.sql'));
 });
 
@@ -51,9 +47,7 @@ test('AF-07 concurrent logical starts serialize one active run and exact retries
 });
 
 test('the current SQL bundle passes the same complete DTO projector used for preview', async () => {
-  reset({ searchProtocol: true });
-  for (const path of ADAPTIVE_RELEASE_MIGRATIONS) sql(file(`../../supabase/${path}`));
-  upgradeCurrentFeedbackContract();
+  reset();
   assert.equal(sql("select to_regprocedure('private.begin_adaptive_opportunity_search(uuid,uuid)') is not null;"), 't', 'Install startup prerequisites before creating fixtures');
   const owner = randomUUID(), search = randomUUID(), run = randomUUID(), project = 'abcdefghijklmnopqrst';
   sql(`insert into auth.users(id) values('${owner}');

@@ -1,4 +1,4 @@
--- Run as postgres after schema.sql or the refinement_system_prompt.sql upgrade.
+-- Run as postgres against supabase/schema.sql; synthetic fixtures roll back.
 -- All users, opportunities, requests, proposals and reviews are synthetic and rolled back.
 begin;
 do $$
@@ -55,7 +55,7 @@ begin
   insert into auth.users(id,aud,role,email,raw_app_meta_data,raw_user_meta_data)
     values(owner_a,'authenticated','authenticated',owner_a::text||'@example.invalid','{}','{}');
   insert into public.opportunities(id,opportunity_key,title,requirements,required_documents)
-    values(opportunity,'template-guidance-test-'||opportunity::text,'Synthetic research role','["Experience evaluating learning systems is beneficial"]','["Motivation letter"]');
+    values(opportunity,'template-guidance-test-'||opportunity::text,'Synthetic research role','[{"text":"Experience evaluating learning systems is beneficial","status":"required","stage":"recruitment","entity_id":"experience-evaluating-learning-systems-is-beneficial"}]','[{"text":"Motivation letter","status":"required","stage":"recruitment","entity_id":"motivation-letter"}]');
   perform set_config('request.jwt.claims',jsonb_build_object('sub',owner_a,'role','authenticated','is_anonymous',false)::text,true);
   execute 'set local role authenticated';
   perform public.create_job_application(app_a,opportunity);

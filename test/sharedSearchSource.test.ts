@@ -120,12 +120,15 @@ test('a missing bound row remains empty instead of substituting another search',
   assert.equal(f.source.status.value, 'empty');
 });
 
-test('cloud-only refreshes prefer a shared document over a newer legacy row', async t => {
+test('cloud-only refreshes reject unsupported rows without substituting another saved search', async t => {
   const network = cloudClient(), f = fixture(t, memoryStorage(), network.client);
-  const legacy = cloudRow('owner', 'Legacy', otherCloudId); delete legacy.meta_search;
+  const legacy = { ...cloudRow('owner', 'Legacy', otherCloudId), meta_search: undefined } as unknown as SearchCloudTemplate;
   const loading = f.source.load({ refreshCloud: true });
-  succeed(network.reads[0]!, [legacy, cloudRow('owner', 'Shared document')]); await loading;
-  assert.equal(f.source.templates.value[0]?.researchInterests, 'Shared document');
+  succeed(network.reads[0]!, [legacy, cloudRow('owner', 'Shared document')]);
+  await assert.rejects(loading, /unsupported meta-search document/);
+  assert.equal(f.source.templates.value.length, 0);
+  assert.equal(f.source.status.value, 'error');
+  assert.equal(f.storage.writes, 0);
 });
 
 test('a local commit made during a cloud read wins even without an update event', async t => {

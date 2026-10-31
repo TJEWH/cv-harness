@@ -15,13 +15,12 @@ begin
   r:=public.read_opportunity_search_dashboard(search_a,project);
   assert r#>'{settings,search_breadth_percent}'='20'::jsonb and r#>'{settings,breadth_revision}'='0'::jsonb,'Missing breadth default';
   assert r->'planning_capacity'='null'::jsonb,'Cold capacity was invented';
-  assert r#>>'{policy,policy_version}'='adaptive-query-v2' and r#>'{policy,exploration_ratio}'='0.2'::jsonb,'Current policy did not use saved default';
+  assert r#>>'{policy,policy_version}'='adaptive-query-v3' and r#>'{policy,exploration_ratio}'='0.2'::jsonb,'Current policy did not use saved default';
   assert not(r::text~'BREADTH_PRIVATE_CANARY|OTHER_PRIVATE_CANARY'),'Breadth response leaked private editor data';
   r:=public.patch_opportunity_search_settings(search_a,action,'{"search_breadth_percent":70}','{"breadth_revision":0}');
   again:=public.patch_opportunity_search_settings(search_a,action,'{"search_breadth_percent":70}','{"breadth_revision":0}');
   assert r=again and r#>'{settings,breadth_revision}'='1'::jsonb,'Exact breadth retry changed receipt/revision';
-  assert r#>'{settings,structured_feedback_enabled}'='false'::jsonb and r#>'{settings,adaptation_enabled}'='false'::jsonb
-    and r#>'{settings,consent_revision}'='0'::jsonb and r#>'{settings,adaptation_revision}'='0'::jsonb,'Breadth implied consent or adaptation';
+  assert r#>'{settings,adaptation_enabled}'='false'::jsonb and r#>'{settings,adaptation_revision}'='0'::jsonb,'Breadth implied adaptation';
   blocked:=false;begin perform public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"search_breadth_percent":80}','{"breadth_revision":0}');exception when serialization_failure then blocked:=true;end;
   assert blocked,'Stale breadth update overwrote current setting';
   blocked:=false;begin perform public.patch_opportunity_search_settings(search_a,action,'{"search_breadth_percent":80}','{"breadth_revision":0}');exception when serialization_failure then blocked:=true;end;
@@ -36,7 +35,6 @@ begin
   assert blocked,'Null breadth passed';
   -- Breadth has its own CAS axis, so consent and adaptation can use their
   -- unchanged original revisions even after the breadth change.
-  perform public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"structured_feedback_enabled":true}','{"consent_revision":0}');
   perform public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"adaptation_enabled":true}','{"adaptation_revision":0}');
   execute 'reset role';
   perform private.compile_opportunity_feedback_snapshot(owner_a,search_a);
@@ -48,8 +46,8 @@ begin
   update public.opportunity_search_adaptive_settings set search_breadth_percent=50,breadth_revision=999,query_plan_dirty=false where user_id=owner_a and search_id=search_a;
   select * into after_row from public.opportunity_search_adaptive_settings where user_id=owner_a and search_id=search_a;
   assert after_row.breadth_revision=before_row.breadth_revision+1 and after_row.query_plan_dirty,'Direct update bypassed breadth derivation';
-  assert (after_row.feedback_revision,after_row.feedback_input_fingerprint,after_row.feedback_dirty,after_row.consent_revision,after_row.adaptation_revision,after_row.source_reuse_revision)
-    is not distinct from(before_row.feedback_revision,before_row.feedback_input_fingerprint,before_row.feedback_dirty,before_row.consent_revision,before_row.adaptation_revision,before_row.source_reuse_revision),'Breadth invalidated feedback/consent/source evidence';
+  assert (after_row.feedback_revision,after_row.feedback_input_fingerprint,after_row.feedback_dirty,after_row.adaptation_revision,after_row.source_reuse_revision)
+    is not distinct from(before_row.feedback_revision,before_row.feedback_input_fingerprint,before_row.feedback_dirty,before_row.adaptation_revision,before_row.source_reuse_revision),'Breadth invalidated feedback/adaptation/source evidence';
   update public.opportunity_search_adaptive_settings set search_breadth_percent=50,breadth_revision=999,query_plan_dirty=false where user_id=owner_a and search_id=search_a;
   assert(select breadth_revision=after_row.breadth_revision from public.opportunity_search_adaptive_settings where user_id=owner_a and search_id=search_a),'No-op advanced breadth revision';
   action:=gen_random_uuid();
@@ -63,7 +61,7 @@ begin
   execute 'reset role';
   for percent in 0..20 loop
     policy:=public.opportunity_search_adaptation_policy(percent*5);
-    assert policy#>>'{policy_version}'='adaptive-query-v2' and (policy->>'exploration_ratio')::numeric=percent::numeric/20,'Policy ratio differs';
+    assert policy#>>'{policy_version}'='adaptive-query-v3' and (policy->>'exploration_ratio')::numeric=percent::numeric/20,'Policy ratio differs';
     assert private.opportunity_search_adaptive_shape('policy',policy),'Generated v2 policy rejected by startup';
     assert not private.opportunity_search_adaptive_shape('policy',policy||'{"exploration_guidance":"forged instruction"}'),'Forged guidance passed';
   end loop;

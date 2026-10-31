@@ -16,7 +16,7 @@ begin
   perform set_config('request.jwt.claims',jsonb_build_object('sub',actor,'is_anonymous',false)::text,true);execute 'set local role authenticated';
   perform public.set_opportunity_search_runner_authorization(search_uuid,'bbbbbbbbbbbbbbbbbbbb',true,0);
   if p_reuse then
-    perform public.set_opportunity_feedback_consent(search_uuid,true);perform public.save_opportunity_search_adaptation(search_uuid,true,false,0);
+    perform public.save_opportunity_search_adaptation(search_uuid,true,false,0);
     perform public.set_opportunity_source_reuse(search_uuid,true,168);
   end if;
   if p_source then perform public.save_opportunity_search_source(search_uuid,registry,'{"listing_url":"https://example.invalid/CompletionJobs","enabled":true}');end if;
@@ -27,7 +27,7 @@ begin
     perform private.begin_opportunity_search(search_uuid,seed_run);
     perform private.save_opportunity_search_queries(seed_run,jsonb_build_array(jsonb_build_object('query',query_text)));
     seed_payload:=jsonb_build_object('opportunity_key','af08-completion-'||search_uuid,'title','Synthetic existing research',
-      'contacts','[{"name":"PRIVATE_COMPLETION_CANARY","email":"private.person@example.invalid","roles":["contact"]}]'::jsonb,
+      'contacts','[{"name":"PRIVATE_COMPLETION_CANARY","email":"private.person@example.invalid","roles":["contact"],"entity_id":"private-completion-canary"}]'::jsonb,
       'last_checked_at',clock_timestamp(),'sources',jsonb_build_array(jsonb_build_object('url','https://example.invalid/Vacancy/'||search_uuid,
         'kind','official','checked_at',clock_timestamp(),'precision','instant','supports',jsonb_build_array('title','contacts'))));
     result:=private.submit_opportunity_search_result(seed_run,seed_item,seed_payload);opportunity_uuid:=(result->>'opportunity_id')::uuid;
@@ -53,6 +53,9 @@ begin
     'results_count',case when p_item then 1 else 0 end));
   if p_source then checks:=checks||jsonb_build_array(jsonb_build_object('check_id',gen_random_uuid(),'kind','source','source_registry_id',registry,
     'attempted_at',at_time,'status','complete','results_count',0));end if;
+  checks:=checks||coalesce((select jsonb_agg(jsonb_build_object('check_id',gen_random_uuid(),'kind','source',
+    'source_registry_id',source->>'registry_id','attempted_at',at_time,'status','complete','results_count',0))
+    from jsonb_array_elements(result->'due_sources') source where source->>'registry_id'<>registry::text),'[]'::jsonb);
   if p_reuse then checks:=checks||jsonb_build_array(jsonb_build_object('check_id',gen_random_uuid(),'kind','query','query_id',explore_uuid,
     'text_hash',encode(sha256(convert_to('synthetic retention exploration','UTF8')),'hex'),'attempted_at',at_time,'status','complete','results_count',0));end if;
   payload:=jsonb_build_object('schema_version',1,'query_plan',jsonb_build_object('schema_version',2,'queries',jsonb_build_array(jsonb_build_object(

@@ -1,0 +1,229 @@
+{
+  "release_id": "adaptive-search-inclusion-v1",
+  "manifest_version": 2,
+  "schema_source": "current-state",
+  "postgres_major": 17,
+  "database": {
+    "installer": {
+      "path": "supabase/schema.sql",
+      "sha256": "ae1a10c548a0c4479914dd04dd401fd2afefbef70ae94705387e8557a65cfcf9"
+    },
+    "module_manifest": {
+      "path": "supabase/schemas/manifest.json",
+      "sha256": "ad1986a17fd81725e37ea9b47ba87513d2b005757b9d5cbba8f571d6c5c6cc8a"
+    },
+    "modules": [
+      {
+        "path": "supabase/schemas/00_namespaces.sql",
+        "sha256": "c1f3fcb01c716670026554aedeea0a4ccdad1b2411eafcb57c09c544fa4f8c64"
+      },
+      {
+        "path": "supabase/schemas/10_document_support.sql",
+        "sha256": "0b37454ed5ad56888b4cc8d968c724962b3546f68b410c08a6b6a706e466a904"
+      },
+      {
+        "path": "supabase/schemas/11_opportunity_support.sql",
+        "sha256": "dd29c2413924086e82f222627a175ae33c92893af97f75ad50a323800f9f0ed7"
+      },
+      {
+        "path": "supabase/schemas/12_search_support.sql",
+        "sha256": "3c0723afb5be549c287100c6f46bc5084ef9d3106fe7d213d5d90ef38a8b82ae"
+      },
+      {
+        "path": "supabase/schemas/20_document_tables.sql",
+        "sha256": "4a86dc5bca0c8db297bee8d84622991f9954739955eacb9e48fbeb7271df27f8"
+      },
+      {
+        "path": "supabase/schemas/21_opportunity_tables.sql",
+        "sha256": "e2b7d3499bcd5f6f98bb25764beeefe867d62158ca65284bd49f0fbccdec0de4"
+      },
+      {
+        "path": "supabase/schemas/22_search_tables.sql",
+        "sha256": "6c2c06a9c7d100f329893adfc507dcd3aade727a032d348026aff810edb3570b"
+      },
+      {
+        "path": "supabase/schemas/30_document_api.sql",
+        "sha256": "d50295b4dd0e70a465a0105b36e8b7f86c2647c4473b2385589a94d43571999c"
+      },
+      {
+        "path": "supabase/schemas/32_search_api.sql",
+        "sha256": "0da9c52d552b5f42272d1792bfd4d434ee5449aef228105782966a5c56361325"
+      },
+      {
+        "path": "supabase/schemas/40_relations.sql",
+        "sha256": "727ff1ab6ffbe3b4241fe478457f2846baa961a17a3fa30db8637f23948d86c4"
+      },
+      {
+        "path": "supabase/schemas/50_triggers.sql",
+        "sha256": "a2f9a93e5046c0cbf75f937b3d55774f66e7af021b7ed745a97518450b4c09e5"
+      },
+      {
+        "path": "supabase/schemas/60_security.sql",
+        "sha256": "942a062847bf510159b34fb91139b1691402136edea22b7d75d7f8b284ba2f1a"
+      },
+      {
+        "path": "supabase/schemas/70_reference_data.sql",
+        "sha256": "1eb9d309aedde04cbdb9901c385ca5911c372d5fa89c4a016a5cdd3b21b4039c"
+      }
+    ],
+    "contract": {
+      "path": "supabase/contracts/opportunity.schema.json",
+      "sha256": "88fa565dc597f349e010e6a7d90188eb9947aea453779f94154fd441a8904095"
+    }
+  },
+  "versions": {
+    "canonical_schema": 6,
+    "canonical_protocol": "opportunity-search-v1-canonical-6",
+    "meta_search": 1,
+    "adaptive_contract": 1,
+    "capability": "adaptive-batch-v1",
+    "metric": "opportunity-interest-v2",
+    "selection_policy": "opportunity-feedback-selection-v2",
+    "query_policy": "adaptive-query-v3",
+    "summary_inclusion": "included-unless-excluded-v1",
+    "setup_contract": 1,
+    "rollback_contract": 1
+  },
+  "defaults": {
+    "adaptive_release_enabled": false,
+    "owner_runner_authorized": false,
+    "feedback_excluded": false,
+    "adaptation_enabled": false,
+    "adaptation_paused": false,
+    "successful_source_reuse_enabled": false,
+    "search_breadth_percent": 20,
+    "scheduler_operations": false
+  },
+  "execution_contract": {
+    "maximum_queries": 30,
+    "maximum_sources": 64,
+    "maximum_checks": 128,
+    "maximum_backlog": 64,
+    "maximum_report_bytes": 524288,
+    "maximum_bundle_bytes": 262144,
+    "maximum_feedback_bytes": 65536,
+    "minimum_deadline_hours": 72,
+    "maximum_batch_opportunities": 10,
+    "maximum_batch_bytes": 524288,
+    "maximum_opportunity_bytes": 262144,
+    "maximum_run_batches": 32
+  },
+  "runner_artifacts": [
+    {
+      "path": "src/features/meta-search/domain/adaptiveSearchProtocol.ts",
+      "sha256": "61f3c375e2f9cb49f551bd02aeacb300c778077d5566b6f7688778f8836913d7"
+    },
+    {
+      "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
+      "sha256": "74d60674ae8640186c96c5a8f3c4119fc435bed7b564c90ed782e97ab7f15862"
+    },
+    {
+      "path": "src/features/meta-search/domain/adaptiveSearchStartup.ts",
+      "sha256": "8c99c44ad97be071c9ca35dc29617e22758f22f3927b45320dcdf7398d511e4e"
+    },
+    {
+      "path": "src/features/meta-search/domain/searchSchedule.ts",
+      "sha256": "faf331da0cb0605edd8511fc4b4f60aad19307ebae3f5bb39ec3a6d4a872f088"
+    },
+    {
+      "path": "src/features/meta-search/domain/searchPrompts.ts",
+      "sha256": "544447b8bdf4e2284e13126e404dec642a2cf15e28c25d899090c2733d8f0b2f"
+    },
+    {
+      "path": "src/features/meta-search/searchTypes.ts",
+      "sha256": "5df00e228733ab74ed7c5f3028440eaeb78dce7c6469e54a4b474ebb88061c37"
+    },
+    {
+      "path": "src/features/meta-search/data/searchTemplateRepository.ts",
+      "sha256": "f21da36a91d517c5268e4ee79e25698f37df0787d8266a74196116b0ef2e5a4a"
+    },
+    {
+      "path": "src/features/opportunities/domain/opportunityResultSchema.ts",
+      "sha256": "a06c68f6e835240c3e26e513ff0927e3292123eecdf0f32eede46ccda3d8ffd3"
+    },
+    {
+      "path": "supabase/contracts/opportunity.schema.json",
+      "sha256": "88fa565dc597f349e010e6a7d90188eb9947aea453779f94154fd441a8904095"
+    },
+    {
+      "path": "src/features/opportunities/domain/opportunityFeedback.ts",
+      "sha256": "111fda3ac0cb16b5a57d5b5763c6eae297df11fbba6ff446e7b7b1876a4ba406"
+    },
+    {
+      "path": "src/features/opportunities/domain/opportunityFeedbackPrivacy.ts",
+      "sha256": "4d6c1cdb9bf9c62e2f1b61452e5147d32696ba1932c2f5323016464a72fc7b7e"
+    },
+    {
+      "path": "src/features/opportunities/domain/opportunityTopics.ts",
+      "sha256": "0f3be06bda3e935dbd21cf147bfb9e18ef0835839d331700cc44360fcd89f1bd"
+    },
+    {
+      "path": "src/features/meta-search/domain/adaptiveFeedbackSnapshots.ts",
+      "sha256": "5c6249920ecafbea411742cdb8e45185d05c6befc117eb9d8c93013f662dbc70"
+    },
+    {
+      "path": "src/features/meta-search/domain/adaptiveSearchPlans.ts",
+      "sha256": "b4615f60986bf56890a917c781beb84e131628f2f062291cd76503b3502d329f"
+    },
+    {
+      "path": "src/features/meta-search/domain/adaptiveSearchPlanner.ts",
+      "sha256": "c4577af15c734df36f5690f653369afaf24157761e6cb91bf4abf225c4fb2081"
+    },
+    {
+      "path": "src/features/meta-search/domain/adaptiveSearchSources.ts",
+      "sha256": "b49840a59f8489e28dabd060bf968bd358fcfacb53724357e191e9876cf4329a"
+    },
+    {
+      "path": "src/features/meta-search/domain/adaptiveSearchQuality.ts",
+      "sha256": "2d8dc0221517d3fb5b2c14e00ebac5bd206e3483e4368b2ab1bdabf8c85216e2"
+    },
+    {
+      "path": "src/features/meta-search/composables/adaptiveSearchDashboard.ts",
+      "sha256": "4db4d47a88527d43f05da52921a3f84ad200a6d85024d38b7aa09abbb2528a64"
+    },
+    {
+      "path": "src/features/meta-search/data/searchTemplateCloud.ts",
+      "sha256": "34e656313367fd3b7acac52416c6fff7a42b0455e0389be948ba861e98a5ed5b"
+    },
+    {
+      "path": "src/documents/letter/searchLetterContext.ts",
+      "sha256": "4571e1126a94ffb842bfc31645bcdac7ce2518424529e5d4c97af3830427e000"
+    },
+    {
+      "path": "src/features/meta-search/components/AdaptiveSearchDashboard.vue",
+      "sha256": "4e9203b15d90d4427122c4d1b1c536a68597856a086f1c42277b6d1f5006f95b"
+    },
+    {
+      "path": "src/features/meta-search/components/AdaptiveSearchPolicyHint.vue",
+      "sha256": "4f989ce9aa310a2ab5d8cea026cdfa04fc37bf3f0a5ec965f682c0383a0b928b"
+    },
+    {
+      "path": "src/features/meta-search/components/MetaSearchEditor.vue",
+      "sha256": "f582e13e3496d11affd07eea10e748707d0c3558b0ceec69410a0c18c86febc6"
+    },
+    {
+      "path": "src/app/components/CloudWorkspace.vue",
+      "sha256": "67755767b886c6ccf47e56ed67d95ccb9ea265e820c66027268c7e7a7767a013"
+    },
+    {
+      "path": "src/features/opportunities/components/OpportunityFeedbackControls.vue",
+      "sha256": "610819d46d1dc8fa4f112fd1cda869137ad82e421271f5e1262eaa5353de598c"
+    },
+    {
+      "path": "src/features/opportunities/components/OpportunityDispositionControls.vue",
+      "sha256": "b0f2202d70daa5ebf577c2d163f3d291a4ac7a9b1eca5f2ef17367d38111e0a2"
+    },
+    {
+      "path": "src/features/opportunities/domain/opportunityDisposition.ts",
+      "sha256": "d88e58baa29bb9461da32b0d344324d33bed31c5c3717c7bf2353028b57af3b4"
+    },
+    {
+      "path": "src/features/opportunities/domain/opportunityEvaluation.ts",
+      "sha256": "b57b00ab0da25d72abf5bf173fa46d05e314a09213fa9da215b56a9d6d2b9791"
+    },
+    {
+      "path": "src/shared/editing/useApplicationNotesAutosave.ts",
+      "sha256": "b3e8f07b16c986c3fe4167558c703fa4bb743e3e861207821576bc3dc8fd68b7"
+    }
+  ]
+}

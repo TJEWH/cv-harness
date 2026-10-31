@@ -1,16 +1,14 @@
-import test from 'node:test';
+import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { file, reset, sql } from './db';
-import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
-import { ADAPTIVE_BATCH_PROTOCOL_PREFIX, ADAPTIVE_BATCH_PROTOCOL_TEXT } from '../../src/features/meta-search/domain/adaptiveSearchProtocol';
-import { buildAdaptiveRecurringSearchPrompt } from '../../src/features/meta-search/domain/adaptiveSearchTask';
+import { reset, sql } from './db';
+
+before(() => reset());
+import { ADAPTIVE_BATCH_PROTOCOL_TEXT } from '../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const json = (value: unknown) => `E'${JSON.stringify(value).replaceAll('\\', '\\\\').replaceAll("'", "''")}'::jsonb`;
 const project = 'pppppppppppppppppppp';
-const patch = () => sql(file('../../supabase/opportunity_search_adaptive_payload_contract.sql'));
-const protocol = () => sql('select private.opportunity_search_adaptive_protocol_text();');
 
 function fixture(active = false, breadth = 20) {
   const owner = randomUUID(), search = randomUUID(), run = randomUUID(), evidence = randomUUID();
@@ -19,7 +17,7 @@ function fixture(active = false, breadth = 20) {
       '{"topicsAndMethods":"Acoustics; sensing","fundingAndConditions":"Funded research"}',
       '{"frequency":"daily","intervalHours":24,"weekdays":[],"time":"08:00","timezone":"UTC","runImmediately":false}');
     insert into public.opportunities(id,opportunity_key,title,topics) values(${quote(evidence)},${quote('payload-evidence-'+evidence)},'Synthetic reviewed acoustics',array['Acoustics']);
-    insert into public.opportunity_reviews(user_id,opportunity_id,interest_rating) values(${quote(owner)},${quote(evidence)},9);
+    insert into public.opportunity_reviews(user_id,opportunity_id,state) values(${quote(owner)},${quote(evidence)},'very_high_interest');
     insert into public.opportunity_search_adaptive_settings(user_id,search_id,adaptation_enabled,successful_source_reuse_enabled,search_breadth_percent)
       values(${quote(owner)},${quote(search)},${active},${active},${breadth});
     update public.opportunity_search_adaptive_release set enabled=true,project_ref=${quote(project)} where singleton;
@@ -40,6 +38,7 @@ function fixture(active = false, breadth = 20) {
 // No AdaptiveBatchPayload type, transport builder, validator or SQL fixture
 // payload generator supplies undisclosed fields to the synthetic execution.
 function deliveredExamples(startup: any, cold = true): Record<string, any> {
+  assert.equal(startup.protocol_text, ADAPTIVE_BATCH_PROTOCOL_TEXT);
   const encoded = /ADAPTIVE PAYLOAD EXAMPLES \(JSON templates\)\n```json\n([\s\S]+?)\n```/u.exec(startup.protocol_text)?.[1];
   assert(encoded, 'the allowed startup response alone contains the complete JSON templates');
   if (cold) {
@@ -76,43 +75,6 @@ function payload(startup: any, examples: Record<string, any>, includeOpportunity
   if (includeOpportunity) { body.opportunities.push(fill(examples.opportunity_item,values)); body.execution.checks[0].results_count=1; }
   return { body, item, query, queryCheck, now };
 }
-
-test('the guarded additive upgrade preserves old pins, catalogue data, approvals, settings and ACLs', () => {
-  reset({searchProtocol:true});
-  for (const path of ADAPTIVE_RELEASE_MIGRATIONS) sql(file(`../../supabase/${path}`));
-  // Deliberately stop at the pre-payload baseline. The shared latest-contract
-  // helper includes this patch for other suites after release integration.
-  for (const path of ['opportunity_description.sql','application_removal_review.sql','opportunity_evaluation.sql','opportunity_feedback_defaults.sql']) sql(file(`../../supabase/${path}`));
-  assert.equal(protocol(),ADAPTIVE_BATCH_PROTOCOL_PREFIX);
-  const old = fixture(), startup = old.start();
-  assert.equal(startup.compatible,true,JSON.stringify(startup));
-  const before = sql(`select jsonb_build_object('contexts',(select jsonb_agg(to_jsonb(c)) from private.opportunity_search_adaptive_contexts c),
-    'runs',(select jsonb_agg(to_jsonb(r)) from public.opportunity_search_runs r),'settings',(select jsonb_agg(to_jsonb(s)) from public.opportunity_search_adaptive_settings s),
-    'sources',(select jsonb_agg(to_jsonb(s)) from public.opportunity_search_sources s),'opportunities',(select jsonb_agg(to_jsonb(o)) from public.opportunities o),
-    'reviews',(select jsonb_agg(to_jsonb(r)) from public.opportunity_reviews r),'bindings',(select jsonb_agg(to_jsonb(b)) from public.opportunity_search_schedule_bindings b));`);
-  const acl = sql(`select jsonb_agg(jsonb_build_array(oid::regprocedure::text,proacl::text,prosecdef,proconfig) order by oid::regprocedure::text)
-    from pg_proc where oid=any(array['private.opportunity_search_adaptive_protocol_text()'::regprocedure,
-      'private.opportunity_search_adaptive_shape(text,jsonb)'::regprocedure,'private.adaptive_search_recurring_prompt(uuid,text)'::regprocedure]);`);
-  const original = sql("select pg_get_functiondef('private.opportunity_search_adaptive_protocol_text()'::regprocedure);");
-  sql(original.replace('AS $function$','AS $function$\n-- Synthetic unexpected body\n'));
-  assert.throws(patch,/fingerprint differs/u);
-  sql(original); patch();
-  assert.equal(protocol(),ADAPTIVE_BATCH_PROTOCOL_TEXT);
-  const after = sql(`select jsonb_build_object('contexts',(select jsonb_agg(to_jsonb(c)) from private.opportunity_search_adaptive_contexts c),
-    'runs',(select jsonb_agg(to_jsonb(r)) from public.opportunity_search_runs r),'settings',(select jsonb_agg(to_jsonb(s)) from public.opportunity_search_adaptive_settings s),
-    'sources',(select jsonb_agg(to_jsonb(s)) from public.opportunity_search_sources s),'opportunities',(select jsonb_agg(to_jsonb(o)) from public.opportunities o),
-    'reviews',(select jsonb_agg(to_jsonb(r)) from public.opportunity_reviews r),'bindings',(select jsonb_agg(to_jsonb(b)) from public.opportunity_search_schedule_bindings b));`);
-  assert.equal(after,before,'deployment must not rewrite any historical/cache hash or owner record');
-  assert.equal(sql(`select jsonb_agg(jsonb_build_array(oid::regprocedure::text,proacl::text,prosecdef,proconfig) order by oid::regprocedure::text)
-    from pg_proc where oid=any(array['private.opportunity_search_adaptive_protocol_text()'::regprocedure,
-      'private.opportunity_search_adaptive_shape(text,jsonb)'::regprocedure,'private.adaptive_search_recurring_prompt(uuid,text)'::regprocedure]);`),acl);
-  assert.equal(sql(`select private.opportunity_search_adaptive_shape('bundle',bundle) from private.opportunity_search_adaptive_contexts where run_id=${quote(old.run)};`),'t');
-  assert.equal(sql(`select private.opportunity_search_adaptive_shape('bundle',jsonb_set(bundle,'{protocol_text}',to_jsonb((bundle->>'protocol_text')||' unexpected suffix'))) from private.opportunity_search_adaptive_contexts where run_id=${quote(old.run)};`),'f');
-  const retry = old.start(); assert.equal(retry.compatible,true,JSON.stringify(retry));
-  assert.equal(retry.protocol_text,ADAPTIVE_BATCH_PROTOCOL_TEXT);
-  for (const key of ['base','feedback','preferences','query_plan','legacy_core_queries','due_sources','source_context','planning']) assert.deepEqual(retry[key],startup[key],`historical semantic pin ${key}`);
-  assert.equal(sql(`select private.adaptive_search_recurring_prompt(${quote(old.search)},${quote(project)});`),buildAdaptiveRecurringSearchPrompt(old.search,project));
-});
 
 test('cold zero-result research constructs a complete first batch and completion solely from startup instructions', () => {
   const run = fixture(), startup = run.start(); assert.equal(startup.compatible,true,JSON.stringify(startup));
@@ -176,7 +138,7 @@ test('delivered item, listing, suggestion and later-batch examples preserve veri
   const saved=receipt.items[0].opportunity_id;
   // Synthetic owner review arrives after intake and before completion, exactly
   // as a separate UI action; the runner never manufactures owner interest.
-  sql(`insert into public.opportunity_reviews(user_id,opportunity_id,interest_rating) values(${quote(run.owner)},${quote(saved)},9);`);
+  sql(`insert into public.opportunity_reviews(user_id,opportunity_id,state) values(${quote(run.owner)},${quote(saved)},'very_high_interest');`);
   const later=fill(examples.later_batch,{'<returned_plan_hash>':receipt.plan_hash});
   const last=run.batch(second,later); assert.equal(last.error,undefined,JSON.stringify(last));
   const completion=fill(examples.completion,{'<completion_uuid>':randomUUID(),'<batch_uuid>':first});

@@ -1,6 +1,0 @@
-{
-  "source_commit": "3a3abaf2fa3a4dfd94f9bd145555a007e166f0fb",
-  "source_path": "supabase/opportunity_search.sql",
-  "sha256": "9baff81fb8a014b8e40bcc212d8264bdb1021027229c1d309f2258694f1b76f5",
-  "purpose": "Verbatim local-only technical prerequisite fixture; no deployment authorization or production record import."
-}

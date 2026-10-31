@@ -1,4 +1,4 @@
--- Run as postgres after opportunity_review_receipts.sql. All fixtures roll back.
+-- Run as postgres against supabase/schema.sql; synthetic fixtures roll back.
 begin;
 do $$
 declare

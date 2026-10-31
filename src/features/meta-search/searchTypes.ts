@@ -46,7 +46,7 @@ export interface SearchCloudTemplate {
   schedule: SearchCloudSchedule;
   created_at: string;
   updated_at: string;
-  meta_search?: SearchMetaSearchDocument | null;
+  meta_search: SearchMetaSearchDocument;
 }
 
 export interface SearchMetaSearchDocument {

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "files": [
+    "00_namespaces.sql",
+    "10_document_support.sql",
+    "11_opportunity_support.sql",
+    "12_search_support.sql",
+    "20_document_tables.sql",
+    "21_opportunity_tables.sql",
+    "22_search_tables.sql",
+    "30_document_api.sql",
+    "32_search_api.sql",
+    "40_relations.sql",
+    "50_triggers.sql",
+    "60_security.sql",
+    "70_reference_data.sql"
+  ]
+}

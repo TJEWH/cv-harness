@@ -1,4 +1,4 @@
-import storageSchema from '../../../../supabase/opportunity_schema_v6.json';
+import storageSchema from '../../../../supabase/contracts/opportunity.schema.json';
 
 export interface OpportunityResultSchema {
   [keyword: string]: unknown;

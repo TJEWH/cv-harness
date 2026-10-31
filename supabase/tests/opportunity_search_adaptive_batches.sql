@@ -96,8 +96,8 @@ begin
   -- application context. Proposed people are deferred, never whole-object unioned.
   f:=pg_temp.af08_batch_fixture('people');run_uuid:=(f->>'run_id')::uuid;item_a:=gen_random_uuid();target:=gen_random_uuid();application_uuid:=gen_random_uuid();
   opportunity:=pg_temp.af08_batch_opportunity('af08-people-'||run_uuid,'Synthetic existing richer title')||jsonb_build_object(
-    'contacts','[{"name":"PRIVATE_CONTACT_CANARY","email":"private.person@example.invalid","roles":["contact"]}]'::jsonb,
-    'requirements','[{"text":"Existing conditional requirement","status":"conditional","stage":"doctoral_admission","conditions":["After selection"]}]'::jsonb);
+    'contacts','[{"name":"PRIVATE_CONTACT_CANARY","email":"private.person@example.invalid","roles":["contact"],"entity_id":"private-contact-canary"}]'::jsonb,
+    'requirements','[{"text":"Existing conditional requirement","status":"conditional","stage":"doctoral_admission","conditions":["After selection"],"entity_id":"existing-conditional-requirement"}]'::jsonb);
   opportunity:=jsonb_set(opportunity,'{sources,0,supports}',opportunity#>'{sources,0,supports}'||'["contacts"]'::jsonb);
   target:=pg_temp.af08_seed_canonical(f,opportunity);
   select contacts into prior_contacts from public.opportunities where id=target;
@@ -121,7 +121,7 @@ begin
   insert into public.opportunities(id,opportunity_key,title) values(target,'af08-suggestion-'||target,'Synthetic reviewed BCI');
   insert into public.opportunity_reviews(user_id,opportunity_id,state) values((f->>'user_id')::uuid,target,'strong_interest');
   perform set_config('request.jwt.claims',jsonb_build_object('sub',f->>'user_id','is_anonymous',false)::text,true);execute 'set local role authenticated';
-  perform public.set_opportunity_feedback_consent((f->>'search_id')::uuid,true);perform public.save_opportunity_search_adaptation((f->>'search_id')::uuid,true,false,0);execute 'reset role';
+  perform public.save_opportunity_search_adaptation((f->>'search_id')::uuid,true,false,0);execute 'reset role';
   before_prefs:=(public.opportunity_search_preference_document((f->>'user_id')::uuid,(f->>'search_id')::uuid)->>'preference_revision')::bigint;
   body:=(f->'body')||jsonb_build_object('preference_suggestions',jsonb_build_array(jsonb_build_object('suggestion_id',proposal_uuid,'rule',jsonb_build_object(
       'rule_id',gen_random_uuid(),'kind','hard_exclusion','category','topic','target','Routine administration','evidence_refs',jsonb_build_array(target)))),
@@ -133,7 +133,7 @@ begin
   assert(public.opportunity_search_preference_document((f->>'user_id')::uuid,(f->>'search_id')::uuid)->>'preference_revision')::bigint=before_prefs
     and jsonb_array_length(public.opportunity_search_preference_document((f->>'user_id')::uuid,(f->>'search_id')::uuid)->'approved_rules')=0,
     'A pending hard exclusion became an executable rule';
-  assert not exists(select 1 from public.opportunity_search_sources where user_id=(f->>'user_id')::uuid and search_id=(f->>'search_id')::uuid),'Candidate source proposal activated a registry source';
+  assert not exists(select 1 from public.opportunity_search_sources where user_id=(f->>'user_id')::uuid and search_id=(f->>'search_id')::uuid and vacancy_url='https://example.invalid/Vacancy/Future'),'Candidate source proposal activated a registry source';
   assert not exists(select 1 from jsonb_array_elements((select document->'queries' from public.opportunity_search_query_plans where id=(result->>'plan_id')::uuid)) q where q->>'query'='synthetic future BCI direction'),'Pending query proposal changed the current plan';
 
   f:=pg_temp.af08_batch_fixture('security');other:=pg_temp.af08_batch_fixture('other-owner');run_uuid:=(f->>'run_id')::uuid;item_a:=gen_random_uuid();target:=gen_random_uuid();
@@ -197,7 +197,7 @@ begin
     'query',f#>>'{body,query_plan,queries,0,query}','role','core','manual',true,
     'text_hash',encode(sha256(convert_to(f#>>'{body,query_plan,queries,0,query}','UTF8')),'hex'))));
   result:=private.publish_opportunity_search_plan((f->>'user_id')::uuid,(f->>'search_id')::uuid,plan_uuid,bad,1,
-    (select feedback_snapshot_revision from public.opportunity_search_runs where id=run_uuid),0,'opportunity-search-v1-canonical-5');
+    (select feedback_snapshot_revision from public.opportunity_search_runs where id=run_uuid),0,'opportunity-search-v1-canonical-6');
   shared_uuid:=(result->>'id')::uuid;
   result:=private.submit_adaptive_search_batch(run_uuid,(f->>'batch_id')::uuid,f->'body');
   assert not(result?'error') and(select query_plan_id from public.opportunity_search_adaptive_settings where user_id=(f->>'user_id')::uuid and search_id=(f->>'search_id')::uuid)=shared_uuid,
@@ -212,7 +212,7 @@ begin
   historical_document:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(jsonb_build_object('query_id',historical_query,
     'query',f#>>'{body,query_plan,queries,0,query}','role','core','manual',false,'text_hash',encode(sha256(convert_to(f#>>'{body,query_plan,queries,0,query}','UTF8')),'hex'))));
   result:=private.publish_opportunity_search_plan((f->>'user_id')::uuid,(f->>'search_id')::uuid,plan_uuid,historical_document,1,
-    (select feedback_snapshot_revision from public.opportunity_search_runs where id=run_uuid),0,'opportunity-search-v1-canonical-5');historical_id:=(result->>'id')::uuid;
+    (select feedback_snapshot_revision from public.opportunity_search_runs where id=run_uuid),0,'opportunity-search-v1-canonical-6');historical_id:=(result->>'id')::uuid;
   bad:=private.read_opportunity_search_plan((f->>'user_id')::uuid,(f->>'search_id')::uuid,historical_id);
   bad:=jsonb_build_object('id',bad->'id','revision',bad->'plan_revision','plan_hash',bad->'plan_hash','planning_policy',bad->'planning_policy','document',bad->'document','basis',bad->'basis');
   update private.opportunity_search_adaptive_contexts set bundle=jsonb_set(bundle,'{query_plan}',bad),plan_pointer_captured=false,expected_shared_plan_id=null where run_id=run_uuid;
@@ -223,7 +223,7 @@ begin
   bad:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(jsonb_build_object('query_id',gen_random_uuid(),'query','new explicit owner base query','role','core','manual',false,
     'text_hash',encode(sha256(convert_to('new explicit owner base query','UTF8')),'hex'))));
   result:=private.publish_opportunity_search_plan((f->>'user_id')::uuid,(f->>'search_id')::uuid,plan_uuid,bad,2,
-    (select feedback_snapshot_revision from public.opportunity_search_runs where id=run_uuid),0,'opportunity-search-v1-canonical-5');shared_uuid:=(result->>'id')::uuid;
+    (select feedback_snapshot_revision from public.opportunity_search_runs where id=run_uuid),0,'opportunity-search-v1-canonical-6');shared_uuid:=(result->>'id')::uuid;
   perform private.complete_opportunity_search(seed_run,'{"status":"failed","notes":"Synthetic future-base seed only","unresolvedCount":0}');
   body:=jsonb_set(f->'body','{query_plan}',historical_document);
   body:=jsonb_set(body,'{execution,checks,0,query_id}',to_jsonb(historical_query));

@@ -1,16 +1,12 @@
-import { test } from 'node:test';
+import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { file, reset, sql } from './db';
+
+before(() => reset());
 import { adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall, type AdaptiveBatchPayload } from '../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
-test('AF-08 atomic intake preserves canonical v5 and returns only safe pending-verification receipts', () => {
-  reset({ searchProtocol: true });
-  for (const path of ['opportunity_feedback_signals.sql', 'opportunity_feedback_sharing.sql',
-    'opportunity_feedback_projection.sql', 'opportunity_feedback_snapshots.sql', 'opportunity_search_plans.sql',
-    'opportunity_search_attribution.sql', 'opportunity_search_prediction_baselines.sql', 'opportunity_search_quality_metrics.sql',
-    'opportunity_search_preferences.sql', 'opportunity_search_adaptation_sources.sql', 'opportunity_search_adaptive_startup.sql',
-    'opportunity_search_adaptive_batches.sql', 'opportunity_search_adaptive_completion.sql']) sql(file(`../../supabase/${path}`));
+test('AF-08 atomic intake preserves current canonical records and returns only safe pending-verification receipts', () => {
   sql(file('../../supabase/tests/opportunity_search_adaptive_batches.sql'));
 });
 
@@ -59,7 +55,9 @@ for (const batches of [1, 2]) test(`AF-08 ${batches} batch run uses exactly ${2 
         sources: [{ url, kind: 'official', checked_at: discovered, precision: 'instant',
           supports: ['title', 'institution', 'topics', 'official_url', 'deadline', 'deadline_time_local', 'deadline_timezone', 'personal_fit'] }] },
       attribution: { execution_refs: [check], primary_check_id: check, discovered_at: discovered, encountered_at: discovered, recommendation_generated: true } }],
-      execution: { checks: [{ check_id: check, kind: 'query', query_id: query, attempted_at: attempted, status: 'complete', results_count: 1 }], backlog: [], complete: true } };
+      execution: { checks: [{ check_id: check, kind: 'query', query_id: query, attempted_at: attempted, status: 'complete', results_count: 1 },
+        ...startup.due_sources.map((source: { registry_id: string }) => ({ check_id: randomUUID(), kind: 'source' as const,
+          source_registry_id: source.registry_id, attempted_at: attempted, status: 'complete' as const, results_count: 0 }))], backlog: [], complete: true } };
     let receipt = api(buildAdaptiveSearchSqlCall({ action: 'batch', scope, batch_id: batchIds[0]!, payload: first }));
     assert.equal(receipt.verification_required, true, JSON.stringify(receipt));
     assert.equal(receipt.items.length, 1); assert.equal(receipt.items[0].outcome, 'saved');

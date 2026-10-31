@@ -1,38 +1,32 @@
-import { test } from 'node:test';
+import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { file, reset, sql, upgradeCurrentFeedbackContract } from './db';
-import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
+import { file, reset, sql } from './db';
+
+before(() => reset());
 import { compileAdaptiveFeedbackSnapshot } from '../../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
-import { buildAdaptiveSearchPlanningContext, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY } from '../../src/features/meta-search/domain/adaptiveSearchPlanner';
+import { buildAdaptiveSearchPlanningContext, DEFAULT_ADAPTIVE_SEARCH_POLICY } from '../../src/features/meta-search/domain/adaptiveSearchPlanner';
 import { SEARCH_CRITERIA_KEYS, type SearchCriteria } from '../../src/features/meta-search/searchTypes';
 import type { SafeOpportunityFeedbackExample } from '../../src/features/opportunities/domain/opportunityFeedbackPrivacy';
 
 test('AF-06 approved preferences and planning evidence are versioned and owner scoped', () => {
-  reset({ searchProtocol: true });
-  for (const path of ['opportunity_feedback_signals.sql', 'opportunity_feedback_sharing.sql',
-    'opportunity_feedback_projection.sql', 'opportunity_feedback_snapshots.sql', 'opportunity_search_plans.sql',
-    'opportunity_search_attribution.sql', 'opportunity_search_prediction_baselines.sql', 'opportunity_search_quality_metrics.sql',
-    'opportunity_search_preferences.sql', 'opportunity_search_adaptation_sources.sql']) sql(file(`../../supabase/${path}`));
   sql(file('../../supabase/tests/opportunity_search_preferences.sql'));
 });
 
-test('AF-06 useful source learning requires active consent and effective canonical evidence', () => {
+test('AF-06 useful source learning requires active adaptation and effective canonical evidence', () => {
   sql(file('../../supabase/tests/opportunity_search_adaptation_sources.sql'));
 });
 
 test('AF-06 SQL and UI expose the same named initial policy conventions', () => {
-  assert.deepEqual(JSON.parse(sql('select public.opportunity_search_adaptation_policy();')), LEGACY_ADAPTIVE_SEARCH_POLICY);
+  assert.deepEqual(JSON.parse(sql('select public.opportunity_search_adaptation_policy(20);')), DEFAULT_ADAPTIVE_SEARCH_POLICY);
 });
 
 test('current SQL and TypeScript priorities agree on targeted, sparse, conflicting, paused and disabled evidence', async () => {
-  reset({ searchProtocol: true });
-  for (const path of ADAPTIVE_RELEASE_MIGRATIONS) sql(file(`../../supabase/${path}`));
-  upgradeCurrentFeedbackContract();
+  reset();
   const user = '87000000-0000-4000-8000-000000000001', search = '87000000-0000-4000-8000-000000000002';
   const criteria = Object.fromEntries(SEARCH_CRITERIA_KEYS.map(key => [key, key === 'topicsAndMethods' ? 'Robotics; BCI' : ''])) as SearchCriteria;
   function example(index: number, score: number, reasons: SafeOpportunityFeedbackExample['reasons'] = []): SafeOpportunityFeedbackExample {
     return { opportunity_id: `87000000-0000-4000-8000-${(100 + index).toString().padStart(12, '0')}`, topics: ['Robotics'],
-      metric_version: 'opportunity-interest-v1', interest_score: score, interest_origin: 'explicit_rating', review_state: 'unreviewed',
+      metric_version: 'opportunity-interest-v2', interest_score: score, interest_origin: 'categorical_review', review_state: score >= 8 ? 'strong_interest' : score >= 6 ? 'interested' : 'not_interested',
       feedback_revision: 1, feedback_updated_at: '2026-10-28T12:00:00Z', confirmed_submission: false, submission_at: null,
       baseline_status: 'unavailable', interest_gap: null, reasons };
   }

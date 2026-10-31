@@ -2,7 +2,7 @@
 begin;
 do $$
 declare owner_a uuid:=gen_random_uuid();owner_b uuid:=gen_random_uuid();search_a uuid:=gen_random_uuid();search_b uuid:=gen_random_uuid();conflict_search uuid:=gen_random_uuid();registry uuid:=gen_random_uuid();
-  run_id_value uuid:=gen_random_uuid();summary_run uuid:=gen_random_uuid();anchor uuid;plan_id uuid;legacy_plan uuid:=gen_random_uuid();query_id_value uuid:=gen_random_uuid();opportunity uuid;target uuid;summary_target uuid;
+  run_id_value uuid:=gen_random_uuid();summary_run uuid:=gen_random_uuid();anchor uuid;plan_id uuid;legacy_plan uuid:=gen_random_uuid();query_id_value uuid:=gen_random_uuid();exploration_id uuid:=gen_random_uuid();opportunity uuid;target uuid;summary_target uuid;
   pending_id uuid:=gen_random_uuid();positive_id uuid:=gen_random_uuid();hard_id uuid:=gen_random_uuid();negative_id uuid:=gen_random_uuid();source_id uuid:=gen_random_uuid();
   positive_rule uuid:=gen_random_uuid();hard_rule uuid:=gen_random_uuid();negative_rule uuid:=gen_random_uuid();source_rule uuid:=gen_random_uuid();
   approve_op uuid:=gen_random_uuid();reject_op uuid:=gen_random_uuid();undo_op uuid:=gen_random_uuid();n integer;blocked boolean;protocol text;doc jsonb;rule jsonb;result jsonb;repeat_result jsonb;
@@ -18,9 +18,6 @@ begin
   result:=public.read_opportunity_search_preferences(search_a);
   assert result->'preference_revision'='0'::jsonb and result->'adaptation_enabled'='false'::jsonb,'Adaptation did not default off';
   assert result#>'{policy,minimum_observations}'='3'::jsonb and result#>'{policy,positive_interest_threshold}'='6'::jsonb and result#>'{policy,exploration_ratio}'='0.2'::jsonb,'Visible policy constants missing';
-  blocked:=false;begin perform public.save_opportunity_search_adaptation(search_a,true,false,0);exception when invalid_parameter_value then blocked:=true;end;
-  assert blocked,'Adaptation started without structured consent';
-  perform public.set_opportunity_feedback_consent(search_a,true);
   perform public.save_opportunity_search_adaptation(search_a,true,false,0);
   perform public.save_opportunity_search_source(search_a,registry,'{"listing_url":"https://example.invalid/ResearchJobs","enabled":true,"pinned":true,"mandatory":true}');
   execute 'reset role';
@@ -28,7 +25,7 @@ begin
     opportunity:=gen_random_uuid();if n=1 then target:=opportunity;elsif n=4 then summary_target:=opportunity;end if;
     insert into public.opportunities(id,opportunity_key,title,institution,topics)
       values(opportunity,'af06-'||opportunity,'Synthetic research '||n,'Synthetic Institute',case when n<=3 then array['Robotics'] when n<=6 then array['Acoustics'] else array['BCI'] end);
-    insert into public.opportunity_reviews(user_id,opportunity_id,state,interest_rating,interest_reasons,comment) values(owner_a,opportunity,'unreviewed',case when n<=3 or n=7 then 2 when n<=6 then 8 else 4 end,
+    insert into public.opportunity_reviews(user_id,opportunity_id,state,interest_rating,interest_reasons,comment) values(owner_a,opportunity,case when n<=3 or n=7 then 'not_interested' when n<=6 then 'strong_interest' else 'interested' end,case when n<=3 or n=7 then 2 when n<=6 then 8 else 4 end,
       case when n=1 then '[{"category":"topic","polarity":"negative","target":"Robotics"},{"category":"hardware","polarity":"negative"}]'::jsonb
         when n=2 then '[{"category":"timing","polarity":"negative"},{"category":"hardware","polarity":"negative"}]'::jsonb
         when n=3 then '[{"category":"location","polarity":"negative"},{"category":"hardware","polarity":"negative"}]'::jsonb
@@ -36,16 +33,16 @@ begin
         when n=7 then '[{"category":"topic","polarity":"negative","target":"BCI"}]'::jsonb
         else '[{"category":"method","polarity":"positive","target":"Fusion"},{"category":"method","polarity":"negative","target":"Fusion"}]'::jsonb end,'Private person@example.invalid');
   end loop;
-  execute 'set local role authenticated';perform public.create_job_application(application_id,target);execute 'reset role';
+  execute 'set local role authenticated';perform public.create_job_application(application_id,summary_target);execute 'reset role';
   select context_json into application_context from public.applications where id=application_id;
   packet:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);
   select active_protocol_version into protocol from private.opportunity_search_settings where singleton;
   perform private.begin_opportunity_search(search_a,run_id_value);
   result:=private.save_opportunity_search_queries(run_id_value,'[{"query":"synthetic physical sensing"}]');anchor:=(result->>'id')::uuid;
   doc:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(jsonb_build_object('query_id',query_id_value,'query','synthetic physical sensing',
-    'text_hash',encode(sha256(convert_to('synthetic physical sensing','UTF8')),'hex'),'role','core','manual',true,'source_registry_id',registry)));
+    'text_hash',encode(sha256(convert_to('synthetic physical sensing','UTF8')),'hex'),'role','core','manual',true,'source_registry_id',registry),jsonb_build_object('query_id',exploration_id,'query','synthetic adjacent research exploration','text_hash',encode(sha256(convert_to('synthetic adjacent research exploration','UTF8')),'hex'),'role','exploration','manual',false)));
   result:=private.publish_opportunity_search_plan(owner_a,search_a,anchor,doc,original_revision,(packet->>'feedback_revision')::bigint,0,protocol);plan_id:=(result->>'id')::uuid;
-  assert result->'planning_policy'=public.opportunity_search_adaptation_policy()
+  assert result->'planning_policy'=public.opportunity_search_adaptation_policy(20)
     and private.read_opportunity_search_plan(owner_a,search_a,plan_id)->'planning_policy'=result->'planning_policy','Exact planning policy was not pinned in the immutable plan DTO';
   insert into public.opportunity_search_query_plans(id,user_id,search_id,query_revision_id,plan_revision,base_revision,feedback_revision,preference_revision,protocol_version,document,plan_hash)
     select legacy_plan,user_id,search_id,query_revision_id,plan_revision+1000,base_revision,feedback_revision,preference_revision,protocol_version,document,
@@ -122,39 +119,28 @@ begin
   assert (select document from public.opportunity_search_query_plans where id=plan_id)=doc,'Source exclusion edited immutable query text';
 
   -- Thirty preserved core queries leave no invented exploration slot.
-  select doc||jsonb_build_object('queries',(doc->'queries')||jsonb_agg(jsonb_build_object('query_id',gen_random_uuid(),'query','synthetic core query '||i,
+  select doc||jsonb_build_object('queries',jsonb_build_array(doc#>'{queries,0}')||jsonb_agg(jsonb_build_object('query_id',gen_random_uuid(),'query','synthetic core query '||i,
     'text_hash',encode(sha256(convert_to('synthetic core query '||i,'UTF8')),'hex'),'role','core','manual',true))) into doc from generate_series(1,29) i;
   result:=private.publish_opportunity_search_plan(owner_a,search_a,anchor,doc,original_revision,(packet->>'feedback_revision')::bigint,8,protocol);plan_id:=(result->>'id')::uuid;
   context:=private.opportunity_search_planning_context(owner_a,search_a,packet,plan_id);
   assert context#>'{allocation,discretionary}'='0'::jsonb and context#>'{allocation,exploration}'='0'::jsonb and context#>'{allocation,capacity_limited}'='true'::jsonb,'Full core budget invented exploration';
 
   execute 'set local role authenticated';
-  perform public.save_opportunity_feedback(summary_target,'{"search_feedback_summary":"Prefer acoustic prototype research."}');
-  select * into proof from public.opportunity_reviews where user_id=owner_a and opportunity_id=summary_target;
-  perform public.approve_opportunity_feedback_summary(summary_target,proof.search_feedback_summary_hash,proof.search_feedback_source_hash,proof.search_feedback_revision);
+  perform public.save_opportunity_comment(summary_target,'Prefer acoustic prototype research.');
   execute 'reset role';
   packet:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);before_packet:=packet;
   perform private.begin_opportunity_search(search_a,summary_run);perform private.pin_opportunity_feedback_snapshot(owner_a,search_a,summary_run);
   execute 'set local role authenticated';perform public.save_opportunity_search_adaptation(search_a,true,true,1);execute 'reset role';
   packet:=private.pin_opportunity_feedback_snapshot(owner_a,search_a,summary_run);
-  assert packet->'examples'='[]'::jsonb and packet->'privacy_scope_changed'='true'::jsonb,'Pause kept old pinned feedback disclosure';
+  assert packet=before_packet,'Pausing learning changed pinned default feedback';
   packet:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);context:=private.opportunity_search_planning_context(owner_a,search_a,packet,plan_id);
-  assert packet->'examples'='[]'::jsonb and context->'priorities'='[]'::jsonb and context#>'{allocation,adaptive}'='0'::jsonb,'Paused context kept adaptive emphasis';
+  assert context->'priorities'='[]'::jsonb and context#>'{allocation,adaptive}'='0'::jsonb,'Paused context kept adaptive emphasis';
   execute 'set local role authenticated';perform public.save_opportunity_search_adaptation(search_a,true,false,2);execute 'reset role';
   packet:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);
-  assert packet->>'input_fingerprint'<>before_packet->>'input_fingerprint' and exists(select 1 from jsonb_array_elements(packet->'examples') e where e?'search_feedback_summary'),'Unpause reused an irreversibly redacted fingerprint';
-  assert private.pin_opportunity_feedback_snapshot(owner_a,search_a,summary_run)->'examples'='[]'::jsonb,'Unpause restored old pinned text';
-  before_packet:=packet;
+  assert exists(select 1 from jsonb_array_elements(packet->'examples') e where e?'search_feedback_summary'),'Learning toggle lost current evaluation';
   execute 'set local role authenticated';perform public.save_opportunity_search_adaptation(search_a,false,false,3);execute 'reset role';
   packet:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);context:=private.opportunity_search_planning_context(owner_a,search_a,packet,plan_id);
-  assert packet->'examples'='[]'::jsonb and packet->'approved_preferences'='[]'::jsonb and packet#>'{counts,eligible}'='0'::jsonb
-    and context->'priorities'='[]'::jsonb,'Disabled adaptation still exported feedback examples';
-  assert not exists(select 1 from public.opportunity_search_feedback_snapshots s where s.user_id=owner_a and s.search_id=search_a and jsonb_array_length(s.packet->'examples')>0),'Off retained feedback in old retry snapshots';
-  execute 'set local role authenticated';perform public.save_opportunity_search_adaptation(search_a,true,false,4);execute 'reset role';
-  packet:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);
-  assert packet->>'input_fingerprint'<>before_packet->>'input_fingerprint' and exists(select 1 from jsonb_array_elements(packet->'examples') e where e?'search_feedback_summary'),'Re-enable reused a redacted snapshot';
-  execute 'set local role authenticated';perform public.set_opportunity_feedback_consent(search_a,false);execute 'reset role';
-  assert (select not adaptation_enabled and not structured_feedback_enabled from public.opportunity_search_adaptive_settings where user_id=owner_a and search_id=search_a),'Consent revoke failed while enabled';
+  assert jsonb_array_length(packet->'examples')>0 and context->'priorities'='[]'::jsonb,'Disabled learning changed default feedback or kept adaptive priorities';
   assert (select criteria=original_criteria and revision=original_revision from public.opportunity_search_templates where id=search_a),'Learning rewrote authoritative base interests/revision';
   assert (select context_json=application_context from public.applications where id=application_id),'Learning rewrote captured application context';
   -- Restoring a superseded rule may not collide with a newer owner decision

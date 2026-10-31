@@ -1,4 +1,4 @@
-// Generated from supabase/opportunity_schema_v6.json by scripts/generateOpportunityTypes.mjs.
+// Generated from supabase/contracts/opportunity.schema.json by scripts/generateOpportunityTypes.mjs.
 // Edit the schema and regenerate; catalogue consumers use these structured values directly.
 
 export const OPPORTUNITY_SCHEMA_VERSION = 6 as const;

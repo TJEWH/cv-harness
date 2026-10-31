@@ -23,23 +23,18 @@ begin
   select active_protocol_version into protocol from private.opportunity_search_settings where singleton;
   perform set_config('request.jwt.claims',jsonb_build_object('sub',owner_a,'is_anonymous',false)::text,true);execute 'set local role authenticated';
   dashboard:=public.read_opportunity_search_dashboard(search_a,project);
-  assert dashboard->>'dashboard_version'='1' and dashboard#>'{settings,structured_feedback_enabled}'='false'::jsonb
-    and dashboard#>'{settings,adaptation_enabled}'='false'::jsonb and dashboard#>'{settings,successful_source_reuse_enabled}'='false'::jsonb,'Dashboard defaults implied consent';
+  assert dashboard->>'dashboard_version'='1' and dashboard#>'{settings,adaptation_enabled}'='false'::jsonb and dashboard#>'{settings,successful_source_reuse_enabled}'='false'::jsonb,'Dashboard defaults implied consent';
   assert dashboard#>'{runner_authorization,authorization_revision}'='0'::jsonb and dashboard#>'{queries,plan}'='null'::jsonb
     and dashboard->'sources'='[]'::jsonb and dashboard->'runs'='[]'::jsonb,'Cold dashboard invented history';
   assert dashboard->'feedback_preview'=public.preview_opportunity_search_feedback(search_a),'Dashboard modified the exact outgoing packet';
-  blocked:=false;begin perform public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"adaptation_enabled":true}','{"adaptation_revision":0}');exception when invalid_parameter_value then blocked:=true;end;
-  assert blocked,'Adaptation enabled without explicit structured consent';
-  r:=public.patch_opportunity_search_settings(search_a,consent_action,'{"structured_feedback_enabled":true}','{"consent_revision":0}');original:=r;
-  again:=public.patch_opportunity_search_settings(search_a,consent_action,'{"structured_feedback_enabled":true}','{"consent_revision":0}');
-  assert r=again and r#>'{settings,consent_revision}'='1'::jsonb,'Lost-response settings retry duplicated a revision';
-  -- Independent stale adaptation/reuse axes remain valid after consent changed.
-  r:=public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"adaptation_enabled":true}','{"adaptation_revision":0}');
+  r:=public.patch_opportunity_search_settings(search_a,consent_action,'{"adaptation_enabled":true}','{"adaptation_revision":0}');original:=r;
+  again:=public.patch_opportunity_search_settings(search_a,consent_action,'{"adaptation_enabled":true}','{"adaptation_revision":0}');
+  assert r=again and r#>'{settings,adaptation_revision}'='1'::jsonb,'Lost-response settings retry duplicated a revision';
   r:=public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"successful_source_reuse_enabled":true,"reuse_check_interval_hours":96}','{"source_reuse_revision":0}');
-  assert r#>'{settings,consent_revision}'='1'::jsonb and r#>'{settings,source_reuse_revision}'='1'::jsonb,'Independent settings axes overwrote consent';
-  blocked:=false;begin perform public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"structured_feedback_enabled":false}','{"consent_revision":0}');exception when serialization_failure then blocked:=true;end;
+  assert r#>'{settings,adaptation_revision}'='1'::jsonb and r#>'{settings,source_reuse_revision}'='1'::jsonb,'Independent settings axes overwrote consent';
+  blocked:=false;begin perform public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"adaptation_enabled":false}','{"adaptation_revision":0}');exception when serialization_failure then blocked:=true;end;
   assert blocked,'Stale same-axis settings edit silently overwrote consent';
-  blocked:=false;begin perform public.patch_opportunity_search_settings(search_a,consent_action,'{"structured_feedback_enabled":false}','{"consent_revision":0}');exception when serialization_failure then blocked:=true;end;
+  blocked:=false;begin perform public.patch_opportunity_search_settings(search_a,consent_action,'{"adaptation_enabled":false}','{"adaptation_revision":0}');exception when serialization_failure then blocked:=true;end;
   assert blocked,'Changed body reused an existing action identity';
   blocked:=false;begin perform public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"systemPrompt":"PRIVATE_CANARY"}','{}');exception when invalid_parameter_value then blocked:=true;end;
   assert blocked,'Control patch accepted arbitrary template/private fields';
@@ -124,13 +119,13 @@ begin
   dashboard:=public.read_opportunity_search_dashboard(search_a,project);assert dashboard#>>'{preferences,suggestions,0,state}'='rejected','Reject not visible';
   r:=public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"adaptation_paused":true}','{"adaptation_revision":1}');
   dashboard:=public.read_opportunity_search_dashboard(search_a,project);
-  assert dashboard#>'{feedback_preview,examples}'='[]'::jsonb and dashboard#>'{settings,adaptation_paused}'='true'::jsonb
+  assert dashboard#>'{feedback_preview,counts,eligible}'='1'::jsonb and dashboard#>'{settings,adaptation_paused}'='true'::jsonb
     and jsonb_array_length(dashboard->'sources')=2 and dashboard#>>'{queries,plan,id}'=plan_id::text
     and dashboard#>'{queries,plan,queries,2,query}'='null'::jsonb and dashboard#>>'{queries,plan,queries,0,query}'='synthetic BCI opportunities','Pausing deleted underlying sources/history or retained outgoing adaptive examples';
-  r:=public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"structured_feedback_enabled":false}','{"consent_revision":1}');
-  blocked:=false;begin perform public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"adaptation_paused":false}',jsonb_build_object('adaptation_revision',r#>'{settings,adaptation_revision}'));exception when invalid_parameter_value then blocked:=true;end;
-  assert blocked,'Unpausing reenabled adaptation without the intended structured consent';
-  again:=public.patch_opportunity_search_settings(search_a,consent_action,'{"structured_feedback_enabled":true}','{"consent_revision":0}');assert again=original,'Historical settings retry was rebased to current state';
+  r:=public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"adaptation_enabled":false}','{"adaptation_revision":2}');
+  assert r#>'{settings,adaptation_enabled}'='false'::jsonb,'Disabling learning did not persist';
+  assert public.preview_opportunity_search_feedback(search_a)#>'{counts,eligible}'='1'::jsonb,'Disabling learning suppressed default outgoing feedback';
+  again:=public.patch_opportunity_search_settings(search_a,consent_action,'{"adaptation_enabled":true}','{"adaptation_revision":0}');assert again=original,'Historical settings retry was rebased to current state';
   assert(select criteria=original_base and meta_search=original_meta and schedule=original_schedule and revision=original_revision from public.opportunity_search_templates where id=search_a),'Adaptive controls edited base criteria, task text, schedule, or base revision';
   assert(select context_json=original_application from public.applications where id=app_id),'Dashboard controls edited frozen application context';
   -- Public owner RPCs never need access to the private merge/runner schema.
@@ -141,7 +136,7 @@ begin
   assert blocked,'Owner dashboard read another search';
   blocked:=false;begin perform public.opportunity_search_dashboard_outcomes(search_b,registry);exception when insufficient_privilege then blocked:=true;end;
   assert blocked,'Direct outcome helper omitted its owner guard';
-  blocked:=false;begin perform public.patch_opportunity_search_settings(search_b,gen_random_uuid(),'{"structured_feedback_enabled":true}','{"consent_revision":0}');exception when insufficient_privilege then blocked:=true;end;
+  blocked:=false;begin perform public.patch_opportunity_search_settings(search_b,gen_random_uuid(),'{"adaptation_enabled":true}','{"adaptation_revision":0}');exception when insufficient_privilege then blocked:=true;end;
   assert blocked,'Owner patched another search';
   perform set_config('request.jwt.claims',jsonb_build_object('sub',owner_a,'is_anonymous',true)::text,true);
   blocked:=false;begin perform public.read_opportunity_search_dashboard(search_a,project);exception when insufficient_privilege then blocked:=true;end;assert blocked,'Anonymous authenticated session read dashboard';

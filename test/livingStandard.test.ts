@@ -23,7 +23,8 @@ test('missing evidence is not silently scored as zero or inferred from salary am
   assert.match(markdown, /Incomplete assessment/);
   assert.match(markdown, /Unknown: confirm pay or funding/);
   assert.doesNotMatch(markdown, /0\.0 \/ 10\.0/);
-  assert.match(opportunityContextMarkdown({ salary: { amount: 100000 } }, 'en'), /Not assessed yet/);
+  assert.equal(buildOpportunityGroups({ metadata_schema_version: 6, salary: { amount: 100000 } }, 'en')
+    .flatMap(group => group.items).some(node => node.kind === 'living-standard'), false);
 });
 
 test('invalid or unsafe assessment data cannot create a misleading score or executable source link', () => {
@@ -37,7 +38,7 @@ test('invalid or unsafe assessment data cannot create a misleading score or exec
 });
 
 test('living-standard assessments appear once under salary in both UI context and Markdown', () => {
-  const context = { city: 'Example city', salary: { amount: 3204 }, data: { living_standard: fixture }, details: { data: { living_standard: fixture } } };
+  const context = { metadata_schema_version: 6, city: 'Example city', salary: { amount: 3204 }, data: { living_standard: fixture } };
   const groups = buildOpportunityGroups(context, 'en');
   const assessment = groups.find(group => group.id === 'salary')!.items[0];
   assert.equal(assessment.kind, 'living-standard');

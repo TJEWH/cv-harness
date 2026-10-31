@@ -77,13 +77,11 @@ test('compact saved task instructions load complete shapes at startup without st
   assert(Buffer.byteLength(prompt) < 7000, 'the saved task stays compact');
 });
 
-test('the additive SQL deploys the exact delivered protocol and only replaces reviewed function definitions', () => {
-  const sql = readFileSync(new URL('../supabase/opportunity_search_adaptive_payload_contract.sql', import.meta.url), 'utf8');
+test('the current schema installs the exact delivered protocol as a private immutable function', () => {
+  const sql = readFileSync(new URL('../supabase/schemas/12_search_support.sql', import.meta.url), 'utf8');
   const body = /select \$adaptive_payload_protocol\$([\s\S]+?)\$adaptive_payload_protocol\$::text/u.exec(sql)?.[1];
   assert.equal(body, ADAPTIVE_BATCH_PROTOCOL_TEXT);
-  assert.match(sql, /language sql immutable security invoker set search_path=''/u);
-  assert.match(sql, /c64893cda6708ad8b1dab73f6db3fcd1394f37a04f648380158643656e9dc921/u);
-  assert.match(sql, /8005eef234369232a18d497a70b21e546833f7e5d346587ffbc94643beed5b18/u);
-  assert.match(sql, /64a14ad1719ebeb51ba3e3e211fb30458b8f768cf235aae5868bfafe05fb1505/u);
-  assert(!/^\s*(update|insert|delete|alter table|grant)\b/imu.test(sql), 'no history, cache, approval, authorization or table changes');
+  assert.match(sql, /CREATE FUNCTION private\.opportunity_search_adaptive_protocol_text\(\) RETURNS text\s+LANGUAGE sql IMMUTABLE\s+SET search_path TO ''\s+AS \$_\$\s+select \$adaptive_payload_protocol\$/u);
+  const security = readFileSync(new URL('../supabase/schemas/60_security.sql', import.meta.url), 'utf8');
+  assert.match(security, /REVOKE ALL ON FUNCTION private\.opportunity_search_adaptive_protocol_text\(\) FROM PUBLIC;/u);
 });

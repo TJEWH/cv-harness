@@ -1,15 +1,12 @@
-import { test } from 'node:test';
+import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { file, reset, sql } from './db';
+
+before(() => reset());
 import { adaptiveDiscoveryLeadTime, type AdaptiveDeadlineEvidence } from '../../src/features/meta-search/domain/adaptiveSearchQuality';
 import { opportunityFeedbackTimestamp } from '../../src/features/opportunities/domain/opportunityFeedback';
 
 test('AF-05 records real execution, preserves immutable attribution and exposes owner-scoped metrics', () => {
-  reset({ searchProtocol: true });
-  for (const path of ['opportunity_feedback_signals.sql', 'opportunity_feedback_sharing.sql',
-    'opportunity_feedback_projection.sql', 'opportunity_feedback_snapshots.sql', 'opportunity_search_plans.sql',
-    'opportunity_search_attribution.sql', 'opportunity_search_prediction_baselines.sql',
-    'opportunity_search_quality_metrics.sql']) sql(file(`../../supabase/${path}`));
   sql(file('../../supabase/tests/opportunity_search_attribution.sql'));
 });
 

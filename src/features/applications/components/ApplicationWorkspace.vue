@@ -193,8 +193,8 @@ let scopeWasChosen = false;
 const shortInstruction = computed(() => {
   const request = requests.value.find(row => row.id === currentRequestId.value)?.request_json;
   const projectId = refinementProjectId(false);
-  return buildShortRefinementInstruction(props.application, feedbackScope.value, projectId && request?.scope === feedbackScope.value
-    ? { projectId, request } : undefined);
+  if (!projectId || request?.scope !== feedbackScope.value) return '';
+  return buildShortRefinementInstruction(props.application, feedbackScope.value, { projectId, request });
 });
 const shortInstructionNotice = ref('');
 const shortInstructionError = ref('');

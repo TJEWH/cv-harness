@@ -1,4 +1,4 @@
--- Run as postgres after refinement_clear_history_private_execution.sql. All synthetic fixtures roll back.
+-- Run as postgres against supabase/schema.sql; synthetic fixtures roll back.
 begin;
 do $$
 declare

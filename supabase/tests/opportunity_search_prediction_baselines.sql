@@ -62,7 +62,7 @@ begin
     and after_row.feedback_updated_at=before_row.feedback_updated_at,'A view or private comment rebased the frozen prediction';
   execute 'reset role';
   metric:=private.opportunity_interest_metric(owner_a,opportunity_ids[1]);
-  assert metric->'interest_score'='6'::jsonb and metric->'interest_gap'='-2'::jsonb and metric->>'metric_version'='opportunity-interest-v1',
+  assert metric->'interest_score'='6'::jsonb and metric->'interest_gap'='-2'::jsonb and metric->>'metric_version'='opportunity-interest-v2',
     'Discovery baseline changed interest conventions';
   projected:=private.project_opportunity_feedback(owner_a,opportunity_ids[1]);
   assert projected#>>'{original_prediction,source_kind}'='discovery_assessment'
@@ -117,19 +117,19 @@ begin
     'A reason-only submission fallback pinned a post-submission explicit baseline';
   execute 'reset role';
   metric:=private.opportunity_interest_metric(owner_a,opportunity_ids[3]);
-  assert metric->'interest_score'='9'::jsonb and metric->'interest_gap'='1'::jsonb,'Known submission lost its genuine ex-ante assessment';
+  assert metric->'interest_score'='9.5'::jsonb and metric->'interest_gap'='1.5'::jsonb,'Known submission lost its genuine ex-ante assessment';
   projected:=private.project_opportunity_feedback(owner_a,opportunity_ids[3]);
-  assert projected#>>'{original_prediction,source_kind}'='discovery_assessment' and projected->'interest_gap'='1'::jsonb,
+  assert projected#>>'{original_prediction,source_kind}'='discovery_assessment' and projected->'interest_gap'='1.5'::jsonb,
     'Submission fallback did not preserve its actual baseline provenance';
   update public.applications set submitted_at=null,status='rejected' where id=application;
   perform set_config('cv_builder.resetting_application_history',owner_a::text||':'||application::text,true);
   update public.applications set status_history='[{"status":"submitted","changedAt":null},{"status":"rejected","changedAt":null}]' where id=application;
   metric:=private.opportunity_interest_metric(owner_a,opportunity_ids[3]);
-  assert metric->'interest_score'='9'::jsonb and metric->'submission_at'='null'::jsonb and metric->'interest_gap'='null'::jsonb,
+  assert metric->'interest_score'='9.5'::jsonb and metric->'submission_at'='null'::jsonb and metric->'interest_gap'='null'::jsonb,
     'Unknown submission time established an invented baseline ordering';
   execute 'set local role authenticated';perform public.reset_job_application_history(application);execute 'reset role';
   metric:=private.opportunity_interest_metric(owner_a,opportunity_ids[3]);
-  assert metric->'interest_score'='null'::jsonb and metric->'interest_gap'='null'::jsonb,'Corrected submission evidence retained a fallback';
+  assert metric->'interest_score'='9'::jsonb and metric->'interest_gap'='null'::jsonb,'Reset did not remove submission evidence while retaining current application interest';
 
   -- Another owner can review the shared vacancy but cannot see or inherit this
   -- owner's protected assessment metadata or pin its prediction reference.

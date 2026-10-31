@@ -1,18 +1,17 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import test from 'node:test';
+import test, { before } from 'node:test';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
 import { createAdaptiveSearchDashboardController } from '../../src/features/meta-search/composables/adaptiveSearchDashboard';
-import { file, reset, sql, upgradeCurrentFeedbackContract } from './db';
+import { reset, sql } from './db';
+
+before(() => reset());
 
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const json = (value: unknown) => `${quote(JSON.stringify(value))}::jsonb`;
 
-test('current authenticated dashboard controls save after feedback-default upgrades and report missing runner configuration accurately', async () => {
-  reset({ searchProtocol: true });
-  for (const name of ADAPTIVE_RELEASE_MIGRATIONS) sql(file(`../../supabase/${name}`));
-  upgradeCurrentFeedbackContract();
+test('current authenticated dashboard controls save against a fresh installation and report missing runner configuration accurately', async () => {
+  reset();
   const owner = randomUUID(), search = randomUUID(), source = randomUUID(), project = 'dddddddddddddddddddd';
   const scope = { ownerId: owner, searchId: search, projectRef: project };
   sql(`insert into auth.users(id) values(${quote(owner)});

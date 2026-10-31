@@ -1,4 +1,4 @@
--- Run as postgres after refinement_annotations.sql. Every fixture rolls back.
+-- Run as postgres against supabase/schema.sql; synthetic fixtures roll back.
 begin;
 do $$
 declare
@@ -25,7 +25,7 @@ begin
     (owner_a,'authenticated','authenticated',owner_a::text||'@example.invalid','{}','{}'),
     (owner_b,'authenticated','authenticated',owner_b::text||'@example.invalid','{}','{}');
   insert into public.opportunities(id,opportunity_key,title,requirements,required_documents)
-    values(opportunity,'structured-test-'||opportunity::text,'Structured CV fixture','["400 word motivation letter"]','["CV"]');
+    values(opportunity,'structured-test-'||opportunity::text,'Structured CV fixture','[{"text":"400 word motivation letter","status":"required","stage":"recruitment","entity_id":"400-word-motivation-letter"}]','[{"text":"CV","status":"required","stage":"recruitment","entity_id":"cv"}]');
   perform set_config('request.jwt.claims',jsonb_build_object('sub',owner_a,'role','authenticated','is_anonymous',false)::text,true);
   execute 'set local role authenticated';
   perform public.create_job_application(app_a,opportunity);

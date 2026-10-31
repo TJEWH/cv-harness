@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import schemaV5 from '../supabase/opportunity_schema_v5.json';
-import schemaV6 from '../supabase/opportunity_schema_v6.json';
+import schemaV6 from '../supabase/contracts/opportunity.schema.json';
 import { readOpportunity } from '../src/features/opportunities/domain/readOpportunity';
 import { canonicalOpportunityFixture } from './fixtures/canonicalOpportunity';
 import { opportunityFixture } from './fixtures/opportunity';
@@ -45,9 +44,8 @@ function httpPatterns(value: unknown, path = ''): Map<string, string> {
   return found;
 }
 
-for (const [version, schema] of [['v5', schemaV5], ['v6', schemaV6]] as const) {
-  test(`${version} URL patterns preserve HTTP(S) paths and queries at every schema location`, async t => {
-    const patterns = httpPatterns(schema);
+test('current URL patterns preserve HTTP(S) paths and queries at every schema location', async t => {
+    const patterns = httpPatterns(schemaV6);
     assert.deepEqual([...patterns.keys()].sort(), [...expectedHttpPatternPaths].sort());
     for (const [path, pattern] of patterns) {
       await t.test(path, () => {
@@ -56,8 +54,7 @@ for (const [version, schema] of [['v5', schemaV5], ['v6', schemaV6]] as const) {
         for (const url of invalidHttpUrls) assert.equal(rule.test(url), false, `${path} must reject ${JSON.stringify(url)}`);
       });
     }
-  });
-}
+});
 
 test('v6 application URLs preserve advertised email application query parameters', () => {
   const rule = new RegExp(schemaV6.properties.application_url.pattern);

@@ -16,6 +16,18 @@ begin
   execute 'set local role authenticated';
   perform public.create_job_application(app, opportunity);
 
+  select to_jsonb(a) into before_reset from public.applications a where a.id = app;
+  foreach expected_status in array array['shortlist', 'unsupported_status', null] loop
+    begin
+      update public.applications set status = expected_status where id = app;
+      raise exception 'FAIL: unsupported status was accepted';
+    exception when check_violation then null;
+    end;
+  end loop;
+  if (select to_jsonb(a) from public.applications a where a.id = app) <> before_reset then
+    raise exception 'FAIL: rejecting a status changed application data';
+  end if;
+
   foreach stage in array array['preparation','refinement','review'] loop
     expected_status := case stage when 'review' then 'attachments' else stage end;
     saved := public.set_job_application_stage(app, stage);

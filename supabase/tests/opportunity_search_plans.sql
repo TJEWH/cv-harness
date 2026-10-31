@@ -4,7 +4,7 @@ do $$
 declare owner_a uuid:=gen_random_uuid();owner_b uuid:=gen_random_uuid();search_a uuid:=gen_random_uuid();search_b uuid:=gen_random_uuid();
   run_a uuid:=gen_random_uuid();run_b uuid:=gen_random_uuid();registry uuid:=gen_random_uuid();candidate uuid:=gen_random_uuid();portal_candidate uuid:=gen_random_uuid();other_registry uuid:=gen_random_uuid();
   opportunity_a uuid:=gen_random_uuid();opportunity_b uuid:=gen_random_uuid();query_core uuid:=gen_random_uuid();query_adaptive uuid:=gen_random_uuid();query_new_core uuid:=gen_random_uuid();
-  anchor_a uuid;anchor_b uuid;protocol text;legacy jsonb;legacy_before jsonb;doc jsonb;next_doc jsonb;core jsonb;adaptive jsonb;new_core jsonb;
+  anchor_a uuid;anchor_b uuid;protocol text;legacy jsonb;legacy_before jsonb;doc jsonb;next_doc jsonb;core jsonb;adaptive jsonb;new_core jsonb;exploration jsonb;
   first_plan jsonb;second_plan jsonb;wrong_plan jsonb;reply jsonb;retained jsonb;before_source jsonb;source_row public.opportunity_search_sources;
   blocked boolean;affected integer;listing text:='https://example.invalid/Jobs?area=Audio';verified_at timestamptz:=now()-interval '1 hour';
   schedule jsonb:='{"frequency":"daily","intervalHours":24,"weekdays":[],"time":"08:00","timezone":"UTC","runImmediately":false}';
@@ -56,9 +56,11 @@ begin
     (opportunity_b,'af04-'||opportunity_b,'Synthetic research B','https://example.invalid/Vacancy/B','https://apply.example.invalid/Portal',
       '{"url_roles":{"official_url":"vacancy","application_url":"application_portal"}}',
       jsonb_build_array(jsonb_build_object('source_id','af04-listing-b','url','https://listing.example.invalid/Openings','kind','official_listing','checked_at',verified_at,'precision','instant','supports',jsonb_build_array('title'))));
+  insert into private.opportunity_search_merge_state(opportunity_id,fields)
+    select id,jsonb_build_object('/title',jsonb_build_object('value',title,'evidence',sources)) from public.opportunities where id in(opportunity_a,opportunity_b);
   insert into public.opportunity_reviews(user_id,opportunity_id,state) values(owner_a,opportunity_a,'strong_interest'),(owner_a,opportunity_b,'strong_interest');
   assert private.retain_successful_opportunity_source(owner_a,search_a,opportunity_a,'https://listing.example.invalid/Openings',candidate) is null,'Source reuse activated without explicit policy';
-  execute 'set local role authenticated';perform public.set_opportunity_source_reuse(search_a,true,168);execute 'reset role';
+  execute 'set local role authenticated';perform public.save_opportunity_search_adaptation(search_a,true,false,0);perform public.set_opportunity_source_reuse(search_a,true,168);execute 'reset role';
   assert private.retain_successful_opportunity_source(owner_a,search_a,opportunity_b,'https://listing.example.invalid/Openings',candidate) is null,'Unrelated vacancy promoted another pending entry';
   assert private.retain_successful_opportunity_source(owner_a,search_a,opportunity_a,'https://listing.example.invalid/Openings',portal_candidate) is null,'Shared application portal proved a vacancy identity';
   retained:=private.retain_successful_opportunity_source(owner_a,search_a,opportunity_a,'https://listing.example.invalid/Openings',candidate);
@@ -78,20 +80,22 @@ begin
   core:=jsonb_build_object('query_id',query_core,'query','acoustic sensing PhD','text_hash',encode(sha256(convert_to('acoustic sensing PhD','UTF8')),'hex'),
     'role','core','manual',true,'sources',jsonb_build_array('EXAMPLE.invalid'),'source_registry_id',registry);
   adaptive:=jsonb_build_object('query_id',query_adaptive,'query','BCI funded research','text_hash',encode(sha256(convert_to('BCI funded research','UTF8')),'hex'),'role','adaptive','manual',false);
-  doc:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(core,adaptive));
-  first_plan:=private.publish_opportunity_search_plan(owner_a,search_a,anchor_a,doc,1,0,0,protocol);
-  assert private.publish_opportunity_search_plan(owner_a,search_a,anchor_a,doc,1,0,0,protocol)=first_plan,'Plan retry allocated another version';
+  exploration:=jsonb_build_object('query_id',gen_random_uuid(),'query','synthetic adjacent research exploration','text_hash',encode(sha256(convert_to('synthetic adjacent research exploration','UTF8')),'hex'),'role','exploration','manual',false);
+  doc:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(core,adaptive,exploration));
+  first_plan:=private.publish_opportunity_search_plan(owner_a,search_a,anchor_a,doc,1,(private.compile_opportunity_feedback_snapshot(owner_a,search_a)->>'feedback_revision')::bigint,0,protocol);
+  assert private.publish_opportunity_search_plan(owner_a,search_a,anchor_a,doc,1,(private.compile_opportunity_feedback_snapshot(owner_a,search_a)->>'feedback_revision')::bigint,0,protocol)=first_plan,'Plan retry allocated another version';
   perform private.pin_opportunity_search_plan(owner_a,search_a,run_a,(first_plan->>'id')::uuid);
   wrong_plan:=private.publish_opportunity_search_plan(owner_b,search_b,anchor_b,jsonb_build_object('schema_version',2,'queries',jsonb_build_array(
-    jsonb_build_object('query_id',gen_random_uuid(),'query','other synthetic research','text_hash',encode(sha256(convert_to('other synthetic research','UTF8')),'hex'),'role','core','manual',false))),1,0,0,protocol);
+    jsonb_build_object('query_id',gen_random_uuid(),'query','other synthetic research','text_hash',encode(sha256(convert_to('other synthetic research','UTF8')),'hex'),'role','core','manual',false))),1,(private.compile_opportunity_feedback_snapshot(owner_b,search_b)->>'feedback_revision')::bigint,0,protocol);
+  insert into public.opportunity_reviews(user_id,opportunity_id,state) values(owner_b,opportunity_b,'interested');
   perform private.pin_opportunity_feedback_snapshot(owner_b,search_b,run_b);
   blocked:=false;
   begin perform private.pin_opportunity_search_plan(owner_b,search_b,run_b,(wrong_plan->>'id')::uuid);exception when invalid_parameter_value then blocked:=true;end;
   assert blocked,'A query plan with another feedback basis was pinned to the run';
   adaptive:=jsonb_set(adaptive,'{query}','"robot audition funded research"');
   adaptive:=jsonb_set(adaptive,'{text_hash}',to_jsonb(encode(sha256(convert_to('robot audition funded research','UTF8')),'hex')));
-  next_doc:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(core,adaptive));
-  second_plan:=private.publish_opportunity_search_plan(owner_a,search_a,anchor_a,next_doc,1,0,0,protocol);
+  next_doc:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(core,adaptive,exploration));
+  second_plan:=private.publish_opportunity_search_plan(owner_a,search_a,anchor_a,next_doc,1,(private.compile_opportunity_feedback_snapshot(owner_a,search_a)->>'feedback_revision')::bigint,0,protocol);
   assert second_plan->>'plan_hash'<>first_plan->>'plan_hash' and second_plan->>'plan_revision'<>first_plan->>'plan_revision','Modified query text lost distinguishable version';
   assert private.pin_opportunity_search_plan(owner_a,search_a,run_a,(second_plan->>'id')::uuid)=first_plan,'New plan replaced an existing run pin';
   assert (select queries from public.opportunity_search_runs where id=run_a)=legacy,'V2 publication rewrote legacy run queries';
@@ -104,10 +108,10 @@ begin
   begin perform private.validate_opportunity_search_plan(owner_a,search_a,jsonb_set(next_doc,'{queries,1,role}','null'));exception when invalid_parameter_value then blocked:=true;end;
   assert blocked,'JSON null query role accepted';
   blocked:=false;
-  begin perform private.publish_opportunity_search_plan(owner_a,search_a,anchor_a,jsonb_build_object('schema_version',2,'queries',jsonb_build_array(jsonb_set(core,'{manual}','false'),adaptive)),1,0,0,protocol);exception when invalid_parameter_value then blocked:=true;end;
+  begin perform private.publish_opportunity_search_plan(owner_a,search_a,anchor_a,jsonb_build_object('schema_version',2,'queries',jsonb_build_array(jsonb_set(core,'{manual}','false'),adaptive)),1,(private.compile_opportunity_feedback_snapshot(owner_a,search_a)->>'feedback_revision')::bigint,0,protocol);exception when invalid_parameter_value then blocked:=true;end;
   assert blocked,'Model retagged a stored manual core query';
   blocked:=false;
-  begin perform private.publish_opportunity_search_plan(owner_a,search_a,anchor_b,next_doc,1,0,0,protocol);exception when invalid_parameter_value then blocked:=true;end;
+  begin perform private.publish_opportunity_search_plan(owner_a,search_a,anchor_b,next_doc,1,(private.compile_opportunity_feedback_snapshot(owner_a,search_a)->>'feedback_revision')::bigint,0,protocol);exception when invalid_parameter_value then blocked:=true;end;
   assert blocked,'Another owner/query anchor became active';
   blocked:=false;
   begin update public.opportunity_search_query_plans set document='{}' where id=(first_plan->>'id')::uuid;exception when check_violation then blocked:=true;end;
@@ -119,10 +123,10 @@ begin
   reply:=private.save_opportunity_search_queries(run_b,'[{"query":"physical sensing funded positions"}]');anchor_b:=(reply->>'id')::uuid;
   new_core:=jsonb_build_object('query_id',query_new_core,'query','physical sensing funded positions','text_hash',encode(sha256(convert_to('physical sensing funded positions','UTF8')),'hex'),'role','core','manual',false);
   blocked:=false;
-  begin perform private.publish_opportunity_search_plan(owner_a,search_a,anchor_b,jsonb_build_object('schema_version',2,'queries',jsonb_build_array(new_core,adaptive)),2,0,0,protocol);exception when invalid_parameter_value then blocked:=true;end;
+  begin perform private.publish_opportunity_search_plan(owner_a,search_a,anchor_b,jsonb_build_object('schema_version',2,'queries',jsonb_build_array(new_core,adaptive)),2,(private.compile_opportunity_feedback_snapshot(owner_a,search_a)->>'feedback_revision')::bigint,0,protocol);exception when invalid_parameter_value then blocked:=true;end;
   assert blocked,'A base change erased a stored manual core';
-  next_doc:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(core,new_core,adaptive));
-  reply:=private.publish_opportunity_search_plan(owner_a,search_a,anchor_b,next_doc,2,0,0,protocol);
+  next_doc:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(core,new_core,adaptive,exploration));
+  reply:=private.publish_opportunity_search_plan(owner_a,search_a,anchor_b,next_doc,2,(private.compile_opportunity_feedback_snapshot(owner_a,search_a)->>'feedback_revision')::bigint,0,protocol);
   assert reply#>'{basis,base_revision}'='2'::jsonb,'Independent base revision not retained';
 
   -- Owner RLS and publication metadata remain protected.

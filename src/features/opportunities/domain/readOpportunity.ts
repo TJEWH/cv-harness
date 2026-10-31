@@ -1,4 +1,4 @@
-import schema from '../../../../supabase/opportunity_schema_v6.json';
+import schema from '../../../../supabase/contracts/opportunity.schema.json';
 import type { Opportunity } from '../opportunityTypes';
 import { normalizeOpportunityTopic } from './opportunityTopics';
 import { opportunityFeedbackTextIsSafe } from './opportunityFeedbackPrivacy';

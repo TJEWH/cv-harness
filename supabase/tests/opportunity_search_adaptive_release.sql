@@ -5,7 +5,7 @@ declare owner_a uuid:=gen_random_uuid();owner_b uuid:=gen_random_uuid();search_a
   old_run uuid:=gen_random_uuid();new_run uuid:=gen_random_uuid();old_item uuid:=gen_random_uuid();opportunity uuid;registry uuid:=gen_random_uuid();
   now_text text:=to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"');project text:='ssssssssssssssssssss';
   payload jsonb;result jsonb;packet jsonb;proof public.opportunity_reviews;relation text;scope_owner_count bigint;blocked boolean;legacy_definitions jsonb;
-  public_tables text[]:=array['opportunity_feedback_summary_approvals','opportunity_search_adaptive_settings','opportunity_search_feedback_snapshots',
+  public_tables text[]:=array['opportunity_search_adaptive_settings','opportunity_search_feedback_snapshots',
     'opportunity_search_sources','opportunity_search_query_plans','opportunity_search_executions','opportunity_search_execution_receipts',
     'opportunity_search_discoveries','opportunity_search_preference_suggestions','opportunity_search_preference_actions',
     'opportunity_search_runner_authorizations','opportunity_search_adaptive_proposals','opportunity_search_runner_config',
@@ -49,7 +49,7 @@ begin
   perform private.save_opportunity_search_queries(old_run,'[{"query":"synthetic physical sensing base"}]');
   payload:=jsonb_build_object('opportunity_key','af11-oldcaller-'||old_run,'title','Synthetic legacy caller research','official_url','https://example.invalid/Legacy/'||old_run,
     'personal_fit','{"score":8,"scale_min":0,"scale_max":10,"summary":"Synthetic technical alignment."}'::jsonb,
-    'contacts','[{"name":"CONTACT_PRIVATE_CANARY","email":"contact@example.invalid","roles":["contact"]}]'::jsonb,'last_checked_at',now_text,
+    'contacts','[{"name":"CONTACT_PRIVATE_CANARY","email":"contact@example.invalid","roles":["contact"],"entity_id":"contact-private-canary"}]'::jsonb,'last_checked_at',now_text,
     'sources',jsonb_build_array(jsonb_build_object('url','https://example.invalid/Legacy/'||old_run,'kind','official','checked_at',now_text,'precision','instant','supports','["title","official_url","personal_fit","contacts"]'::jsonb)));
   perform private.submit_opportunity_search_result(old_run,old_item,payload);
   perform private.verify_opportunity_search_result(old_run,old_item);
@@ -59,20 +59,18 @@ begin
 
   perform set_config('request.jwt.claims',jsonb_build_object('sub',owner_a,'is_anonymous',false)::text,true);execute 'set local role authenticated';
   perform public.save_opportunity_comment(opportunity,'COMMENT_PRIVATE_CANARY contact@example.invalid');
-  perform public.save_opportunity_feedback(opportunity,'{"interest_rating":8,"search_feedback_summary":"Synthetic approved research preference."}');
-  select * into proof from public.opportunity_reviews r where r.user_id=owner_a and r.opportunity_id=opportunity;
-  perform public.approve_opportunity_feedback_summary(opportunity,proof.search_feedback_summary_hash,proof.search_feedback_source_hash,proof.search_feedback_revision);
-  perform public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"structured_feedback_enabled":true,"adaptation_enabled":true}','{"consent_revision":0,"adaptation_revision":0}');
+  perform public.review_job_opportunity(opportunity,null,'strong_interest');
+  perform public.patch_opportunity_search_settings(search_a,gen_random_uuid(),'{"adaptation_enabled":true}','{"adaptation_revision":0}');
   perform public.patch_opportunity_search_source(search_a,registry,gen_random_uuid(),'{"listing_url":"https://example.invalid/ReusableResearch","enabled":true,"pinned":true}',0);
   execute 'reset role';
   packet:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);
-  assert packet::text not like '%Synthetic approved research preference.%' and packet::text!~'PRIVATE_CANARY|contact@example.invalid',
+  assert packet::text not like '%Synthetic physical prototype evaluation.%' and packet::text!~'PRIVATE_CANARY|contact@example.invalid',
     'Default inclusion bypassed full-source safety because of a historical approval';
   execute 'set local role authenticated';
   perform public.save_opportunity_comment(opportunity,'Synthetic physical prototype evaluation.');
   execute 'reset role';
   packet:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);
-  assert packet::text like '%Synthetic approved research preference.%' and packet::text like '%summary_inclusion%'
+  assert packet::text like '%Synthetic physical prototype evaluation.%' and packet::text like '%summary_inclusion%'
     and packet::text!~'PRIVATE_CANARY|contact@example.invalid','Default safe evaluation was omitted or leaked private evidence';
   update public.opportunity_search_adaptive_release set enabled=true,project_ref=project where singleton;
   execute 'set local role authenticated';perform public.set_opportunity_search_runner_authorization(search_a,project,true,0);execute 'reset role';
@@ -82,8 +80,8 @@ begin
   -- same-run retry cannot restore formerly included text from snapshot metadata.
   execute 'set local role authenticated';perform public.save_opportunity_feedback(opportunity,'{"feedback_excluded":true}');execute 'reset role';
   result:=private.begin_adaptive_opportunity_search(search_a,new_run);
-  assert result::text not like '%Synthetic approved research preference.%','Excluded feedback survived same-run retry';
-  assert not exists(select 1 from public.opportunity_search_feedback_snapshots s where s.user_id=owner_a and s.packet::text like '%Synthetic approved research preference.%'),'Excluded feedback survived direct cached packet read';
+  assert result::text not like '%Synthetic physical prototype evaluation.%','Excluded feedback survived same-run retry';
+  assert not exists(select 1 from public.opportunity_search_feedback_snapshots s where s.user_id=owner_a and s.packet::text like '%Synthetic physical prototype evaluation.%'),'Excluded feedback survived direct cached packet read';
 
   perform set_config('request.jwt.claims',jsonb_build_object('sub',owner_b,'is_anonymous',false)::text,true);execute 'set local role authenticated';
   foreach relation in array public_tables loop
@@ -106,7 +104,7 @@ begin
   execute 'reset role';
   delete from public.opportunity_search_templates t where t.user_id=owner_a and t.id=search_a;
   foreach relation in array public_tables loop
-    if relation in('opportunity_feedback_summary_approvals','opportunity_feedback_prediction_proofs') then continue;end if;
+    if relation in('opportunity_feedback_prediction_proofs') then continue;end if;
     execute format('select count(*) from public.%I where user_id=$1',relation) into scope_owner_count using owner_a;
     assert scope_owner_count=0,'Search/account scope cleanup retained adaptive rows: '||relation;
   end loop;
@@ -118,8 +116,7 @@ begin
   -- account-deletion path; authenticated is never granted auth.users DELETE.
   delete from auth.users where id=owner_a;
   assert not exists(select 1 from public.opportunity_reviews where user_id=owner_a)
-    and not exists(select 1 from public.opportunity_feedback_prediction_proofs where user_id=owner_a)
-    and not exists(select 1 from public.opportunity_feedback_summary_approvals where user_id=owner_a),'Account cleanup retained review/proof metadata';
+    and not exists(select 1 from public.opportunity_feedback_prediction_proofs where user_id=owner_a),'Account cleanup retained review/proof metadata';
 end;
 $$;
 rollback;

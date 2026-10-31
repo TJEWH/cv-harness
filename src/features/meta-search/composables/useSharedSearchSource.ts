@@ -97,7 +97,7 @@ export function useSharedSearchSource(options: SharedSearchSourceOptions) {
           if (!current()) return;
           // A commit in another editor/tab wins even if no update event arrived.
           if (options.storage().getItem(searchTemplateStorageKey(owner)) !== raw) { reloadLocal(); return; }
-          const row = boundId ? rows.find(item => item.id === boundId) : rows.find(item => item.meta_search?.version === 1) || rows[0];
+          const row = boundId ? rows.find(item => item.id === boundId) : rows[0];
           templates.value = row ? [importCloudSearchTemplate(row)] : [];
           hydrated = true;
           ready();

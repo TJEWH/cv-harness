@@ -1,4 +1,4 @@
--- Run as postgres after local_attachment_metadata.sql. Synthetic fixtures roll back.
+-- Run as postgres against supabase/schema.sql; synthetic fixtures roll back.
 begin;
 do $$
 declare

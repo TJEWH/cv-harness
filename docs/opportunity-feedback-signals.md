@@ -1,88 +1,31 @@
-# AF-01: owner-scoped opportunity feedback
+# Opportunity feedback
 
-This implements only AF-01 against reviewed commit `f475d364fb16508b4ef8e1568b9d72fd80e3ddf2`. The supplied package has no standalone AF-01 file; the specification used is the AF-01 section of `docs/codex_adaptive_search_tickets/Adaptive_Search_Feedback_Codex_Tickets.md`, with SIG-01–08 and PRIV-07 from its test matrix.
+Current feedback combines the owner's interest choice, application progress, personal evaluation, explicit reasons and per-opportunity exclusion. It never replaces canonical research assessments.
 
-## Contract
+## Interest and evaluation
 
-The additive migration is `supabase/opportunity_feedback_signals.sql`. It extends the existing owner/opportunity review primary key with:
+`opportunity-interest-v2` derives score and origin in this order: confirmed submission 9.5; existing application 9; Very high 9 / High 8 / Medium 6 / Low 2; otherwise unassessed. Removing an application reveals the saved opportunity choice again. Current scoring ignores the retired numeric override; immutable historical packets retain their original evidence.
 
-| Field | Meaning |
-| --- | --- |
-| `interest_rating` | Legacy finite 0–10 numeric override; retained in storage and historical v1 packets, ignored by current v2 feedback |
-| `interest_reasons` | At most 24 explicit structured reason tags under v2; defaults to `[]` |
-| `feedback_excluded` | Suppresses the adaptive score and gap; defaults to false |
-| `feedback_revision` | Server-maintained meaningful explicit feedback revision; legacy rows start at 0 |
-| `feedback_updated_at` | Server-maintained meaningful explicit feedback time; legacy time stays unknown |
-| `prediction_baseline` | Optional frozen, independently proven historical prediction |
+The complete personal evaluation lives in `opportunity_reviews.comment`, with a server-maintained `evaluation_revision`. It permits 12,000 Unicode codepoints and saves through the current comment RPC. There is no second summary field, summary approval API or search-level sharing setting.
 
-Current reason categories are `topic`, `method`, `background_fit`, `project_context`, `hardware` (Tools+hardware), `location`, `funding` (Salary), `timing`, and `other`, with `positive` or `negative` polarity. `requirements` and `availability` are negative-only. Stored `hardware` and `funding` keys remain compatible with saved reasons. Only topic/method tags may carry an explicit target of 1–120 Unicode code points. Targets trim surrounding ASCII spaces and reject control characters. Tags form a normalized, deterministically ordered set. Private comments are neither parsed for targets nor included in metric outputs.
+The per-opportunity exclusion controls text and structured feedback together. Technical outcomes and the manual Past marker remain separate from interest, official deadlines and application status. Technical note text stays private.
 
-`opportunity-interest-v2` returns both score and origin: confirmed submission 9.5 first, then an existing application 9, then Very high 9 / High 8 / Medium 6 / Low 2, otherwise null. Current feedback ignores the retired numeric override; immutable v1 packets keep their original scores and origins. The upgrade is `supabase/opportunity_interest_v2.sql`. These are product conventions. They never replace canonical AI assessments. An excluded item has no score or gap.
+## Privacy and evidence
 
-Confirmed submission requires a valid `submitted_at`, exact current `submitted` status, or exact `submitted` history entry. Later employer statuses alone do not establish submission. An explicit submitted status with an unknown time still confirms submission, while its time remains null. Removing or correcting actual evidence recomputes the fallback. The existing UI grouping helper remains unchanged.
+Search feedback uses at most the first 600 Unicode codepoints of an eligible evaluation, with exact source hashes, revision, source length and truncation metadata. Safeguards inspect the complete source before producing an excerpt. Contact information, private application notes, CV content and attachment files never belong in feedback packets. Editing or excluding a source cannot revive cached private text.
 
-Only state, rating, normalized reasons, and exclusion changes advance the feedback revision/time. View receipts (`p_state=null`), comments, same-value retries and reordered/duplicate tags do not. The metric uses meaningful feedback time rather than the review's general `updated_at` for priority. Existing historical feedback remains usable without fabricating its original time.
+Prediction proofs require matching owner/opportunity identities and verified historical receipt evidence. A prediction must predate the meaningful owner outcome; missing or unverifiable history leaves the gap unassessed. Current catalogue scores cannot rebase historical predictions. Institution cohorts are diagnostics, not qualifications or automatic preferences.
 
-## Historical baselines
+Adaptation, pause, source reuse, runner authorization and release enablement remain independent. Pausing adaptation does not withhold otherwise included raw feedback. A pending suggestion does not execute a preference, source or query change.
 
-A baseline uses structured `score`, `scale_min=0`, `scale_max=10`, owner/opportunity IDs, `predicted_at`, `source_kind=historical_snapshot`, and `source_ref=opportunity-search-receipt:<run UUID>:<item UUID>`.
+## Verification
 
-The database requires an exact owner/opportunity-matched verified receipt, its matching search run, and a non-rolled-back merge audit snapshot with that exact structured score and timestamp. The prediction must predate the known meaningful outcome time. Unknown history or today's catalogue score gives `interest_gap=null` and `baseline_status=unavailable`. A later catalogue change cannot rebase the gap. Revoked verification or a rolled-back source makes its proof unavailable.
-
-Runtime roles cannot write a baseline or forge revision/time. A reviewed management operation can attach a proven baseline only alongside a meaningful feedback change; it cannot replace one during a view, comment or retry. No baseline backfill is performed. The pure TypeScript metric also requires independently verified evidence alongside the stored baseline; a client-asserted JSON object alone is insufficient. AF-05's future prediction attribution is not implemented here.
-
-## Existing integration and privacy
-
-The optional TypeScript fields support clients awaiting the additive migration. Existing review/comment/view RPCs remain intact. Stale view replies preserve newer explicit feedback. Application creation and removal preserve every saved opportunity review field. While an application exists, Opportunities and Review display a disabled Very high selection. Removing it restores the saved selection and categorical feedback.
-
-Existing review grants and RLS policies are unchanged. New helpers use `security invoker`, fixed empty search paths, and have no runtime-role EXECUTE grant. `private.opportunity_interest_metric(owner, opportunity)` is an internal reference implementation, not a new runner or public feedback API. No UI, approved text sharing, compiler, adaptive search plan, scheduled task or deployment is included. Canonical opportunity v5 JSON, private application snapshots and CVs are unchanged.
-
-## Isolated synthetic tests
-
-Prerequisites: installed npm dependencies, Node compatible with the repository, Docker, and a local PostgreSQL image. The tests were developed with PostgreSQL 17.6. This fixture has no external network, exposed port, bind mount, Supabase URL or connection-string override.
+Run the current database contracts against the isolated fixture:
 
 ```sh
-docker run --detach --name cv-adaptive-feedback-test \
-  --label cv-builder.test-suite=adaptive-feedback --network none \
-  -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=adaptive_feedback_test postgres:17.6
-npm run test:opportunity-feedback
-node --import tsx --test test/opportunityFeedback.test.ts test/useCloudWorkspace.test.ts
-npm run typecheck
+npm run test:database
 npm test
 npm run build
-docker rm --force --volumes cv-adaptive-feedback-test
 ```
 
-If the `tsx` launcher cannot open its local IPC socket in a sandbox, the equivalent database command is `node --import tsx --test test/opportunityFeedback/database.test.ts`.
-
-The database runner verifies its container label, disabled network, absent bind mounts/ports, fixed database name and exclusive suite lock before resetting its disposable schemas. It loads the actual current `supabase/schema.sql`, synthetic Auth/search evidence structures, then the AF-01 migration. It never reads captured historical opportunity fixtures. SQL acceptance assertions run in a rollback transaction; separate tests verify additive preservation and concurrent writes. The root TypeScript suite covers all SIG cases, malformed values, owner scoping, bounded reasons and high-precision timestamp comparisons. No browser suite is needed because AF-01 adds no interface.
-
-## Deployment prerequisites
-
-No production installation is authorized or performed. After review and separate authorization, confirm the deployed review/application schema and existing search-run, receipt and merge-audit relations match the prerequisites in the migration. Apply the additive file once through the project's migration process; no historical opportunity or review backfill is required. Preserve the existing owner policies/grants and keep internal helpers private. AF-02+ must separately implement controls, disclosure approval and runner integration before adaptive feedback is used in searches.
-
-## Verification on 2026-10-29
-
-| Command actually run | Result |
-| --- | --- |
-| `node --import tsx --test test/opportunityFeedback.test.ts test/useJobWorkspace.test.ts test/applicationTracking.test.ts` | 73 passed, 0 failed on final source |
-| `npm run test:opportunity-feedback` | 3 passed, 0 failed in isolated PostgreSQL 17.6, including the transactional SQL assertions |
-| `npm run typecheck` | Passed |
-| `npm run build` | Passed; existing Vite chunk-size warning |
-| `npm test` | 1,183 passed, 4 failed, 1,187 total in that run |
-| `git diff --check` | Passed |
-
-All four full-suite failures reproduce with identical assertions in a temporary source-only archive of the untouched reviewed commit. No captured opportunity fixtures were copied or read for this baseline check:
-
-```sh
-node --import tsx --test \
-  --test-name-pattern='a new device reads saved owner-scoped interests|copying the next iteration closes comparison|connected resolved contextual question automatically|selected notes are privacy-filtered and published' \
-  test/applicationSearchProfile.test.ts test/refinementIteration.test.ts \
-  test/refinementQuestionLoop.test.ts test/refinementUserFeedback.test.ts
-```
-
-The baseline failures concern shared-interest revision 1 versus 7, iteration review count 2 versus 1, missing resolved question text, and feedback count 3 versus 2. They are outside AF-01 and remain unchanged. The broad suite started before the final account-switch regression was added; the final focused run includes that regression. Existing merge/canonical database suites were not run because AF-01 does not change their contract and those suites reference historical captured fixtures; this ticket uses synthetic data only.
-
-Changed files: `package.json`; `src/app/cloudTypes.ts`; `src/features/opportunities/domain/opportunityFeedback.ts`; `src/app/composables/useJobWorkspace.ts`; `supabase/opportunity_feedback_signals.sql`; `supabase/tests/opportunity_feedback_signals.sql`; `test/opportunityFeedback.test.ts`; `test/useJobWorkspace.test.ts`; `test/opportunityFeedback/database.test.ts`; `test/opportunityFeedback/db.ts`; `test/opportunityFeedback/fixtures/prerequisites.sql`; this document. The supplied untracked ticket package was left unchanged.
-
-The historical results above retain their original filenames. The workspace module and regression suite are now `src/app/composables/useCloudWorkspace.ts` and `test/useCloudWorkspace.test.ts`.
+The database harness checks its container label, disabled network, absent host bind mounts/ports, fixed database and exclusive lock before resetting synthetic schemas. It installs `supabase/schema.sql` directly. Current tests exercise owner isolation, anonymous access, full-source redaction, exact excerpts, interest/application precedence, current dashboard actions and scheduling. Retired approval, old-column and migration-preservation tests are not installation prerequisites.

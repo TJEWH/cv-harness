@@ -32,7 +32,7 @@ begin
   assert private.retain_successful_opportunity_source(owner_id,search_id_value,opportunity_id_value,listing) is null,
     'Source reuse bypassed structured feedback consent';
   execute 'set local role authenticated';
-  perform public.set_opportunity_feedback_consent(search_id_value,true);
+
   execute 'reset role';
   assert private.retain_successful_opportunity_source(owner_id,search_id_value,opportunity_id_value,listing) is null,
     'Default-off adaptation performed automatic source learning';

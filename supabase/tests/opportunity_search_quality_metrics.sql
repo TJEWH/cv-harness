@@ -64,7 +64,7 @@ begin
   end loop;
   insert into public.opportunity_reviews(user_id,opportunity_id,state,interest_rating,feedback_excluded,comment) values
     (v_owner,v_opps[1],'strong_interest',null,false,'Private comment person@example.invalid'),
-    (v_owner,v_opps[2],'unreviewed',0,false,null),
+    (v_owner,v_opps[2],'not_interested',0,false,null),
     (v_owner,v_opps[4],'not_interested',null,true,null),
     (v_owner,v_opps[6],'strong_interest',10,false,null),
     (v_other,v_opps[1],'not_interested',1,false,'Other owner private comment');
@@ -75,11 +75,11 @@ begin
   execute 'set local role authenticated';
   v_metric:=public.read_opportunity_search_metrics(v_search);
   assert v_metric#>'{overall,unique_discoveries}'='4'::jsonb and v_metric#>'{overall,unique_encounters}'='5'::jsonb,'Rediscoveries, unknown attribution or pending results inflated discovery facts';
-  assert v_metric#>'{overall,reviewed}'='2'::jsonb and v_metric#>'{overall,with_interest}'='3'::jsonb,'Explicit review and numeric-score denominators were conflated';
-  assert v_metric#>'{overall,mean_interest}'='5.666667'::jsonb and v_metric#>'{overall,explicit_high_interest}'='1'::jsonb
-    and v_metric#>'{overall,high_interest_rate}'='0.5'::jsonb,'Zero, categorical eight and fallback nine were averaged or rated incorrectly';
+  assert v_metric#>'{overall,reviewed}'='3'::jsonb and v_metric#>'{overall,with_interest}'='3'::jsonb,'Explicit review and numeric-score denominators were conflated';
+  assert v_metric#>'{overall,mean_interest}'='6.5'::jsonb and v_metric#>'{overall,explicit_high_interest}'='2'::jsonb
+    and v_metric#>'{overall,high_interest_rate}'='0.666667'::jsonb,'Current categorical and submitted interests were averaged incorrectly: '||v_metric::text;
   assert v_metric#>'{overall,confirmed_submissions}'='1'::jsonb and v_metric#>'{overall,submission_fallback}'='1'::jsonb
-    and v_metric#>'{overall,explicit_rating}'='1'::jsonb and v_metric#>'{overall,categorical_review}'='1'::jsonb,'Excluded submission rewarded feedback or fallback became an explicit review';
+    and v_metric#>'{overall,explicit_rating}'='0'::jsonb and v_metric#>'{overall,categorical_review}'='2'::jsonb,'Excluded submission rewarded feedback or fallback became an explicit review';
   assert v_metric#>'{attribution,primary}'='4'::jsonb and v_metric#>'{attribution,unknown}'='1'::jsonb,'Unknown historical attribution was silently promoted';
   assert (select q->'unique_discoveries' from jsonb_array_elements(v_metric->'queries') q where q->>'query_id'=v_secondary_query::text)='0'::jsonb
     and (select q->'unique_encounters' from jsonb_array_elements(v_metric->'queries') q where q->>'query_id'=v_secondary_query::text)='1'::jsonb,'Secondary query received primary discovery credit';
@@ -89,9 +89,9 @@ begin
   assert v_metric#>'{recommendations,generated}'='1'::jsonb and v_metric#>>'{recommendations,delivery_status}'='unknown','Generated notification was treated as confirmed delivery';
   assert v_metric->'groups_overlap'='true'::jsonb and jsonb_array_length(v_metric->'topics')=2,'Overlapping topic groups were lost or unsafe labels leaked';
   assert v_metric::text!~'person@example.invalid|Private prediction|Private comment|Private application|Other owner|context_json|contacts|original_assessment|interest_reasons','Private records or raw fields leaked through the fixed metrics DTO';
-  perform public.save_opportunity_feedback(v_opps[1],'{"interest_rating":0}');
+  perform public.review_job_opportunity(v_opps[1],null,'not_interested');
   v_metric:=public.read_opportunity_search_metrics(v_search);
-  assert v_metric#>'{overall,mean_interest}'='3'::jsonb and v_metric#>'{overall,explicit_high_interest}'='0'::jsonb,'Current explicit correction did not update the deduplicated quality signal';
+  assert v_metric#>'{overall,mean_interest}'='4.5'::jsonb and v_metric#>'{overall,explicit_high_interest}'='1'::jsonb,'Current explicit correction did not update the deduplicated quality signal';
   execute 'reset role';
   assert (select original_assessment=v_original from public.opportunity_search_discoveries where run_id=v_first_run and opportunity_id=v_opps[1]),'Metrics or current feedback rewrote the immutable prediction';
   perform set_config('request.jwt.claims',jsonb_build_object('sub',v_other,'is_anonymous',false)::text,true);execute 'set local role authenticated';

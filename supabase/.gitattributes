@@ -1,0 +1,5 @@
+# The installer is generated; review its owning modules.
+schema.sql linguist-generated=true
+# Preserve captured function bodies byte-for-byte, including hashed whitespace.
+schema.sql whitespace=-blank-at-eol
+schemas/12_search_support.sql whitespace=-blank-at-eol

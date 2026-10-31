@@ -59,14 +59,11 @@ export function readAdaptiveSearchRunnerState(value: unknown, ownerId: string, s
 }
 const row = (value: unknown) => Array.isArray(value) && value.length === 1 ? value[0] : value;
 
-/** A missing additive deployment is distinguishable from an unknown network state. */
-export async function loadAdaptiveSearchRunnerState(client: SupabaseClient, ownerId: string, searchId: string, projectRef: string): Promise<AdaptiveSearchRunnerState | null> {
+/** Read the installed setup contract; unavailable helpers are errors, not another runner mode. */
+export async function loadAdaptiveSearchRunnerState(client: SupabaseClient, ownerId: string, searchId: string, projectRef: string): Promise<AdaptiveSearchRunnerState> {
   const scope = requireSearchTaskScope(searchId, projectRef);
   const { data, error } = await client.rpc('read_adaptive_search_readiness', { p_search_id: scope.searchId, p_project_ref: scope.projectRef });
-  if (error) {
-    if (error.code === 'PGRST202' || error.code === '42883') return null;
-    throw error;
-  }
+  if (error) throw error;
   return readAdaptiveSearchRunnerState(row(data), ownerId, scope.searchId, scope.projectRef);
 }
 /** Only an explicit setup action calls this; textarea commits never request migration. */

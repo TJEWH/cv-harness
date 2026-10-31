@@ -100,11 +100,15 @@ test('AF09 runner projection accepts Vue proxies and retains only independent fi
   assert.deepEqual(projected.binding!.schedule.weekdays, [1, 2]);
 });
 
-test('AF09 readiness uses one owner-checked RPC and only missing deployment is an explicit legacy result', async () => {
+test('AF09 readiness uses one owner-checked RPC and missing helpers cannot select another runner mode', async () => {
   const fixture = client(runner());
   assert.deepEqual(await loadAdaptiveSearchRunnerState(fixture.value, owner, search, project), runner());
   assert.deepEqual(fixture.calls, [{ name: 'read_adaptive_search_readiness', args: { p_search_id: search, p_project_ref: project } }]);
-  for (const code of ['PGRST202', '42883']) assert.equal(await loadAdaptiveSearchRunnerState(client(null, { code }).value, owner, search, project), null);
+  for (const code of ['PGRST202', '42883']) {
+    const missing = client(null, { code });
+    await assert.rejects(loadAdaptiveSearchRunnerState(missing.value, owner, search, project), { code });
+    assert.equal(missing.calls.length, 1);
+  }
   const lost = client(null, new Error('Network unavailable'));
   await assert.rejects(loadAdaptiveSearchRunnerState(lost.value, owner, search, project), /Network unavailable/);
   assert.equal(lost.calls.length, 1);

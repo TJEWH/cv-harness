@@ -97,8 +97,8 @@ Use `shared/ui/useToasts.ts` for operation updates and `InfoHint.vue` for helper
 ## Supporting directories and path-sensitive tooling
 
 - `build/` contains PDF renderer adapters and Vite support for pinned dependencies.
-- `supabase/` contains database setup and upgrade SQL, JSON schemas, protocol material, and database tests. This structural pass left its SQL layout intact.
+- `supabase/schemas/` contains ordered current SQL modules; `schema.sql` is their generated atomic installer. `supabase/contracts/` owns current JSON schemas, `supabase/releases/` fingerprints current source, and database assertions remain under `supabase/tests/` until test organization. Historical upgrades and conversion fixtures remain in Git rather than the current install path.
 - `test/` contains Node regressions, browser harnesses, fixtures, and protocol tests. Tests retain their existing organization and import the grouped source files.
-- `scripts/` contains schema type generation and adaptive-search release tooling.
+- `scripts/` contains database schema assembly, schema type generation, and current release fingerprint checks.
 
 Source paths also appear in test harnesses, documentation, build configuration, and the adaptive-search release manifest. When moving a module, update those references and use the existing release tooling to refresh affected artifact hashes. Keep generated protocol fixtures and schema references consistent with their source modules. Follow the [testing guide](../test/REFINEMENT_TESTING.md) for validation.

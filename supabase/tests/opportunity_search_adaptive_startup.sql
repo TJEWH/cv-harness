@@ -24,21 +24,19 @@ begin
   result:=public.set_opportunity_search_runner_authorization(search_a,project,true,0);
   assert result=public.set_opportunity_search_runner_authorization(search_a,project,true,0),'Lost owner authorization response was not idempotent';
   perform public.set_opportunity_search_runner_authorization(bad_search,project,true,0);
-  perform public.set_opportunity_feedback_consent(search_a,true);perform public.save_opportunity_search_adaptation(search_a,true,false,0);
+  perform public.save_opportunity_search_adaptation(search_a,true,false,0);
   perform public.save_opportunity_search_source(search_a,registry,'{"listing_url":"https://example.invalid/ResearchJobs","enabled":true,"pinned":true}');
   execute 'reset role';
   insert into public.opportunities(id,opportunity_key,title,topics) values(target,'af07-'||target,'Synthetic acoustic research',array['Acoustics']);
   insert into public.opportunity_reviews(user_id,opportunity_id,state,comment) values(owner_a,target,'strong_interest','PRIVATE_COMMENT_CANARY person@example.invalid');
-  execute 'set local role authenticated';perform public.save_opportunity_feedback(target,'{"search_feedback_summary":"Prefer acoustic interface prototypes."}');
-  select * into proof from public.opportunity_reviews where user_id=owner_a and opportunity_id=target;
-  perform public.approve_opportunity_feedback_summary(target,proof.search_feedback_summary_hash,proof.search_feedback_source_hash,proof.search_feedback_revision);execute 'reset role';
+  execute 'set local role authenticated';perform public.save_opportunity_comment(target,'Prefer acoustic interface prototypes.');execute 'reset role';
   packet:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);
   perform private.begin_opportunity_search(search_a,legacy_run);
   result:=private.save_opportunity_search_queries(legacy_run,'[{"query":"synthetic protected acoustic core"}]');anchor:=(result->>'id')::uuid;
   select active_protocol_version into protocol from private.opportunity_search_settings where singleton;
   doc:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(
     jsonb_build_object('query_id',query_id_value,'query','synthetic protected acoustic core','text_hash',encode(sha256(convert_to('synthetic protected acoustic core','UTF8')),'hex'),'role','core','manual',true,'source_registry_id',registry),
-    jsonb_build_object('query_id',adaptive_id,'query','adaptive acoustic interface preference','text_hash',encode(sha256(convert_to('adaptive acoustic interface preference','UTF8')),'hex'),'role','adaptive','manual',false)));
+    jsonb_build_object('query_id',adaptive_id,'query','adaptive acoustic interface preference','text_hash',encode(sha256(convert_to('adaptive acoustic interface preference','UTF8')),'hex'),'role','adaptive','manual',false),jsonb_build_object('query_id',gen_random_uuid(),'query','synthetic adjacent research exploration','text_hash',encode(sha256(convert_to('synthetic adjacent research exploration','UTF8')),'hex'),'role','exploration','manual',false)));
   perform private.publish_opportunity_search_plan(owner_a,search_a,anchor,doc,1,(packet->>'feedback_revision')::bigint,0,protocol);
   result:=private.begin_adaptive_opportunity_search(search_a,legacy_run);
   assert result#>>'{error,code}'='scope_unavailable','An existing legacy run was silently adopted';
@@ -51,8 +49,8 @@ begin
   select count(*) into before_count from public.opportunities;select count(*) into before_schedules from public.opportunity_search_schedule_bindings;
   result:=private.begin_adaptive_opportunity_search(search_a,first_run);
   assert result->'compatible'='true'::jsonb and result->'adaptive_contract_version'='1'::jsonb,'Complete startup failed';
-  assert result#>'{capabilities,batch}'='false'::jsonb and result#>'{capabilities,completion}'='false'::jsonb,'AF-07 claimed missing batch/finalization capability';
-  assert jsonb_array_length(result->'source_context')=1 and result#>'{planning,allocation,source_obligations}'='1'::jsonb,'Complete source context/obligations missing';
+  assert result#>'{capabilities,batch}'='true'::jsonb and result#>'{capabilities,completion}'='true'::jsonb,'Current startup omitted installed batch/finalization capability';
+  assert jsonb_array_length(result->'source_context')=8 and result#>'{planning,allocation,source_obligations}'='8'::jsonb,'Complete source context/obligations missing';
   assert result::text!~'CANARY|person@example.invalid|systemPrompt|context_json','Nested private/editor content escaped startup';
   assert octet_length(result::text)<=262144 and octet_length((result->'feedback')::text)<=65536,'Startup exceeded its envelope';
   assert (select count(*) from public.opportunities)=before_count and(select count(*) from public.opportunity_search_schedule_bindings)=before_schedules,'Startup wrote opportunities or schedules';
@@ -75,10 +73,10 @@ begin
   update private.opportunity_search_adaptive_contexts set bundle=cache_original,bundle_hash=encode(sha256(convert_to(cache_original::text,'UTF8')),'hex') where run_id=first_run;
   again:=private.begin_adaptive_opportunity_search(search_a,first_run);assert result=again,'Same-run retry changed frozen bundle';
   again:=private.begin_adaptive_opportunity_search(search_a,next_run);assert again#>>'{error,code}'='run_in_progress','Overlapping run acquired another active lease';
-  execute 'set local role authenticated';perform public.save_opportunity_feedback(target,'{"interest_rating":2}');execute 'reset role';
+  execute 'set local role authenticated';perform public.review_job_opportunity(target,null,'not_interested');execute 'reset role';
   again:=private.begin_adaptive_opportunity_search(search_a,first_run);
   assert again#>>'{feedback,feedback_revision}'=result#>>'{feedback,feedback_revision}','Ordinary new feedback rebased an active run';
-  execute 'set local role authenticated';perform public.revoke_opportunity_feedback_summary(target);execute 'reset role';
+  execute 'set local role authenticated';perform public.save_opportunity_feedback(target,'{"feedback_excluded":true}');execute 'reset role';
   again:=private.begin_adaptive_opportunity_search(search_a,first_run);
   assert again#>'{refresh,privacy_scope_changed}'='true'::jsonb and again::text!~'Prefer acoustic interface prototypes|adaptive acoustic interface preference',
     'Revoked text survived through feedback or old adaptive query prose';

@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SearchCloudTemplate } from '../src/features/meta-search/searchTypes';
 import { createSearchTemplate, createSearchTemplateRepository, DEFAULT_SEARCH_TEMPLATES, readSearchTemplate, searchTemplateContentKey } from '../src/features/meta-search/data/searchTemplateRepository';
 import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSystemPrompt, buildSearchUserPrompt, isSearchTemplateSaved, splitSearchEntries } from '../src/features/meta-search/domain/searchPrompts';
-import { importCloudSearchTemplate, saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
+import { importCloudSearchTemplate, listCloudSearchTemplates, saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
 import { OPPORTUNITY_TOPIC_FORMAT_RULE } from '../src/features/opportunities/domain/opportunityTopics';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -165,16 +165,11 @@ test('shared criteria preserve the installed seven-string contract without leaki
   assert.ok(!JSON.stringify(criteria).includes(original.legacySearchArchive));
 });
 
-test('legacy replacement reads a minimal handoff and requires exact task selection', () => {
+test('replacement instructions require the installed runner setup instead of a table-read fallback', () => {
   const original = template(); assert.throws(() => buildReplaceSearchPrompt(original), /Save the current/);
-  original.cloud = { id: cloudId, revision: 1, contentKey: searchTemplateContentKey(original) }; const prompt = buildReplaceSearchPrompt(original);
-  assert.ok(prompt.length < 2100); assert.equal((prompt.match(/SELECT /g) || []).length, 1);
-  for (const expected of [cloudId, 'ehkfzvjgesomteqpwrwa', "jsonb_build_object('version'", 'recurringPrompt', 'exact bound task ID only', 'explicit approval', 'separately approved exact superseded IDs']) assert.ok(prompt.includes(expected));
-  assert.ok(!prompt.includes("meta_search - 'editor'") && !prompt.includes('find my existing meta-research task by purpose'));
-  assert.ok(prompt.includes('octet_length') && prompt.includes('<=65536') && prompt.includes('ELSE NULL') && prompt.includes('legacySearchArchive|'));
-  assert.ok(prompt.includes('Do not create an unbound task in this legacy fallback') && prompt.includes('stop before any task change'));
-  assert.ok(!prompt.includes('or a create proposal'));
-  for (const forbidden of ['begin_opportunity_search', 'claim_opportunity_search_schedule', 'confirm_opportunity_search_schedule', 'ONE-TIME SETUP']) assert.ok(!prompt.includes(forbidden));
+  original.cloud = { id: cloudId, revision: 1, contentKey: searchTemplateContentKey(original) };
+  assert.throws(() => buildReplaceSearchPrompt(original), /Load the saved search runner setup/);
+  assert.throws(() => buildReplaceSearchPrompt(original, { runner: null }), /Load the saved search runner setup/);
 });
 
 function saveClient(options: { loseFirstResponse?: boolean; wrongOwner?: boolean; conflict?: boolean } = {}) {
@@ -203,31 +198,34 @@ test('one RPC saves the shared editor and English prompts, retaining recovery da
   const restored = importCloudSearchTemplate(fixture.row()); assert.equal(restored.legacySearchArchive, original.legacySearchArchive); assert.equal(isSearchTemplateSaved(restored), true);
 });
 
-test('cloud imports convert old profile editors and invalidate their obsolete full prompts until saved', () => {
-  const old = legacyTemplate();
-  const row: SearchCloudTemplate = { id: cloudId, user_id: owner, name: old.name, revision: 8, created_at: old.updatedAt, updated_at: old.updatedAt,
-    criteria: searchTemplateCloudCriteria(template()), schedule: searchTemplateCloudSchedule(template()),
-    meta_search: { version: 1, active: true, editor: old as any, systemPrompt: 'Old prompt', userPrompt: 'Old prompt', recurringPrompt: 'Old prompt' } };
+test('cloud imports use the current editor document without rebuilding intent from criteria markers', () => {
+  const original = template();
+  const row: SearchCloudTemplate = { id: cloudId, user_id: owner, name: 'Saved shared search', revision: 8,
+    created_at: original.updatedAt, updated_at: original.updatedAt,
+    criteria: { ...searchTemplateCloudCriteria(original), topicsAndMethods: 'Obsolete criteria interests',
+      fitAndExclusions: 'CV Harness meta-search context v1\n{"version":1,"researchInterests":"Obsolete marker interests"}' },
+    schedule: searchTemplateCloudSchedule(original),
+    meta_search: { version: 1, active: true, editor: original, systemPrompt: 'System', userPrompt: 'User', recurringPrompt: 'Recurring' } };
   const imported = importCloudSearchTemplate(row);
-  assert.ok(imported.researchInterests.includes('Robot audition')); assert.equal('profiles' in imported, false); assert.equal(isSearchTemplateSaved(imported), false);
-  const noDocument = importCloudSearchTemplate({ ...row, meta_search: undefined });
-  assert.equal(noDocument.fundingConditions, row.criteria.fundingAndConditions); assert.equal(isSearchTemplateSaved(noDocument), false);
-  const marker = 'CV Harness meta-search context v1\n';
-  const legacyCriteria = importCloudSearchTemplate({ ...row, meta_search: undefined, criteria: { ...row.criteria, researchAndReporting: old.userPrompt,
-    fitAndExclusions: marker + JSON.stringify({ version: 1, professionalContext: old.professionalContext, researchInterests: old.researchInterests, profiles: old.profiles }) } });
-  assert.ok(legacyCriteria.researchInterests.includes('Robot audition')); assert.ok(legacyCriteria.legacySearchArchive?.includes('PRIVATE DISABLED CONTEXT'));
+  assert.equal(imported.name, row.name);
+  assert.equal(imported.researchInterests, original.researchInterests);
+  assert.equal(imported.legacySearchArchive, undefined);
+  assert.equal(isSearchTemplateSaved(imported), true);
 });
 
-test('criteria-only imports validate legacy activation metadata while enabling daily searching', () => {
-  const original = { ...template(), opportunityDescription: 'Funded PhD; skip inactive vacancy listings' };
+test('cloud reads reject absent, retired and malformed editor documents instead of converting them', async () => {
+  const original = template();
   const row: SearchCloudTemplate = { id: cloudId, user_id: owner, name: original.name, revision: 2, created_at: original.updatedAt, updated_at: original.updatedAt,
-    criteria: searchTemplateCloudCriteria(original), schedule: searchTemplateCloudSchedule(original), meta_search: null };
-  assert.equal(importCloudSearchTemplate(row).active, true);
-  assert.equal(importCloudSearchTemplate({ ...row, criteria: searchTemplateCloudCriteria({ ...original, active: false }) }).active, true);
-  assert.equal(importCloudSearchTemplate({ ...row, criteria: { ...row.criteria, fitAndExclusions: 'Legacy criteria', opportunityTypes: 'No professional profiles are enabled. Do not run this search or recommend opportunities.' } }).active, true);
-  const oldInactive = importCloudSearchTemplate({ ...row, criteria: { ...row.criteria, fitAndExclusions: 'CV Harness shared-search intent v2\n{"version":2,"active":false}' } });
-  assert.equal(oldInactive.active, true); assert.ok(!oldInactive.userPrompt.includes(JSON.stringify({ version: 2, active: false })));
-  assert.throws(() => importCloudSearchTemplate({ ...row, criteria: { ...row.criteria, fitAndExclusions: 'CV Harness shared-search intent v2\n{"version":2,"active":"true"}' } }), /unsupported/);
+    criteria: searchTemplateCloudCriteria(original), schedule: searchTemplateCloudSchedule(original),
+    meta_search: { version: 1, active: true, editor: original, systemPrompt: 'System', userPrompt: 'User', recurringPrompt: 'Recurring' } };
+  for (const document of [undefined, null, [], {}, { ...row.meta_search, version: 2 },
+    { ...row.meta_search, editor: legacyTemplate() }, { ...row.meta_search, recurringPrompt: null }]) {
+    const invalid = { ...row, meta_search: document } as unknown as SearchCloudTemplate;
+    assert.throws(() => importCloudSearchTemplate(invalid), /unsupported meta-search document/);
+    const query = { select: () => query, eq: () => query, order: async () => ({ data: [invalid], error: null }) };
+    const client = { from: () => query } as unknown as SupabaseClient;
+    await assert.rejects(listCloudSearchTemplates(client, owner), /unsupported meta-search document/);
+  }
 });
 
 test('lost-response retries send the same identity, expected revision and exact snapshot in one RPC each', async () => {
@@ -250,5 +248,6 @@ test('previously paused shared searches save as active daily searches without lo
   assert.equal(saved.active, true); assert.equal(fixture.row().meta_search!.active, true); assert.equal(fixture.row().meta_search!.editor.active, true); assert.ok(buildRecurringSearchPrompt(saved).includes('Run the saved CV Harness meta search now'));
   const imported = importCloudSearchTemplate({ ...fixture.row(), meta_search: { ...fixture.row().meta_search!, active: false, editor: { ...original, active: false } } });
   assert.equal(imported.active, true); assert.equal(isSearchTemplateSaved(imported), false, 'Old disabled task prompts must be saved again before replacement');
-  assert.equal(fixture.row().meta_search!.editor.researchInterests, original.researchInterests); assert.ok(buildReplaceSearchPrompt(saved).includes('exact bound task ID only')); assert.ok(!buildReplaceSearchPrompt(saved).includes('disable the task instead'));
+  assert.equal(fixture.row().meta_search!.editor.researchInterests, original.researchInterests);
+  assert.throws(() => buildReplaceSearchPrompt(saved), /Load the saved search runner setup/);
 });

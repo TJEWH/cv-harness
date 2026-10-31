@@ -1,4 +1,4 @@
--- Run as postgres after opportunity_strong_interest.sql. Synthetic fixtures roll back.
+-- Run as postgres against supabase/schema.sql; synthetic fixtures roll back.
 begin;
 do $$
 declare
@@ -15,9 +15,9 @@ begin
   insert into auth.users(id, aud, role, email, raw_app_meta_data, raw_user_meta_data)
     values (user_a, 'authenticated', 'authenticated', user_a::text || '@example.invalid', '{}', '{}'),
            (user_b, 'authenticated', 'authenticated', user_b::text || '@example.invalid', '{}', '{}');
-  insert into public.opportunities(id, opportunity_key, title, deadline, personal_fit, particularly_suitable, source_context, created_at, updated_at)
-    values (opportunity_a, 'strong-interest-' || opportunity_a::text, 'Synthetic historical research role', current_date - 30, '{"score":4.2}', false, 'Original search A', version_a, version_a),
-           (opportunity_b, 'strong-interest-' || opportunity_b::text, 'Synthetic current research role', current_date + 30, '{"score":6.1}', false, 'Different original search B', version_a, version_a);
+  insert into public.opportunities(id, opportunity_key, title, deadline, personal_fit, source_context, created_at, updated_at)
+    values (opportunity_a, 'strong-interest-' || opportunity_a::text, 'Synthetic historical research role', current_date - 30, '{"score":4.2,"scale_min":0,"scale_max":10,"summary":"Synthetic assessment"}', 'Original search A', version_a, version_a),
+           (opportunity_b, 'strong-interest-' || opportunity_b::text, 'Synthetic current research role', current_date + 30, '{"score":6.1,"scale_min":0,"scale_max":10,"summary":"Synthetic assessment"}', 'Different original search B', version_a, version_a);
   select to_jsonb(o), o.updated_at into original, version_a from public.opportunities o where id = opportunity_a;
   perform set_config('request.jwt.claims', jsonb_build_object('sub', user_a, 'role', 'authenticated', 'is_anonymous', false)::text, true);
   execute 'set local role authenticated';
@@ -67,7 +67,7 @@ begin
   begin
     update public.opportunity_reviews set user_id = user_b where opportunity_id = opportunity_a;
     raise exception 'FAIL: preference ownership change accepted';
-  exception when insufficient_privilege then null; end;
+  exception when insufficient_privilege or check_violation then null; end;
 
   perform set_config('request.jwt.claims', jsonb_build_object('sub', user_b, 'role', 'authenticated', 'is_anonymous', false)::text, true);
   if exists (select 1 from public.opportunity_reviews where opportunity_id in (opportunity_a, opportunity_b)) then

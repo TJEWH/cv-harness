@@ -11,6 +11,8 @@ import { useOpportunityInsightsSearch } from '../src/features/opportunities/comp
 import { buildOpportunityInsights, prepareOpportunityInsights, type OpportunityInsightsAnalysis, type OpportunityInsightsAnalysisInput } from '../src/features/opportunities/domain/opportunityInsights';
 import { useToasts, useToastWatch } from '../src/shared/ui/useToasts';
 import { opportunityAssessmentFixture, opportunityFixture } from './fixtures/opportunity';
+import { createSearchTemplate } from '../src/features/meta-search/data/searchTemplateRepository';
+import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
 
 const filename = new URL('../src/features/opportunities/components/OpportunityInsights.vue', import.meta.url);
 const { descriptor } = parse(readFileSync(filename, 'utf8'));
@@ -67,9 +69,14 @@ function savedSearchNetwork() {
     }, order() { const reply = deferred<{ data: unknown[]; error: null }>(); reads.push({ owner: account, reply }); return reply.promise; } };
     return query;
   }, rpc() { throw new Error('Insights must not request dashboard history.'); } } as unknown as SupabaseClient;
-  const resolve = (index: number, id = searchId, account = owner) => reads[index]!.reply.resolve({ data: [{
-    id, user_id: account, name: 'Synthetic saved search', revision: 1, criteria: {}, schedule: {}, meta_search: { version: 1 },
-  }], error: null });
+  const resolve = (index: number, id = searchId, account = owner) => {
+    const editor = createSearchTemplate('Synthetic saved search', 'Europe/Tirane');
+    reads[index]!.reply.resolve({ data: [{
+      id, user_id: account, name: editor.name, revision: 1,
+      criteria: searchTemplateCloudCriteria(editor), schedule: searchTemplateCloudSchedule(editor),
+      meta_search: { version: 1, active: true, editor, systemPrompt: 'System', userPrompt: 'User', recurringPrompt: 'Recurring' },
+    }], error: null });
+  };
   return { client, reads, resolve };
 }
 async function settleSearch() { for (let index = 0; index < 12; index++) await Promise.resolve(); await nextTick(); }

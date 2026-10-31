@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { before } from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
 import { deriveOpportunityFeedback } from '../../src/features/opportunities/domain/opportunityFeedback';
 import { compileAdaptiveFeedbackSnapshot } from '../../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
-import { ADAPTIVE_BATCH_PROTOCOL_TEXT, ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT } from '../../src/features/meta-search/domain/adaptiveSearchProtocol';
-import { file, reset, sql, upgradeCurrentFeedbackContract } from './db';
+import { ADAPTIVE_BATCH_PROTOCOL_TEXT } from '../../src/features/meta-search/domain/adaptiveSearchProtocol';
+import { reset, sql } from './db';
+
+before(() => reset());
 
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const json = (value: unknown) => `${quote(JSON.stringify(value))}::jsonb`;
@@ -15,10 +16,8 @@ const object = (value: string): any => value.split('\n').flatMap(line => {
 const actor = (owner: string, body: string) => `select set_config('request.jwt.claims',${json({ sub: owner, is_anonymous: false })}::text,false);
   set role authenticated;${body};reset role;`;
 
-test('interest v2 preserves saved evidence, derives application interest, restores saved choices and validates the new reasons', async () => {
-  reset({ searchProtocol: true });
-  for (const name of ADAPTIVE_RELEASE_MIGRATIONS) sql(file(`../../supabase/${name}`));
-  upgradeCurrentFeedbackContract();
+test('current interest choices preserve saved evidence, derives application interest, restores saved choices and validates the new reasons', async () => {
+  reset();
   const owner = randomUUID(), other = randomUUID(), search = randomUUID();
   const ids = Array.from({ length: 7 }, () => randomUUID());
   sql(`insert into auth.users(id) values(${quote(owner)}),(${quote(other)});
@@ -31,22 +30,7 @@ test('interest v2 preserves saved evidence, derives application interest, restor
     sql(`insert into public.opportunity_reviews(user_id,opportunity_id,state,interest_rating,comment)
       values(${quote(owner)},${quote(ids[index]!)},${quote(state)},1.25,'Saved evaluation');`);
   }
-  const legacyPacket = object(sql(`select private.compile_opportunity_feedback_snapshot(${quote(owner)},${quote(search)});`));
-  assert.equal(legacyPacket.metric_version, 'opportunity-interest-v1');
-  const digest = () => sql(`select jsonb_build_object(
-    'reviews',(select md5(coalesce(jsonb_agg(to_jsonb(r) order by user_id,opportunity_id),'[]')::text) from public.opportunity_reviews r),
-    'applications',(select md5(coalesce(jsonb_agg(to_jsonb(a) order by id),'[]')::text) from public.applications a),
-    'snapshots',(select md5(coalesce(jsonb_agg(to_jsonb(s) order by user_id,search_id,feedback_revision),'[]')::text) from public.opportunity_search_feedback_snapshots s),
-    'security',(select md5(string_agg(p.oid::text||p.prosecdef::text||coalesce(p.proacl::text,''),',' order by p.oid))
-      from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in('public','private')));`);
-  const before = digest();
-  const legacyProtocol = sql('select private.opportunity_search_adaptive_protocol_text();');
-  assert.equal(legacyProtocol, ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT);
-  sql(file('../../supabase/opportunity_interest_v2.sql'));
-  assert.equal(digest(), before, 'the upgrade preserves records, historical packets, function grants and invoker security');
-  assert.throws(() => sql(file('../../supabase/opportunity_interest_v2.sql')), /must run once/);
   assert.equal(sql('select private.opportunity_search_adaptive_protocol_text();'), ADAPTIVE_BATCH_PROTOCOL_TEXT);
-  assert.equal(sql(`select position(${quote(legacyProtocol)} in pg_get_functiondef('private.opportunity_search_adaptive_shape(text,jsonb)'::regprocedure))>0;`), 't');
   const metric = (id: string, account = owner) => object(sql(actor(account,
     `select public.opportunity_feedback_preview_metric(${quote(account)},${quote(id)})`)));
   for (const [index, score] of [2, 6, 8, null].entries()) {
@@ -114,9 +98,7 @@ test('interest v2 preserves saved evidence, derives application interest, restor
   assert.deepEqual(object(sql(actor(owner, `select public.build_opportunity_search_feedback(${quote(owner)},${quote(search)})`))), currentPacket,
     'the versioned SQL fingerprint remains stable without a semantic change');
   assert.equal(sql(`select private.opportunity_search_adaptive_shape('feedback',${json(currentPacket)});`), 't');
-  assert.equal(sql(`select private.opportunity_search_adaptive_shape('feedback',${json(legacyPacket)});`), 't');
-  assert.deepEqual(object(sql(`select packet from public.opportunity_search_feedback_snapshots
-    where user_id=${quote(owner)} and search_id=${quote(search)} and feedback_revision=${legacyPacket.feedback_revision};`)), legacyPacket);
+
 
   const run = randomUUID(), check = randomUUID(), query = randomUUID();
   sql(`select private.begin_opportunity_search(${quote(search)},${quote(run)});

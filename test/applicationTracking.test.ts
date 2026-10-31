@@ -51,19 +51,14 @@ test('applied grouping distinguishes submission from preparation, contact and wi
   ] }), true, 'reopening document work does not undo a recorded submission');
 });
 
-test('legacy rows normalize Shortlist and history without inventing saved workflow fields or dates', () => {
+test('application records reject retired statuses instead of translating them into current decisions', () => {
   const { props } = createSyntheticRefinementWorkspace();
-  const legacy = { ...props.application, status: 'shortlist', status_history: [{ status: 'shortlist', changedAt: null }],
-    workflow_stage: undefined, tracking_started: undefined } as unknown as Application;
-  const normalized = normalizeApplication(legacy);
-  assert.equal(normalized.status, 'ready');
-  assert.deepEqual(applicationStatusHistory(legacy), [{ status: 'ready', changedAt: null }]);
-  assert.equal(applicationStage(normalized), 'tracking');
-  assert.equal(applicationTrackingStarted(normalized), false);
-  assert.equal(normalized.workflow_stage, undefined);
-  assert.equal(normalized.tracking_started, undefined);
-  assert.equal(applicationTrackingStarted({ ...normalized, status: 'contacted' }), true);
-  assert.equal(applicationStage({ ...normalized, status: 'preparation' }), 'preparation');
-  assert.equal(applicationStage({ ...normalized, status: 'refinement' }), 'refinement');
-  assert.equal(applicationStage({ ...normalized, status: 'attachments' }), 'review');
+  for (const patch of [{ status: 'shortlist' }, { status_history: [{ status: 'shortlist', changedAt: null }] }]) {
+    const application = { ...props.application, ...patch } as unknown as Application;
+    assert.throws(() => normalizeApplication(application), /unsupported status/);
+    assert.throws(() => applicationStatusHistory(application), /unsupported status/);
+  }
+  const current = { ...props.application, status: 'ready' as const, status_history: [{ status: 'ready' as const, changedAt: null }] };
+  assert.deepEqual(normalizeApplication(current), current);
+  assert.deepEqual(applicationStatusHistory(current), current.status_history);
 });

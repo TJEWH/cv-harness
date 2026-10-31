@@ -3,7 +3,7 @@ import { APPLICATION_STAGES, APPLICATION_STATUSES, type Application, type Applic
 export function applicationStatusLabel(status: string, lang: string = 'en'): string {
   const labels: Record<string, [string, string]> = {
     preparation: ['Preparation', 'Vorbereitung'], refinement: ['Refinement', 'Überarbeitung'],
-    attachments: ['Attachments', 'Anhänge'], ready: ['Ready', 'Bereit'], shortlist: ['Ready', 'Bereit'],
+    attachments: ['Attachments', 'Anhänge'], ready: ['Ready', 'Bereit'],
     contacted: ['Contacted', 'Kontaktiert'], submitted: ['Submitted', 'Eingereicht'],
     interview: ['Interview', 'Gespräch'], offer: ['Offer', 'Angebot'], rejected: ['Rejected', 'Abgelehnt'], withdrawn: ['Withdrawn', 'Zurückgezogen'],
   };
@@ -13,13 +13,16 @@ export function applicationStatusLabel(status: string, lang: string = 'en'): str
 /** Shared colors for workflow stages and the explicitly selected tracking status. */
 export function applicationStatusTone(status: string): 'neutral' | 'yellow' | 'red' {
   if (['submitted', 'interview', 'offer', 'rejected', 'withdrawn'].includes(status)) return 'red';
-  if (['review', 'attachments', 'tracking', 'ready', 'contacted', 'shortlist'].includes(status)) return 'yellow';
+  if (['review', 'attachments', 'tracking', 'ready', 'contacted'].includes(status)) return 'yellow';
   return 'neutral';
 }
 
-/** Legacy Shortlist rows remain readable while a database is awaiting its upgrade. */
+/** Accept only statuses from the installed application contract. */
 export function normalizeApplication(application: Application): Application {
-  const normalize = (status: unknown): ApplicationStatus => status === 'shortlist' ? 'ready' : status as ApplicationStatus;
+  const normalize = (status: unknown): ApplicationStatus => {
+    if (!APPLICATION_STATUSES.includes(status as ApplicationStatus)) throw new Error('The application has an unsupported status.');
+    return status as ApplicationStatus;
+  };
   return { ...application, status: normalize(application.status),
     ...(Array.isArray(application.status_history) ? { status_history: application.status_history.map(entry => ({ ...entry, status: normalize(entry?.status) })) } : {}),
   };

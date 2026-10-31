@@ -1,20 +1,19 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { before } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
 import { createSearchTemplate } from '../../src/features/meta-search/data/searchTemplateRepository';
 import { importCloudSearchTemplate, saveSearchTemplate, searchTemplateCloudSchedule } from '../../src/features/meta-search/data/searchTemplateCloud';
 import { setSearchScheduleCadence } from '../../src/features/meta-search/domain/searchSchedule';
-import { file, reset, sql } from './db';
+import { reset, sql } from './db';
+
+before(() => reset());
 
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const json = (value: unknown) => `E'${JSON.stringify(value).replaceAll('\\', '\\\\').replaceAll("'", "''")}'::jsonb`;
 
-test('interval upgrade preserves saved state and ACLs while authenticated saves support hourly and calendar-day schedules', async () => {
-  reset({ searchProtocol: true });
-  for (const name of ADAPTIVE_RELEASE_MIGRATIONS) sql(file(`../../supabase/${name}`));
-  for (const name of ['opportunity_description.sql', 'application_removal_review.sql', 'opportunity_evaluation.sql', 'opportunity_feedback_defaults.sql', 'opportunity_search_adaptive_payload_contract.sql']) sql(file(`../../supabase/${name}`));
+test('authenticated saves support hourly and calendar-day schedules with retry-safe revisions', async () => {
+  reset();
   const owner = randomUUID();
   sql(`insert into auth.users(id) values(${quote(owner)});`);
   const requests: Record<string, unknown>[] = [];
@@ -29,24 +28,6 @@ test('interval upgrade preserves saved state and ACLs while authenticated saves 
     return { data: JSON.parse(response), error: null };
   } } as unknown as SupabaseClient;
   let saved = await saveSearchTemplate(client, owner, createSearchTemplate('Synthetic interval search', 'Europe/Tirane'));
-  const originalRows = sql('select jsonb_agg(to_jsonb(t) order by t.id) from public.opportunity_search_templates t;');
-  const validator = "'private.validate_opportunity_search_definition(text,jsonb,jsonb)'::regprocedure";
-  const originalDefinition = sql(`select pg_get_functiondef(${validator});`);
-  const setupReader = "'private.read_adaptive_search_setup_internal(uuid,uuid,text)'::regprocedure";
-  const originalReader = sql(`select pg_get_functiondef(${setupReader});`);
-  const acl = () => sql(`select jsonb_agg(jsonb_build_array(p.oid,p.prosecdef,p.proacl::text,n.nspacl::text) order by p.oid) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.oid in(${validator},${setupReader});`);
-  const originalAcl = acl();
-  const attempted = { ...saved, cadence: setSearchScheduleCadence(saved, 'days', 30) };
-  await assert.rejects(saveSearchTemplate(client, owner, attempted), /Invalid search schedule/);
-  assert.equal(sql('select jsonb_agg(to_jsonb(t) order by t.id) from public.opportunity_search_templates t;'), originalRows);
-
-  sql(file('../../supabase/opportunity_search_schedule_intervals.sql'));
-  assert.equal(acl(), originalAcl, 'the upgrade changes no invoker/definer or permission boundaries');
-  assert.equal(sql('select jsonb_agg(to_jsonb(t) order by t.id) from public.opportunity_search_templates t;'), originalRows, 'installing interval support does not change the existing schedule');
-  assert.equal(sql(`select pg_get_functiondef(${validator});`).replace('not between 1 and 8760', 'not between 1 and 168'), originalDefinition,
-    'only the reviewed numeric limit changes');
-  assert.equal(sql(`select pg_get_functiondef(${setupReader});`).replace("'dailyTime','timezone','cadence','cloud'", "'dailyTime','timezone','cloud'"), originalReader,
-    'setup keeps its existing privacy and target checks while admitting the typed cadence field');
 
   for (const [unit, interval, expectedHours] of [['hours', 6, 6], ['days', 2, 48], ['days', 30, 720], ['days', 365, 8760]] as const) {
     const input = { ...saved, cadence: setSearchScheduleCadence(saved, unit, interval) };
@@ -70,8 +51,6 @@ test('interval upgrade preserves saved state and ACLs while authenticated saves 
   }
   for (const interval of [0, 8761, 1.5]) assert.throws(() => sql(`select private.validate_opportunity_search_definition('Invalid',
     '{"topicsAndMethods":"Synthetic acoustics"}',${json({ ...searchTemplateCloudSchedule(saved), intervalHours: interval })});`), /Invalid search schedule/);
-  assert.throws(() => sql(file('../../supabase/opportunity_search_schedule_intervals.sql')), /requires the reviewed PostgreSQL 17/,
-    'unexpected or already-upgraded definitions require review');
   assert.equal(sql('select count(*) from public.opportunity_search_schedule_bindings;'), '0');
   assert.equal(sql('select count(*) from public.opportunity_search_runs;'), '0');
   assert.equal(sql('select count(*) from public.opportunity_search_runner_authorizations;'), '0');

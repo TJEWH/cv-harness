@@ -1,4 +1,4 @@
--- Run as postgres after opportunity_review_comments.sql. Every fixture rolls back.
+-- Run as postgres against supabase/schema.sql; synthetic fixtures roll back.
 begin;
 do $$
 declare
@@ -28,7 +28,7 @@ begin
 
   perform set_config('request.jwt.claims', jsonb_build_object('sub', user_a, 'role', 'authenticated', 'is_anonymous', false)::text, true);
   execute 'set local role authenticated';
-  result := public.save_opportunity_comment(opportunity, E' \tExcellent research fit.\nAsk about funding. \n');
+  result := public.save_opportunity_comment(opportunity, E'Excellent research fit.\nAsk about funding.');
   if result ->> 'comment' is distinct from E'Excellent research fit.\nAsk about funding.'
      or result ->> 'user_id' is distinct from user_a::text
      or result ->> 'opportunity_id' is distinct from opportunity::text
@@ -57,8 +57,8 @@ begin
     raise exception 'FAIL: opening opportunity erased comment';
   end if;
 
-  -- Empty and whitespace-only values clear the comment without deleting the review.
-  result := public.save_opportunity_comment(opportunity, E' \t\r\n');
+  -- Empty values clear the evaluation without deleting the review; full text is otherwise lossless.
+  result := public.save_opportunity_comment(opportunity, '');
   if result ->> 'comment' is not null or result ->> 'state' is distinct from 'unreviewed'
      or (result ->> 'reviewed_updated_at')::timestamptz is distinct from source_version then
     raise exception 'FAIL: clearing a comment changed the review';
@@ -66,18 +66,18 @@ begin
   perform public.save_opportunity_comment(opportunity, 'A replacement');
   result := public.save_opportunity_comment(opportunity, null);
   if result ->> 'comment' is not null then raise exception 'FAIL: null did not clear comment'; end if;
-  result := public.save_opportunity_comment(opportunity, repeat('ü', 5000));
-  if char_length(result ->> 'comment') <> 5000 then raise exception 'FAIL: valid Unicode boundary rejected'; end if;
+  result := public.save_opportunity_comment(opportunity, repeat('ü', 12000));
+  if char_length(result ->> 'comment') <> 12000 then raise exception 'FAIL: valid Unicode boundary rejected'; end if;
   begin
-    perform public.save_opportunity_comment(opportunity, repeat('x', 5001));
+    perform public.save_opportunity_comment(opportunity, repeat('x', 12001));
     raise exception 'FAIL: oversized comment accepted by RPC';
   exception when invalid_parameter_value then null; end;
   begin
-    update public.opportunity_reviews set comment = repeat('x', 5001)
+    update public.opportunity_reviews set comment = repeat('x', 12001)
       where user_id = user_a and opportunity_id = opportunity;
     raise exception 'FAIL: direct write bypassed comment bound';
   exception when check_violation then null; end;
-  if (select char_length(comment) from public.opportunity_reviews where opportunity_id = opportunity) <> 5000 then
+  if (select char_length(comment) from public.opportunity_reviews where opportunity_id = opportunity) <> 12000 then
     raise exception 'FAIL: invalid comment changed the saved value';
   end if;
   begin

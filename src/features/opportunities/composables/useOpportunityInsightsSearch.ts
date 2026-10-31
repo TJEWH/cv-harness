@@ -35,7 +35,7 @@ export function useOpportunityInsightsSearch(options: OpportunityInsightsSearchO
     try {
       const templates = await listCloudSearchTemplates(client, ownerId);
       if (!current()) return false;
-      const template = templates.find(row => row.meta_search?.version === 1) ?? templates[0];
+      const template = templates[0];
       if (!template) return true;
       const scope = requireSearchTaskScope(template.id, projectRef);
       searchId.value = scope.searchId;

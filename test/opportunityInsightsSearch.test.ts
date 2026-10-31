@@ -4,6 +4,7 @@ import { effectScope, ref, shallowRef } from 'vue';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SearchCloudTemplate } from '../src/features/meta-search/searchTypes';
 import { useOpportunityInsightsSearch } from '../src/features/opportunities/composables/useOpportunityInsightsSearch';
+import { createSearchTemplate } from '../src/features/meta-search/data/searchTemplateRepository';
 
 const ownerId = '91000000-0000-4000-8000-000000000001';
 const searchId = '91000000-0000-4000-8000-000000000002';
@@ -16,12 +17,13 @@ function deferred<T>() {
   const promise = new Promise<T>(done => { resolve = done; });
   return { promise, resolve };
 }
-function row(id = searchId, owner = ownerId, shared = true): SearchCloudTemplate {
+function row(id = searchId, owner = ownerId): SearchCloudTemplate {
+  const editor = createSearchTemplate('Synthetic shared search', 'Europe/Tirane');
   return { id, user_id: owner, name: 'Synthetic shared search', revision: 1,
     criteria: { opportunityTypes: '', topicsAndMethods: '', locationsAndLanguages: '', fundingAndConditions: '', fitAndExclusions: '', sourcesAndQueries: '', researchAndReporting: '' },
     schedule: { frequency: 'daily', intervalHours: 1, weekdays: [], time: '09:00', timezone: 'Europe/Tirane', runImmediately: true },
     created_at: '2026-10-30T12:00:00Z', updated_at: '2026-10-30T12:00:00Z',
-    ...(shared ? { meta_search: { version: 1 } as SearchCloudTemplate['meta_search'] } : {}) };
+    meta_search: { version: 1, active: true, editor, systemPrompt: 'System', userPrompt: 'User', recurringPrompt: 'Recurring' } };
 }
 type Reply = { data: unknown; error: unknown };
 function network() {
@@ -49,7 +51,7 @@ test('insights resolves only the owner-scoped shared search identity without req
   const service = network(), view = mount(t, service.client);
   assert.equal(view.state.loading.value, true);
   assert.equal(service.reads[0]!.owner, ownerId);
-  service.reads[0]!.result.resolve({ data: [row(otherSearch, ownerId, false), row()], error: null });
+  service.reads[0]!.result.resolve({ data: [row(), row(otherSearch)], error: null });
   await tick();
   assert.equal(view.state.searchId.value, searchId);
   assert.equal(view.state.hasSavedSearch.value, true);
@@ -60,12 +62,13 @@ test('insights resolves only the owner-scoped shared search identity without req
   assert.equal('dashboard' in view.state, false);
 });
 
-test('legacy metadata uses the first saved search when no shared document exists', async t => {
+test('unsupported saved metadata cannot select a search through a fallback', async t => {
   const service = network(), view = mount(t, service.client);
-  service.reads[0]!.result.resolve({ data: [row(otherSearch, ownerId, false), row(searchId, ownerId, false)], error: null });
+  service.reads[0]!.result.resolve({ data: [{ ...row(otherSearch), meta_search: undefined }, row()], error: null });
   await tick();
-  assert.equal(view.state.searchId.value, otherSearch);
-  assert.equal(view.state.error.value, '');
+  assert.equal(view.state.searchId.value, null);
+  assert.equal(view.state.hasSavedSearch.value, false);
+  assert.notEqual(view.state.error.value, '');
   assert.equal(service.rpcCalls(), 0);
 });
 

@@ -20,7 +20,7 @@ begin
     values (user_a, 'authenticated', 'authenticated', user_a::text || '@example.invalid', '{}', '{}'),
            (user_b, 'authenticated', 'authenticated', user_b::text || '@example.invalid', '{}', '{}');
   insert into public.opportunities(id, opportunity_key, title, requirements, required_documents)
-    values (opportunity, 'checklist-test-' || opportunity::text, 'Checklist test', '["Degree"]', '["CV","Letter"]');
+    values (opportunity, 'checklist-test-' || opportunity::text, 'Checklist test', '[{"text":"Degree","status":"required","stage":"recruitment","entity_id":"degree"}]', '[{"text":"CV","status":"required","stage":"recruitment","entity_id":"cv"},{"text":"Letter","status":"required","stage":"recruitment","entity_id":"letter"}]');
   select to_jsonb(o) into saved_source from public.opportunities o where id = opportunity;
   perform set_config('request.jwt.claims', jsonb_build_object('sub', user_a, 'role', 'authenticated', 'is_anonymous', false)::text, true);
   execute 'set local role authenticated';

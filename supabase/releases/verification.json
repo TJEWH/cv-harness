@@ -1,0 +1,70 @@
+{
+  "verification_version": 1,
+  "verified_on": "2026-11-01",
+  "project": "phd-workflow",
+  "postgres_major": 17,
+  "migration": {
+    "version": "20261031232859",
+    "name": "canonical_application_contexts_and_retire_obsolete_helpers",
+    "reviewed_sql_sha256": "8487420972d9113ee6b62938a6ccca4b1b6ae4defb7d9636b0e5ccc04bf8c3c6"
+  },
+  "current_runtime_schema": {
+    "modules": 13,
+    "tables": 44,
+    "functions": 267,
+    "policies": 54,
+    "constraints": 264,
+    "triggers": 61,
+    "deployed_function_metadata_matches": true
+  },
+  "snapshot_conversion": {
+    "applications": 32,
+    "converted": 29,
+    "all_validate_as_schema6": true,
+    "archived_originals": 29,
+    "original_facts_mapped": 3489,
+    "archive": "private.application_context_schema6_archive",
+    "archive_rls_enabled": true,
+    "archive_browser_or_service_select": false
+  },
+  "assessment_scale": {
+    "source_protocol": "opportunity-search-v1-2026-10-12",
+    "original_numeric_bounds": [
+      0,
+      10
+    ],
+    "all_three_assessment_scores_unchanged": true
+  },
+  "preservation": {
+    "catalogue": true,
+    "reviews": true,
+    "cv_snapshots": true,
+    "application_non_context_columns": true,
+    "already_current_contexts": true,
+    "all_five_refinement_relations": true,
+    "all_application_trigger_states": true,
+    "temporary_converter_functions_remaining": 0
+  },
+  "security": {
+    "new_warning_or_error_classes": []
+  },
+  "validation": {
+    "current_database_tests": 100,
+    "current_sql_contracts": 42,
+    "current_reader_tests": 28,
+    "atomic_install_rollback": true,
+    "synthetic_conversion_guard_and_commit_checks": true,
+    "offline_regressions": {
+      "full_suite_cases": 1953,
+      "unchanged_cases_passed": 1950,
+      "updated_test_files_passed": {
+        "adaptive_payload_contract": 5,
+        "application_variant_selection": 43
+      },
+      "remaining_failures": 0
+    },
+    "production_build": true,
+    "current_schema_contract_and_release_checks": true
+  },
+  "pending_refinement": "The one existing published request stays immutable; its client baseline may require republishing after the snapshot representation change."
+}

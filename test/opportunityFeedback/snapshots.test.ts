@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { file, reset, sql, sqlAsync, upgradeCurrentFeedbackContract } from './db';
-import { ADAPTIVE_RELEASE_MIGRATIONS } from '../../scripts/adaptiveSearchRelease';
+import { before, test } from 'node:test';
+import { file, reset, sql, sqlAsync } from './db';
+
+before(() => reset());
 import { sanitizeOpportunityFeedbackUrl } from '../../src/features/opportunities/domain/opportunityFeedbackPrivacy';
 import { compileAdaptiveFeedbackSnapshot } from '../../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
 
 test('AF-03 deterministic owner-scoped snapshots, invalidation, pins and privacy revocation', () => {
-  reset();
-  for (const path of ['opportunity_feedback_signals.sql', 'opportunity_feedback_sharing.sql',
-    'opportunity_feedback_projection.sql', 'opportunity_feedback_snapshots.sql']) sql(file(`../../supabase/${path}`));
   sql(file('../../supabase/tests/opportunity_feedback_snapshots.sql'));
 });
 
@@ -24,17 +22,16 @@ test('SQL and TypeScript URL boundaries agree on public job identities and hidde
   }
 });
 
-test('concurrent snapshot builds reuse one revision and ignore views, unapproved comments, contacts and application notes', async () => {
+test('concurrent snapshots reuse one revision, exclude private fields and include current application interest', async () => {
   const owner = '70000000-0000-4000-8000-000000000001';
   const search = '70000000-0000-4000-8000-000000000002';
   const opportunity = '70000000-0000-4000-8000-000000000003';
   const application = '70000000-0000-4000-8000-000000000004';
   sql(`insert into auth.users(id) values('${owner}');
-    insert into public.opportunity_search_templates(id,user_id) values('${search}','${owner}');
+    insert into public.opportunity_search_templates(id,user_id,name,criteria,schedule) values('${search}','${owner}','Synthetic snapshot concurrency','{"topicsAndMethods":"Sensing"}','{"frequency":"daily","intervalHours":24,"weekdays":[],"time":"08:00","timezone":"UTC","runImmediately":false}');
     insert into public.opportunities(id,opportunity_key,title,topics) values('${opportunity}','concurrent-feedback','Synthetic sensing researcher',array['Sensing']);
     insert into public.opportunity_reviews(user_id,opportunity_id,state) values('${owner}','${opportunity}','strong_interest');
-    begin; set local role authenticated; set local request.jwt.claim.sub='${owner}';
-    select public.set_opportunity_feedback_consent('${search}',true); commit;`);
+`);
   const query = `select private.compile_opportunity_feedback_snapshot('${owner}','${search}');`;
   const builds = await Promise.allSettled([sqlAsync(query), sqlAsync(query), sqlAsync(query)]);
   for (const result of builds) assert.equal(result.status, 'fulfilled', result.status === 'rejected' ? String(result.reason) : '');
@@ -46,10 +43,11 @@ test('concurrent snapshot builds reuse one revision and ignore views, unapproved
     select public.save_opportunity_comment('${opportunity}','Synthetic private person person@example.invalid');
     select public.create_job_application('${application}','${opportunity}');
     update public.applications set notes='Private synthetic note' where id='${application}'; commit;
-    update public.opportunities set contacts='[{"name":"Synthetic Person","email":"person@example.invalid"}]' where id='${opportunity}';`);
+    update public.opportunities set contacts='[{"name":"Synthetic Person","entity_id":"synthetic-person","email":"person@example.invalid","roles":["contact"]}]' where id='${opportunity}';`);
   const unchanged = JSON.parse(sql(query));
-  assert.equal(unchanged.feedback_revision, packets[0].feedback_revision);
-  assert.equal(unchanged.input_fingerprint, packets[0].input_fingerprint);
+  assert.ok(unchanged.feedback_revision > packets[0].feedback_revision, 'preparation application updates effective interest');
+  assert.equal(unchanged.examples[0].interest_origin, 'application');
+  assert.equal(unchanged.examples[0].interest_score, 9);
   assert.doesNotMatch(JSON.stringify(unchanged), /person@example|Private synthetic note|Synthetic Person/);
   sql(`begin; set local role authenticated; set local request.jwt.claim.sub='${owner}';
     update public.applications set status='submitted' where id='${application}'; commit;`);
@@ -59,9 +57,7 @@ test('concurrent snapshot builds reuse one revision and ignore views, unapproved
 });
 
 test('current SQL and TypeScript compile the same whole-set statistics and deterministic selection', async () => {
-  reset({ searchProtocol: true });
-  for (const path of ADAPTIVE_RELEASE_MIGRATIONS) sql(file(`../../supabase/${path}`));
-  upgradeCurrentFeedbackContract();
+  reset();
   const owner = '71000000-0000-4000-8000-000000000001';
   const search = '71000000-0000-4000-8000-000000000002';
   sql(`insert into auth.users(id) values('${owner}');

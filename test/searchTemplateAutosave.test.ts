@@ -58,9 +58,8 @@ async function fixture(t: TestContext, options: { linked?: boolean; readGate?: R
   let failWrites = false; let failCloud = false; let failRead = false;
   let saveGate: ReturnType<typeof gate> | null = null;
   let readinessGate: ReturnType<typeof gate> | null = null;
-  let readinessState = options.readiness ?? null;
-  let readinessError: { code: string; message: string } | null = options.readinessError
-    ?? (options.readiness ? null : { code: 'PGRST202', message: 'Synthetic workspace has no additive readiness helper.' });
+  let readinessState: AdaptiveSearchRunnerState | null = options.readiness ?? legacyRunner();
+  let readinessError: { code: string; message: string } | null = options.readinessError ?? null;
   const storage = { getItem: (key: string) => data.get(key) ?? null,
     setItem: (key: string, value: string) => { if (failWrites) throw new Error('Storage full'); data.set(key, value); } };
   const restoreGlobals: (() => void)[] = [];
@@ -158,13 +157,14 @@ test('a clean server-backed editor performs no save when opened or flushed', asy
   assert.deepEqual(readinessCalls,[{ name: 'read_adaptive_search_readiness',args: { p_search_id: cloudId,p_project_ref: projectRef } }]);
 });
 
-test('a missing additive readiness helper keeps legacy copy/navigation usable without additional saves', async t => {
-  const { editor,saves,copied,readinessCalls } = await fixture(t,{ linked: true });
-  assert.equal(await editor.flushTextareas(),true);
+test('a missing installed readiness helper blocks copy and navigation without saving through a fallback', async t => {
+  const { editor,saves,copied,readinessCalls } = await fixture(t,{ linked: true,
+    readinessError: { code: 'PGRST202', message: 'Synthetic readiness helper unavailable.' } });
+  assert.equal(await editor.flushTextareas(),false);
   await editor.copy();
-  assert.equal(editor.error,''); assert.equal(editor.status,'saved');
-  assert.equal(copied.length,1); assert.ok(copied[0]!.includes(cloudId));
-  assert.equal(saves.length,0); assert.equal(readinessCalls.length,2);
+  assert.match(editor.error,/search request failed/); assert.equal(editor.status,'error');
+  assert.equal(copied.length,0);
+  assert.equal(saves.length,0); assert.equal(readinessCalls.length,1);
 });
 
 test('copy refreshes a cached unbound runner and resumes the server setup claim', async t => {
@@ -227,8 +227,9 @@ test('switching accounts during the readiness refresh cancels the old copy', asy
 test('missing readiness for a saved adaptive runner blocks copying rather than inventing a legacy fallback', async t => {
   const row = cloudRow(clone(DEFAULT_SEARCH_TEMPLATES[0]!));
   row.meta_search!.recurringPrompt = 'SELECT private.begin_adaptive_opportunity_search(saved_search, run);';
-  const { editor,saves,copied,readinessCalls } = await fixture(t,{ linked: true,rows: [row] });
-  assert.equal(editor.status,'error'); assert.match(editor.error,/saved adaptive runner is unavailable/);
+  const { editor,saves,copied,readinessCalls } = await fixture(t,{ linked: true,rows: [row],
+    readinessError: { code: 'PGRST202', message: 'Synthetic readiness helper unavailable.' } });
+  assert.equal(editor.status,'error'); assert.match(editor.error,/search request failed/);
   assert.equal(await editor.flushTextareas(),false); await editor.copy();
   assert.equal(copied.length,0); assert.equal(saves.length,0); assert.equal(readinessCalls.length,1);
 });

@@ -45,6 +45,7 @@ interface WorkspaceSetup {
   saveAnnotation(id: string, status: AnnotationStatus, response: string, previousReviewId: string | null): Promise<boolean>;
   includeAnnotationFeedback(id: string): Promise<void>;
   copyShortInstruction(): Promise<void>;
+  copyTask(): Promise<void>;
   updateLetter(text: string): void; updateLetterFormatting(formatting?: LetterFormatting): void; approve(kind: 'cv' | 'letter', reopen?: boolean): Promise<void>;
   iterationNoteEditor: { key: string; value: string; update(value: string): void };
   iterationNotes: Record<'cv' | 'letter', Record<'tone' | 'structure' | 'content', string>>;
@@ -573,34 +574,56 @@ test('superseded feedback rounds remain viewable but cannot replace documents wi
   assert.equal(setup.error, '', 'the current proposal is still eligible for explicit application');
 });
 
-test('copying the short instruction follows server code and scope changes without publishing preparation or requests', async (t) => {
+test('copying a current task requires published sources and follows server codes without changing the saved round', async (t) => {
   const { setup, props, database, clipboardWrites } = mount(t);
   await idle(setup);
-  const before = JSON.stringify(database);
-  assert.equal(setup.shortInstruction, `phd-workflow: ${applicationId} — refine CV.`);
-  await setup.copyShortInstruction();
+  const unpublished = JSON.stringify(database);
+  assert.equal(setup.shortInstruction, '');
+  await setup.copyTask();
+  assert.match(setup.error, /Publish the current sources/);
+  assert.equal(clipboardWrites.length, 0);
+  assert.equal(JSON.stringify(database), unpublished);
+  assert.equal(setup.requests.length, 0);
+
+  await setup.selectCv('base'); await idle(setup);
+  await setup.selectLetterTemplate('research');
+  setup.feedbackScope = 'cv'; await nextTick();
+  await setup.publishSources();
+  assert.equal(setup.error, '');
+  const requestId = setup.requests[0].id, before = JSON.stringify(database);
+  assert.ok(setup.shortInstruction.startsWith(`phd-workflow: ${applicationId} — refine CV.`));
+  assert.ok(setup.shortInstruction.includes(`private.read_current_refinement_request('${applicationId}'::uuid, '${requestId}'::uuid, E'cv')`));
+  await setup.copyTask();
   assert.equal(clipboardWrites.at(-1), setup.shortInstruction);
   assert.ok(setup.shortInstructionNotice);
   assert.equal(setup.shortInstructionError, '');
 
   props.application = { ...props.application, application_code: 'SERVER-CaseSensitive_29' };
   setup.feedbackScope = 'cv'; await nextTick();
-  assert.equal(setup.shortInstruction, 'phd-workflow: SERVER-CaseSensitive_29 — refine CV.');
-  await setup.copyShortInstruction();
-  assert.equal(clipboardWrites.at(-1), 'phd-workflow: SERVER-CaseSensitive_29 — refine CV.');
+  assert.ok(setup.shortInstruction.startsWith('phd-workflow: SERVER-CaseSensitive_29 — refine CV.'));
+  await setup.copyTask();
+  assert.equal(clipboardWrites.at(-1), setup.shortInstruction);
 
-  props.application = { ...props.application, context_json: { ...props.application.context_json, title: 'A renamed PhD opportunity' } };
+  const copies = clipboardWrites.length;
   setup.feedbackScope = 'letter'; await nextTick();
-  await setup.copyShortInstruction();
-  assert.equal(clipboardWrites.at(-1), 'phd-workflow: SERVER-CaseSensitive_29 — refine motivation letter.');
+  assert.equal(setup.shortInstruction, '');
+  await setup.copyTask();
+  assert.match(setup.error, /Publish the current sources/);
+  assert.equal(clipboardWrites.length, copies);
   assert.equal(JSON.stringify(database), before, 'copying must not save setup, publish snapshots, or start a refinement round');
-  assert.equal(setup.requests.length, 0);
-  assert.equal(database.application_refinement_protocols.length, 0, 'copying the short instruction is independent of publishing the full protocol');
+  assert.equal(setup.requests.length, 1);
+  assert.equal(setup.requests[0].id, requestId);
 });
 
 test('clipboard failures remain local to the short instruction and can be retried without cloud mutations', async (t) => {
   const { setup, database, clipboard, clipboardWrites } = mount(t);
   await idle(setup);
+  await setup.selectCv('base'); await idle(setup);
+  await setup.selectLetterTemplate('research');
+  setup.feedbackScope = 'cv'; await nextTick();
+  await setup.publishSources();
+  assert.equal(setup.error, '');
+  assert.ok(setup.shortInstruction.includes('private.read_current_refinement_request'));
   const before = JSON.stringify(database);
   setup.error = 'Existing application synchronization error.';
   clipboard.writeText = async () => { throw new Error('Clipboard permission denied.'); };
@@ -624,22 +647,35 @@ test('publishing an initial round uses the same selected scope as the copied sho
   await setup.selectCv('base'); await idle(setup);
   await setup.selectLetterTemplate('research');
   setup.feedbackScope = 'letter'; await nextTick();
-  await setup.copyShortInstruction();
-  assert.equal(clipboardWrites.at(-1), `phd-workflow: ${applicationId} — refine motivation letter.`);
+  assert.equal(setup.shortInstruction, '');
+  await setup.copyTask();
+  assert.match(setup.error, /Publish the current sources/);
+  assert.equal(clipboardWrites.length, 0);
   assert.equal(setup.requests.length, 0, 'copy alone must not publish the selected scope');
   await setup.publishSources();
   assert.equal(setup.error, '');
   assert.equal(setup.requests[0].request_json.scope, 'letter');
   const firstRequestId = setup.requests[0].id;
+  await setup.copyTask();
+  assert.equal(clipboardWrites.at(-1), setup.shortInstruction);
+  assert.ok(setup.shortInstruction.startsWith(`phd-workflow: ${applicationId} — create an initial motivation-letter draft.`));
+  assert.ok(setup.shortInstruction.includes(`'${firstRequestId}'::uuid, E'letter'`));
 
   setup.feedbackScope = 'cv'; await nextTick();
-  await setup.copyShortInstruction();
-  assert.equal(clipboardWrites.at(-1), `phd-workflow: ${applicationId} — refine CV.`);
+  assert.equal(setup.shortInstruction, '');
+  const copies = clipboardWrites.length;
+  await setup.copyTask();
+  assert.match(setup.error, /Publish the current sources/);
+  assert.equal(clipboardWrites.length, copies);
   assert.equal(setup.requests[0].id, firstRequestId, 'a different copy selection still must not mutate the published round');
   await setup.publishSources();
   assert.equal(setup.error, '');
   assert.equal(setup.requests[0].request_json.scope, 'cv');
   assert.notEqual(setup.requests[0].id, firstRequestId, 'a scope change requires its own immutable request');
+  await setup.copyTask();
+  assert.equal(clipboardWrites.at(-1), setup.shortInstruction);
+  assert.ok(setup.shortInstruction.startsWith(`phd-workflow: ${applicationId} — refine CV.`));
+  assert.ok(setup.shortInstruction.includes(`'${setup.requests[0].id}'::uuid, E'cv'`));
 });
 
 test('published sources contain the complete private-filtered working letter and effective application settings', async (t) => {

@@ -152,7 +152,7 @@ async function initialize(owner: string, token: number) {
   try {
     const rows = await listCloudSearchTemplates(client, owner);
     if (disposed || token !== ownerGeneration) return;
-    const row = initial?.cloud ? rows.find(item => item.id === initial.cloud!.id) : rows.find(item => item.meta_search?.version === 1) || rows[0];
+    const row = initial?.cloud ? rows.find(item => item.id === initial.cloud!.id) : rows[0];
     if (initial?.cloud && !row) throw new Error('The saved meta search is unavailable. Your local draft is retained.');
     if (row) {
       const saved = importCloudSearchTemplate(row);
@@ -165,9 +165,6 @@ async function initialize(owner: string, token: number) {
       } else if (saved.cloud) patchBinding({ ...saved.cloud, contentKey: initial?.cloud?.contentKey || '' });
       const loadedRunner = await loadAdaptiveSearchRunnerState(client, owner, row.id, connectedProjectId.value || '');
       if (disposed || token !== ownerGeneration) return;
-      if (!loadedRunner && row.meta_search?.recurringPrompt.includes('private.begin_adaptive_opportunity_search')) {
-        throw new Error(text('The saved adaptive runner is unavailable. Restore its readiness helper before changing task instructions.', 'Der gespeicherte adaptive Ablauf ist nicht verfügbar. Zuerst seine Bereitschaftsfunktion wiederherstellen, bevor Aufgabenanweisungen geändert werden.'));
-      }
       runner.value = loadedRunner; runnerError.value = '';
     }
     status.value = form.value && isSearchTemplateSaved(form.value) && typingVersion === committedTypingVersion ? 'saved' : 'unsaved';
@@ -308,7 +305,7 @@ async function prepareRunner() {
     if (!await flushTextareas() || disposed || token !== ownerGeneration || !props.client || !binding || !connectedProjectId.value) return;
     const currentRunner = runner.value || await loadAdaptiveSearchRunnerState(props.client, editingOwner, binding.id, connectedProjectId.value);
     if (disposed || token !== ownerGeneration) return;
-    if (!currentRunner?.ready) throw new Error(text('Install and enable the adaptive batch release and authorize this search before preparing its task update.', 'Zuerst die adaptive Batch-Version installieren und aktivieren sowie diese Suche autorisieren.'));
+    if (!currentRunner.ready) throw new Error(text('Install and enable the adaptive batch release and authorize this search before preparing its task update.', 'Zuerst die adaptive Batch-Version installieren und aktivieren sowie diese Suche autorisieren.'));
     requestedSetupId ||= currentRunner.migration_requested && currentRunner.setup_id ? currentRunner.setup_id : crypto.randomUUID();
     const requested = await requestAdaptiveSearchRunner(props.client, editingOwner, binding.id, connectedProjectId.value, currentRunner.revision, requestedSetupId);
     if (disposed || token !== ownerGeneration) return;
@@ -338,16 +335,11 @@ async function copy() {
       if (disposed || token !== ownerGeneration || editingOwner !== owner || props.client !== client || connectedProjectId.value !== project
         || form.value?.cloud?.id !== search || typingVersion !== inputVersion || modelVersion !== draftVersion
         || typingVersion !== committedTypingVersion || status.value !== 'saved') return null;
-      if (!loaded && runner.value) throw new Error(text('The setup readiness helper is unavailable. Reload before copying task instructions.', 'Die Bereitschaftsfunktion ist nicht verfügbar. Vor dem Kopieren der Aufgabenanweisung neu laden.'));
       runner.value = loaded; runnerError.value = '';
-      let setupId: string | undefined;
-      if (loaded) {
-        const key = `${project}:${search}:${form.value.cloud!.revision}:${loaded.revision}:${loaded.binding?.task_id || ''}`;
-        if (loaded.setup_id) copiedSetup = { key, id: loaded.setup_id };
-        else if (copiedSetup?.key !== key) copiedSetup = { key, id: crypto.randomUUID() };
-        setupId = copiedSetup!.id;
-      }
-      return buildReplaceSearchPrompt(form.value, { projectId: project, runner: loaded, setupId });
+      const key = `${project}:${search}:${form.value.cloud!.revision}:${loaded.revision}:${loaded.binding?.task_id || ''}`;
+      if (loaded.setup_id) copiedSetup = { key, id: loaded.setup_id };
+      else if (copiedSetup?.key !== key) copiedSetup = { key, id: crypto.randomUUID() };
+      return buildReplaceSearchPrompt(form.value, { projectId: project, runner: loaded, setupId: copiedSetup!.id });
     });
     if (!result || disposed || token !== ownerGeneration) return;
     if (result.copied) notice.value = text('Replacement instruction copied. Paste it into ChatGPT to replace the meta-search schedule.', 'Ersetzungsanweisung kopiert. In ChatGPT einfügen, um den Metasuch-Zeitplan zu ersetzen.');

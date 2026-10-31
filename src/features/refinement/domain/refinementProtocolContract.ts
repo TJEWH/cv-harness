@@ -3,10 +3,6 @@ import type { RefinementRequest } from '../refinementTypes';
 /** Stable database contract shared by copied tasks, protocol documents and regression checks. */
 export const REFINEMENT_COMMANDS = {
   currentRequest: { name: 'private.read_current_refinement_request', types: ['uuid', 'uuid', 'text'] },
-  // Historical helpers remain available for already-copied tasks and stored protocols.
-  resolve: { name: 'private.resolve_application_reference', types: ['text', 'text'] },
-  protocol: { name: 'private.read_refinement_protocol', types: ['uuid', 'text'] },
-  request: { name: 'private.read_refinement_request', types: ['uuid'] },
   save: { name: 'private.save_refinement_proposal', types: ['uuid', 'uuid', 'jsonb'] },
 } as const;
 export type RefinementCommand = keyof typeof REFINEMENT_COMMANDS;
