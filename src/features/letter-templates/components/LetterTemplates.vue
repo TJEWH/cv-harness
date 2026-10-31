@@ -236,7 +236,7 @@ async function importLibrary(event: Event) {
 
 <template>
   <section class="letter-templates">
-    <div class="template-heading">
+    <div class="template-heading workspace-page-heading">
       <h2>{{ text('Letter templates', 'Briefvorlagen') }}<InfoHint :lang="lang" :label="text('Letter templates', 'Briefvorlagen')" :text="text('Reusable structure, research interests and drafting guidance. Letters use the assigned CV’s fonts, colors and selected contact fields, with their own page margins and text size. Templates stay on this device until included in an explicitly published refinement request.', 'Wiederverwendbare Struktur, Forschungsinteressen und Entwurfshinweise. Briefe übernehmen Schriftarten, Farben und ausgewählte Kontaktdaten des zugewiesenen Lebenslaufs. Seitenränder und Textgröße werden separat eingestellt. Vorlagen bleiben auf diesem Gerät, bis sie Teil einer ausdrücklich veröffentlichten Überarbeitungsanfrage sind.')" /></h2>
     </div>
     <div class="template-layout" :class="{ 'template-layout--sidebar': sidebarControlsVisible }">
@@ -312,8 +312,8 @@ async function importLibrary(event: Event) {
 
 <style scoped>
 .letter-templates{display:flex;flex-direction:column;min-width:0;min-height:0;height:100%;box-sizing:border-box;overflow:hidden;padding:0;color:var(--ui-text);background:transparent;font-family:var(--font-ui,system-ui)}
-.template-heading{display:flex;flex:0 0 auto;justify-content:space-between;gap:20px;align-items:start;margin-bottom:20px}
-.letter-templates h2{font:700 22px/1.3 system-ui;text-transform:none;letter-spacing:0;margin:0 0 8px;color:var(--ui-text)}
+.template-heading{display:flex;flex:0 0 auto;justify-content:space-between;gap:20px;align-items:start;margin:0;padding-bottom:10px;border-bottom:1px solid var(--ui-divider)}
+.letter-templates h2{font:700 22px/1.3 system-ui;text-transform:none;letter-spacing:0;margin:0;color:var(--ui-text)}
 .letter-templates p,.template-library-controls p{margin:0;color:var(--ui-muted);font-size:13px;line-height:1.6}
 .letter-templates :is(button,input,select,textarea),.template-library-controls :is(button,input,select){font:inherit;border:1px solid var(--ui-border);border-radius:7px;background:var(--ui-control);color:var(--ui-text);padding:10px 12px}
 .letter-templates button,.template-library-controls button{cursor:pointer;font-size:13px;font-weight:600}
@@ -339,8 +339,9 @@ button:disabled{opacity:.55;cursor:default}
 .template-library-files summary:focus-visible{outline:2px solid var(--ui-accent);outline-offset:2px}
 .template-library-actions{display:grid;gap:10px;padding-top:4px}
 .template-form{display:grid;align-content:start;min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;}
-.template-form > label {margin-bottom:32px;}
+.template-form > label {margin: 20px 10px}
 .letter-templates label,.template-library-controls label{display:grid;gap:7px;font:600 12px/1.4 system-ui;color:var(--ui-text)}
+.template-form > .template-section:first-child{border-top:0}
 .template-section{min-width:0;border-top:1px solid var(--ui-divider)}
 .template-section > summary{display:flex;align-items:center;gap:10px;min-height:48px;padding:8px 16px;box-sizing:border-box;cursor:pointer;list-style:none;font:600 14px/1.5 var(--font-ui);color:var(--ui-text)}
 .template-section > summary::-webkit-details-marker{display:none}
@@ -355,7 +356,7 @@ button:disabled{opacity:.55;cursor:default}
 .letter-templates :is(input,select,textarea),.template-library-controls :is(input,select){font:400 14px/1.5 var(--font-ui);min-width:0;width:100%;box-sizing:border-box}
 textarea{resize:vertical}
 .template-form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media(max-width:760px){.letter-templates{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}.template-layout{display:flex;flex:0 0 auto;flex-direction:column;overflow:visible;gap:24px}.template-heading{flex-direction:column;gap:10px;margin-bottom:14px}.template-form-row{grid-template-columns:1fr}.template-form{overflow:visible;max-width:none}}
+@media(max-width:760px){.letter-templates{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}.template-layout{display:flex;flex:0 0 auto;flex-direction:column;overflow:visible;gap:24px}.template-heading{flex-direction:column;gap:10px;margin:0;padding-bottom:10px}.template-form-row{grid-template-columns:1fr}.template-form{overflow:visible;max-width:none}}
 @media(max-width:760px){.letter-templates :is(input,select,textarea),.template-library-controls :is(input,select){font-size:16px}.letter-templates button,.template-library-controls button{min-height:44px}}
 .template-form .template-checkbox { display:flex; align-items:center; justify-content:flex-start; gap:8px; min-height:44px; font-weight:400; }
 .template-form .template-checkbox input { width:16px; height:16px; min-width:16px; margin:0; padding:0; flex:0 0 16px; }

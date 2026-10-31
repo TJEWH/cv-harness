@@ -2,7 +2,7 @@
 import InfoHint from '../../../shared/ui/InfoHint.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-import { faAlignLeft, faCheck, faCopy, faFeatherPointed, faRotate, faRotateLeft } from '@fortawesome/free-solid-svg-icons';
+import { faAlignLeft, faCheck, faCopy, faFeatherPointed, faFlask, faPenToSquare, faRotate, faRotateLeft } from '@fortawesome/free-solid-svg-icons';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Application, ApplicationStage } from '../../../app/cloudTypes';
 import { supabaseConfiguration } from '../../../platform/supabase/supabase';
@@ -1596,7 +1596,7 @@ useToastWatch(() => shortInstructionError.value, { tone: 'error' });
         </DesktopSidebarPortal>
         <slot name="preparation-evaluation" />
         <details v-if="letter?.searchProfile?.researchInterests" class="disclosure-row preparation-profile-context">
-          <summary>{{ text('Saved research interests', 'Gespeicherte Forschungsinteressen') }}</summary>
+          <summary><FontAwesomeIcon :icon="faFlask" class="disclosure-prefix" aria-hidden="true" />{{ text('Saved research interests', 'Gespeicherte Forschungsinteressen') }}</summary>
           <p>{{ letter.searchProfile.templateName }} · {{ text('Revision', 'Revision') }} {{ letter.searchProfile.revision }}</p>
           <p v-if="letter.searchProfile.researchInterests" class="pre-wrap">{{ letter.searchProfile.researchInterests }}</p>
         </details>
@@ -1664,7 +1664,7 @@ useToastWatch(() => shortInstructionError.value, { tone: 'error' });
               <button type="button" :disabled="busy || refreshing" @click="copyTask">{{ text('Retry copy', 'Kopieren erneut versuchen') }}</button>
               <AutosaveTextarea :model-value="shortInstruction" readonly rows="5" :aria-label="text('Short ChatGPT instruction', 'Kurze ChatGPT-Anweisung')" />
             </template>
-          <details class="disclosure-row"><summary>{{ text('Edit manually', 'Manuell bearbeiten') }}<InfoHint v-if="pane === 'cv'" :lang="lang" :label="text('Edit manually', 'Manuell bearbeiten')" :text="text('Edit the current CV, including active changes. Previous stays unchanged.', 'Aktuellen CV einschließlich aktiver Änderungen bearbeiten. Der vorherige Stand bleibt unverändert.')" /></summary>
+          <details class="disclosure-row"><summary><FontAwesomeIcon :icon="faPenToSquare" class="disclosure-prefix" aria-hidden="true" />{{ text('Edit manually', 'Manuell bearbeiten') }}<InfoHint v-if="pane === 'cv'" :lang="lang" :label="text('Edit manually', 'Manuell bearbeiten')" :text="text('Edit the current CV, including active changes. Previous stays unchanged.', 'Aktuellen CV einschließlich aktiver Änderungen bearbeiten. Der vorherige Stand bleibt unverändert.')" /></summary>
 
           <section v-if="cvEditorState" v-show="pane === 'cv'" class="working-document"><fieldset :disabled="cvApproved || busy"><FormBuilder :state="cvEditorState" :read-version="() => null" :save-version="() => false" /></fieldset></section>
           <section v-if="letter" v-show="pane === 'letter'" class="working-document"><label>{{ text('Complete letter text', 'Vollständiger Brieftext') }}<AutosaveTextarea :model-value="letterText" :model-modifiers="{ lazy: true }" rows="18" :disabled="letterApproved || busy || reviewActive" @input="markInitialLetterDraftInput" @update:model-value="updateLetter" /></label><p :class="{ warning: words > setup.maxWords }">{{ words }} / {{ setup.maxWords }} {{ text('target words (complete letter)', 'Zielwörter (vollständiger Brief)') }}</p><InfoHint v-if="words > setup.maxWords" :lang="lang" :label="text('Target words', 'Zielwortzahl')" :text="text('Over the target. Review the tender limit; approval and export remain available.', 'Über der Zielwortzahl. Vorgabe prüfen; Freigabe und Export bleiben möglich.')" /><p v-if="unresolved.length" class="app-hint warning">{{ text('Resolve placeholders:', 'Platzhalter auflösen:') }} {{ unresolved.join(', ') }}</p><LetterFormattingControls :formatting="letter.formatting" :base-formatting="selectedTemplate.formatting" :lang="lang" :disabled="letterApproved || busy || reviewActive" @change="updateLetterFormatting" /></section>

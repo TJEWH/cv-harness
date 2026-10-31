@@ -423,6 +423,7 @@ watch(() => props.selectedId, () => { bypassPrivacyProxy.value = false; });
 
 <template>
   <section class="section-group backup-manager">
+    <header class="workspace-page-heading"><h2>{{ lang === 'de' ? 'Varianten' : 'Variants' }}</h2></header>
     <div class="group-panel__scroll-body">
       <Teleport defer :to="selectorTarget || 'body'" :disabled="!selectorTarget">
         <div v-show="selectorVisible" class="backup-manager__actions" :class="{ 'backup-manager__actions--docked': !!selectorTarget, 'backup-manager__actions--sidebar': selectorTarget.startsWith('#desktop-sidebar-') }">
@@ -449,15 +450,15 @@ watch(() => props.selectedId, () => { bypassPrivacyProxy.value = false; });
 
       <div class="backup-manager__json-group">
         <h3>{{ t('versionContentJson') }}<InfoHint :lang="lang" :label="t('versionContentJson')" :text="t('versionContentJsonHelp')" /></h3>
+        <div class="hint-label-row"><label class="backup-manager__privacy-option">
+          <input v-model="bypassPrivacyProxy" type="checkbox" :disabled="isImporting" aria-describedby="content-json-privacy-help" />
+          <span>{{ t('versionBypassPrivacy') }}</span>
+        </label><InfoHint id="content-json-privacy-help" :lang="lang" :label="t('versionBypassPrivacy')" :text="[t(bypassPrivacyProxy ? 'versionBypassPrivacyHelp' : 'versionRespectPrivacyHelp'), bypassPrivacyProxy ? '' : t('versionPrivacyEditsHelp')].filter(Boolean).join(' ')" /></div>
         <div class="backup-manager__file-actions">
           <input ref="contentFileInput" class="backup-manager__file-input" type="file" accept="application/json,.json" @change="importJson($event, 'content')" />
           <button type="button" class="btn" @click="exportJson('content')">{{ t('versionExportContent') }}</button>
           <button type="button" class="btn" :disabled="isImporting" @click="chooseJsonFile('content')">{{ t('versionImportContent') }}</button>
         </div>
-        <div class="hint-label-row"><label class="backup-manager__privacy-option">
-          <input v-model="bypassPrivacyProxy" type="checkbox" :disabled="isImporting" aria-describedby="content-json-privacy-help" />
-          <span>{{ t('versionBypassPrivacy') }}</span>
-        </label><InfoHint id="content-json-privacy-help" :lang="lang" :label="t('versionBypassPrivacy')" :text="[t(bypassPrivacyProxy ? 'versionBypassPrivacyHelp' : 'versionRespectPrivacyHelp'), bypassPrivacyProxy ? '' : t('versionPrivacyEditsHelp')].filter(Boolean).join(' ')" /></div>
       </div>
       <div class="backup-manager__json-group">
         <h3>{{ t('versionConfigJson') }}<InfoHint :lang="lang" :label="t('versionConfigJson')" :text="t('versionConfigJsonHelp')" /></h3>
@@ -472,10 +473,16 @@ watch(() => props.selectedId, () => { bypassPrivacyProxy.value = false; });
 </template>
 
 <style scoped>
-.variant-selector--docked { width: min(100%, 420px); min-width: 0; min-height: 40px; font: inherit; color: #d1fae5; border: 1px solid #28534e; border-radius: 7px; background: #0b1b25; padding: 9px 11px; }
+.backup-manager { color: var(--ui-text); font: 400 13px/1.6 var(--font-ui); }
+.backup-manager > .group-panel__scroll-body { padding-top: 16px; }
+.backup-manager .btn { background: var(--ui-control); }
+.backup-manager :is(input, select) { font: 400 14px/1.5 var(--font-ui); }
+.backup-manager .btn--success { border-color: var(--ui-accent-border); color: var(--ui-accent); }
+
+.variant-selector--docked { width: min(100%, 420px); min-width: 0; min-height: 40px; font: inherit; color: var(--ui-text); border: 1px solid var(--ui-border); border-radius: 7px; background: var(--ui-control); padding: 9px 11px; }
 .group-panel__scroll-body { display: grid; align-content: start; gap: 10px; min-height: 0; }
-.builder-layout__controls h3 {
-  margin: 0; font-size: 14px; color: #9be8c7; letter-spacing: .4px;
+.backup-manager h3 {
+  margin: 0; font: 600 14px/1.5 var(--font-ui); color: var(--ui-text); letter-spacing: 0;
 }
 .backup-manager__actions, .backup-manager__save-as, .backup-manager__file-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .backup-manager__actions select { flex: 1 1 220px; width: auto; }
@@ -487,15 +494,17 @@ watch(() => props.selectedId, () => { bypassPrivacyProxy.value = false; });
 .backup-manager__save-as input { flex: 1 1 220px; width: auto; }
 .backup-manager__file-input { display: none; }
 .backup-manager__json-group { display: grid; gap: 8px;}
-.backup-manager__privacy-option { display: flex; align-items: center; gap: 8px; color: #d1fae5; font-size: 13px; cursor: pointer; }
-.backup-manager__privacy-option input { width: 16px; height: 16px; margin: 0; accent-color: #27f3a2; }
-.backup-manager .btn:disabled { border-color: #3b5350; background: #182e2b; color: #8ba39d; opacity: .55; cursor: not-allowed; filter: none; }
-.backup-manager__language { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #9be8c7; font-size: 13px; }
+.backup-manager__privacy-option { display: flex; align-items: center; gap: 8px; color: var(--ui-text); font-size: 13px; cursor: pointer; }
+.backup-manager__privacy-option input { width: 16px; height: 16px; margin: 0; accent-color: var(--ui-accent); }
+.backup-manager .btn:disabled { border-color: var(--ui-border); background: var(--ui-control); color: var(--ui-muted); opacity: .55; cursor: not-allowed; filter: none; }
+.backup-manager__language { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ui-text); font-size: 13px; }
 .backup-manager__language-toggle { border: 0; padding: 0; background: transparent; cursor: pointer; }
-.backup-manager__language-track { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 72px; height: 30px; border: 1px solid #134e4a; border-radius: 999px; background: #06141f; color: #cbd5e1; font-size: 10px; }
+.backup-manager__language-track { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 72px; height: 30px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-control); color: var(--ui-muted); font-size: 10px; }
 .backup-manager__language-track > span:not(.backup-manager__language-thumb) { z-index: 1; display: grid; place-items: center; }
 .backup-manager__language-thumb { position: absolute; inset: 2px calc(50% + 1px) 2px 2px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px; background: rgba(255, 255, 255, .12); transition: inset .2s ease; }
 .backup-manager__language-toggle.is-on .backup-manager__language-thumb { inset: 2px 2px 2px calc(50% + 1px); }
-.backup-manager__language-toggle.is-on .backup-manager__language-track { border-color: rgba(16, 185, 129, .45); background: rgba(16, 185, 129, .15); }
-.backup-manager__language-toggle:focus-visible { outline: 2px solid #9be8c7; outline-offset: 2px; border-radius: 999px; }
+.backup-manager__language-toggle.is-on .backup-manager__language-track { border-color: var(--ui-accent-border); background: var(--ui-active); }
+.backup-manager__language-toggle:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; border-radius: 999px; }
+@media (prefers-reduced-motion: reduce) { .backup-manager__language-thumb { transition: none; } }
+@media (max-width: 760px) { .backup-manager__privacy-option, .backup-manager .btn, .backup-manager__language-toggle { min-height: 44px; } .backup-manager :is(input, select) { font-size: 16px; } }
 </style>

@@ -332,13 +332,13 @@ async function copyAnalysis() {
 
 <template>
   <section class="opportunity-insights" :aria-labelledby="`${id}-heading`" :aria-busy="loading || search.loading.value">
-    <header class="insights-heading">
+    <div class="insights-heading-inset"><header class="insights-heading workspace-page-heading">
       <div class="insights-title">
         <h2 :id="`${id}-heading`">{{ text('Insights', 'Einblicke') }}</h2>
         <InfoHint :lang="lang" :label="text('Insights', 'Einblicke')" :text="text('Compare your current feedback by catalogue Added date using the time brush. Results filters do not apply. Copy the English analysis prompt to paste into ChatGPT.', 'Vergleiche dein aktuelles Feedback nach Hinzufügedatum im Katalog und wähle den Zeitraum mit dem Zeitpinsel. Ergebnisfilter gelten hier nicht. Kopiere die englische Analyseanweisung zum Einfügen in ChatGPT.')" />
       </div>
       <button class="btn insights-copy" type="button" :disabled="loading || search.loading.value || copying || brushActive || jobInterestDraft !== jobMinimumInterest || jobClusterDraft !== jobClusterCount || !summary.catalogueCount" :aria-busy="copying" @click="copyAnalysis"><FontAwesomeIcon :icon="faCopy" aria-hidden="true" />{{ text('Copy analysis prompt', 'Analyseanweisung kopieren') }}</button>
-    </header>
+    </header></div>
 
     <template v-if="!loading">
       <div class="insights-body-tabs" role="tablist" :aria-label="text('Insights views', 'Ansichten der Einblicke')"><button v-for="tab in bodyTabs" :id="`${id}-view-${tab}`" :key="tab" type="button" role="tab" :aria-label="bodyTabLabel(tab)" :aria-selected="activeBody === tab" :aria-controls="`${id}-body-${tab}`" :tabindex="activeBody === tab ? 0 : -1" @click="activeBody = tab" @keydown="bodyTabKey($event, tab)">{{ bodyTabLabel(tab) }}</button></div>
@@ -486,7 +486,7 @@ async function copyAnalysis() {
       </template>
 
       <details v-if="preparedText" class="insights-prompt" :open="copyFailed">
-        <summary>{{ text('Prepared ChatGPT analysis', 'Vorbereitete ChatGPT-Analyse') }}<span>{{ number(preparedExamples, 0) }} {{ text('feedback examples', 'Feedbackbeispiele') }}</span></summary>
+        <summary><FontAwesomeIcon :icon="faCopy" class="disclosure-prefix" aria-hidden="true" />{{ text('Prepared ChatGPT analysis', 'Vorbereitete ChatGPT-Analyse') }}<span>{{ number(preparedExamples, 0) }} {{ text('feedback examples', 'Feedbackbeispiele') }}</span></summary>
         <div class="insights-prompt-body"><div class="insights-title"><label :for="`${id}-prompt`">{{ text('Analysis prompt', 'Analyseanweisung') }}</label><InfoHint :lang="lang" :label="text('Copied analysis', 'Kopierte Analyse')" :text="text('Paste this English prompt into ChatGPT. You get statistics; with a saved search, you get the job hierarchy, up to 16 feedback examples and 8 mismatch summaries. Excluded jobs, contact details, application notes, CVs and letters stay out.', 'Füge die englische Analyseanweisung in ChatGPT ein. Du erhältst Kennzahlen; mit gespeicherter Suche die Stellenhierarchie, bis zu 16 Feedbackbeispiele und 8 Zusammenfassungen von Fehlpassungen. Ausgeschlossene Stellen, Kontaktdaten, Bewerbungsnotizen, Lebensläufe und Briefe bleiben außen vor.')" /></div><AutosaveTextarea :id="`${id}-prompt`" :model-value="preparedText" readonly rows="12" spellcheck="false" /></div>
       </details>
       </div>
@@ -500,7 +500,8 @@ async function copyAnalysis() {
 <style scoped>
 .opportunity-insights { container-type: inline-size; display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; color: var(--ui-text); font: 400 13px/1.6 var(--font-ui); }
 .insights-heading, .insights-title, .insights-section-heading { display: flex; align-items: center; min-width: 0; }
-.insights-heading { flex: 0 0 auto; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 24px 32px 12px; }
+.insights-heading-inset { flex: 0 0 auto; padding: 24px 32px 0; }
+.insights-heading { flex: 0 0 auto; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 0; padding-bottom: 10px; border-bottom: 1px solid var(--ui-divider); }
 .insights-development-tabs { flex: 0 0 auto; padding-inline: 32px; }
 .insights-body-tabs { display: flex; flex: 0 0 auto; gap: 4px; padding-inline: 32px; border-bottom: 1px solid var(--ui-divider); overflow-x: auto; scrollbar-width: thin; }
 .insights-body-tabs button { flex: 0 0 auto; appearance: none; min-height: 42px; padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--ui-muted); font: 600 12px/1.5 var(--font-ui); cursor: pointer; white-space: nowrap; }
@@ -657,7 +658,8 @@ async function copyAnalysis() {
 }
 @media (max-width: 760px) {
   .insights-current-filter label { min-height: 44px; }
-  .insights-heading { align-items: flex-start; padding: 16px 16px 10px; }
+  .insights-heading-inset { padding: 16px 16px 0; }
+  .insights-heading { align-items: flex-start; }
   .insights-body-tabs, .insights-development-tabs { padding-inline: 16px; }
   .insights-body-tabs button { min-height: 44px; }
   .insights-body { padding: 20px 16px 28px; }

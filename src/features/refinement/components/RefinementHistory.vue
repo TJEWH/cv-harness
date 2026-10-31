@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import InfoHint from '../../../shared/ui/InfoHint.vue';
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
+import { faClock, faClockRotateLeft, faFolderOpen } from '@fortawesome/free-solid-svg-icons';
 import { computed, ref, watch } from 'vue';
 import type { LocalRefinementRequest, RefinementProposalRow, RefinementRequestRow, RefinementScope } from '../refinementTypes';
 import { refinementMatchesScope, refinementRunMetadata } from '../domain/refinementHistory';
@@ -48,11 +50,11 @@ watch(() => props.scope, cancelClear);
       @confirm="confirmClear"
     />
     <details class="disclosure-row run-details" :open="open" @toggle="emit('details', ($event.target as HTMLDetailsElement).open)">
-      <summary>{{ text('History', 'Verlauf') }}<InfoHint :lang="lang" :label="text('History', 'Verlauf')" :text="text('Historical metadata comes from saved records. Missing versions remain unknown.', 'Historische Metadaten stammen aus gespeicherten Datensätzen. Fehlende Versionen bleiben unbekannt.')" /></summary>
+      <summary><FontAwesomeIcon :icon="faClockRotateLeft" class="disclosure-prefix" aria-hidden="true" />{{ text('History', 'Verlauf') }}<InfoHint :lang="lang" :label="text('History', 'Verlauf')" :text="text('Historical metadata comes from saved records. Missing versions remain unknown.', 'Historische Metadaten stammen aus gespeicherten Datensätzen. Fehlende Versionen bleiben unbekannt.')" /></summary>
       <button type="button" class="btn btn--danger" :disabled="busy || !canClear" @click="requestClear">{{ text('Clear history', 'Verlauf löschen') }}</button>
       <p v-if="!runs.length" class="app-hint">{{ emptyMessage }}</p>
       <details v-for="run in runs" :key="run.row.id" class="disclosure-row history-run">
-        <summary>{{ date(run.row.created_at) }} · {{ run.proposals.length }} {{ text('proposals', 'Vorschläge') }}{{ run.row.id === currentRequestId ? text(' · Current', ' · Aktuell') : '' }}</summary>
+        <summary><FontAwesomeIcon :icon="faClock" class="disclosure-prefix" aria-hidden="true" />{{ date(run.row.created_at) }} · {{ run.proposals.length }} {{ text('proposals', 'Vorschläge') }}{{ run.row.id === currentRequestId ? text(' · Current', ' · Aktuell') : '' }}</summary>
         <dl>
           <dt>{{ text('Request', 'Anfrage') }}</dt><dd><code>{{ run.metadata.requestId }}</code></dd>
           <dt>{{ text('Created', 'Erstellt') }}</dt><dd>{{ date(run.metadata.createdAt) }}</dd>
@@ -66,7 +68,7 @@ watch(() => props.scope, cancelClear);
         </dl>
         <button type="button" @click="emit('exportRequest', run.row.id)">{{ text('Export public request', 'Öffentliche Anfrage exportieren') }}</button>
         <div v-for="proposal in run.proposals" :key="proposal.id" class="history-proposal"><p><code>{{ proposal.id }}</code> · {{ date(proposal.created_at) }}</p><p>{{ proposal.proposal_json.summary }}</p><button type="button" :disabled="busy" @click="emit('select', proposal.id)">{{ text('Review this proposal', 'Diesen Vorschlag prüfen') }}</button><button type="button" @click="emit('exportProposal', proposal.id)">{{ text('Export proposal', 'Vorschlag exportieren') }}</button></div>
-        <details class="disclosure-row"><summary>{{ text('Captured public sources', 'Gespeicherte öffentliche Quellen') }}</summary><RefinementPrivacyPreview :user-id="run.row.user_id" :request="run.row.request_json" :lang="lang" /></details>
+        <details class="disclosure-row"><summary><FontAwesomeIcon :icon="faFolderOpen" class="disclosure-prefix" aria-hidden="true" />{{ text('Captured public sources', 'Gespeicherte öffentliche Quellen') }}</summary><RefinementPrivacyPreview :user-id="run.row.user_id" :request="run.row.request_json" :lang="lang" /></details>
       </details>
     </details>
   </section>

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
+import { faAlignLeft } from '@fortawesome/free-solid-svg-icons';
 import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import InfoHint from '../../../shared/ui/InfoHint.vue';
 import { OPPORTUNITY_INTEREST_REASON_CATEGORIES, type Opportunity, type OpportunityInterestReason, type OpportunityReview } from '../../../app/cloudTypes';
@@ -205,7 +207,7 @@ defineExpose({ flush });
     <div class="feedback-summary">
       <div class="feedback-heading"><label :for="evaluationInputId || `${controlsId}-summary`">{{ text('Qualitative evaluation', 'Qualitative Einschätzung') }}</label><InfoHint :lang="lang" :label="text('Qualitative evaluation', 'Qualitative Einschätzung')" :text="evaluationHint" /><span class="feedback-summary-count">{{ summaryLength }} / {{ MAX_OPPORTUNITY_EVALUATION_LENGTH }} {{ text('characters', 'Zeichen') }}</span></div>
       <AutosaveTextarea :id="evaluationInputId || `${controlsId}-summary`" v-model="summaryDraft" :aria-labelledby="evaluationLabelledby" rows="3" :aria-invalid="summaryInvalid || undefined" @commit="flushSummary" />
-      <details v-if="summaryLength > 600 && summaryEligible" class="feedback-excerpt"><summary>{{ text('Search feedback excerpt — first 600 characters', 'Suchfeedback-Auszug — erste 600 Zeichen') }}</summary><p>{{ summaryExcerpt }}</p></details>
+      <details v-if="summaryLength > 600 && summaryEligible" class="feedback-excerpt"><summary><FontAwesomeIcon :icon="faAlignLeft" class="disclosure-prefix" aria-hidden="true" />{{ text('Search feedback excerpt — first 600 characters', 'Suchfeedback-Auszug — erste 600 Zeichen') }}</summary><p>{{ summaryExcerpt }}</p></details>
       <button v-if="summaryError" class="btn" type="button" @click="flushSummary">{{ text('Retry save', 'Speichern erneut versuchen') }}</button>
     </div>
     <div class="feedback-interest-row">

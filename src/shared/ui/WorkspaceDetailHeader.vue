@@ -7,7 +7,7 @@ const emit = defineEmits<{ back: [] }>();
 </script>
 
 <template>
-  <header class="workspace-detail-header">
+  <header class="workspace-detail-header workspace-page-heading">
     <div class="workspace-detail-header__main">
       <div class="workspace-detail-header__controls">
         <DesktopSidebarPortal area="subtabs" :active="sidebarActive === true">
@@ -26,7 +26,7 @@ const emit = defineEmits<{ back: [] }>();
 </template>
 
 <style scoped>
-.workspace-detail-header { flex: 0 0 auto; min-width: 0; padding-bottom: 14px; border-bottom: 1px solid var(--ui-border); color: var(--ui-text);}
+.workspace-detail-header { flex: 0 0 auto; min-width: 0; margin: 0; padding-bottom: 10px; border-bottom: 1px solid var(--ui-divider); color: var(--ui-text);}
 .workspace-detail-header__main { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; min-width: 0; }
 .workspace-detail-header__controls { display: contents; }
 .workspace-detail-header__back { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; order: 0; }
@@ -42,7 +42,6 @@ const emit = defineEmits<{ back: [] }>();
 .workspace-detail-header__metadata { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; min-width: 0; margin-top: 14px; color: var(--ui-muted); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }
 .workspace-detail-header__secondary-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; margin-top: 6px; }
 @media (min-width: 761px) and (max-height: 600px) {
-  .workspace-detail-header { padding-bottom: 8px; }
   .workspace-detail-header__title h1 { font-size: 18px; }
   .workspace-detail-header__metadata { margin-top: 6px; }
 }

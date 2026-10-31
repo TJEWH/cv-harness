@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, useId } from 'vue';
 import type { PropType, VNode } from 'vue';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-import { faLink } from '@fortawesome/free-solid-svg-icons';
+import { faCalculator, faChartSimple, faCoins, faDatabase, faFileLines, faFlask, faLink, faListCheck, faUsers } from '@fortawesome/free-solid-svg-icons';
 import { buildOpportunityGroups, checklistKeys, fitScoreTone, requirementTableRows } from '../domain/opportunityContext';
 import type { OpportunityContextNode, OpportunityContextGroupId } from '../domain/opportunityContext';
 
@@ -10,6 +10,8 @@ const props = defineProps<{ context: Record<string, unknown>; lang: string; chec
 const emit = defineEmits<{ toggleChecklist: [key: string, completed: boolean] }>();
 const groups = computed(() => buildOpportunityGroups(props.context, props.lang).filter(group => !props.onlyGroups || props.onlyGroups.includes(group.id)));
 const completed = computed(() => new Set(props.completedKeys || []));
+const groupIcons = { overview: faFlask, requirements: faListCheck, documents: faFileLines, salary: faCoins, advisor: faUsers, links: faLink, metadata: faDatabase };
+const disclosureIcon = (icon: typeof faLink) => h(FontAwesomeIcon, { icon, class: 'disclosure-prefix', 'aria-hidden': 'true' });
 function progress(nodes: OpportunityContextNode[]) {
   const keys = checklistKeys(nodes);
   return keys.length ? `${keys.filter((key) => completed.value.has(key)).length} / ${keys.length} ${props.lang === 'de' ? 'erledigt' : 'done'}` : '';
@@ -99,11 +101,11 @@ const ContextValue = defineComponent({
         const explanation = [score === undefined && node.text ? value : null, children].filter(Boolean) as VNode[];
         const expandable = explanation.length > 0;
         const scoreContent = score !== undefined ? [
-          h('strong', { class: 'opportunity-context__score-number' }, node.text),
+          h('strong', { class: 'opportunity-context__score-number' }, [expandable ? disclosureIcon(faChartSimple) : null, node.text]),
           h('span', { class: 'opportunity-context__score-track', role: 'meter', 'aria-label': node.label,
             'aria-valuemin': 0, 'aria-valuemax': 10, 'aria-valuenow': score, 'aria-valuetext': node.text },
           h('span', { class: 'opportunity-context__score-fill', style: { width: `${score * 10}%` }, 'aria-hidden': 'true' })),
-        ] : [h('span', { class: 'opportunity-context__missing' }, props.lang === 'de' ? 'Keine Bewertung auf der Skala 0–10' : 'No score on the 0–10 scale')];
+        ] : [h('span', { class: 'opportunity-context__missing' }, [expandable ? disclosureIcon(faChartSimple) : null, props.lang === 'de' ? 'Keine Bewertung auf der Skala 0–10' : 'No score on the 0–10 scale'])];
         const heading = h(expandable ? 'summary' : 'div', {
           class: ['opportunity-context__score', fitScoreTone(score) && `opportunity-context__score--${fitScoreTone(score)}`],
           ...(expandable ? { 'aria-label': [node.label, score !== undefined ? node.text : null].filter(Boolean).join(': '), onClick: toggleScoreSummaries } : {}),
@@ -121,7 +123,7 @@ const ContextValue = defineComponent({
           `${props.lang === 'de' ? 'Gehaltsbewertung' : 'Salary verdict'}: `,
           node.children?.find(child => child.id.endsWith('.salary_verdict'))?.text,
         ]),
-        h('details', [h('summary', props.lang === 'de' ? 'Bewertung und Annahmen' : 'Breakdown and assumptions'), children]),
+        h('details', [h('summary', [disclosureIcon(faCalculator), props.lang === 'de' ? 'Bewertung und Annahmen' : 'Breakdown and assumptions']), children]),
       ]);
       return h('div', [node.text ? value : null, children, renderEvidence(node)]);
     }
@@ -178,7 +180,7 @@ const ContextValue = defineComponent({
 <template>
   <div class="opportunity-context">
     <details v-for="group in groups" :key="group.id" class="opportunity-context__group disclosure-row" :class="`opportunity-context__group--${group.id}`" :open="(defaultOpenGroups ?? ['overview', 'salary', 'requirements', 'documents']).includes(group.id)">
-      <summary>{{ group.label }} <span v-if="checklist && ['requirements', 'documents'].includes(group.id)" class="opportunity-context__progress">{{ progress(group.items) }}</span></summary>
+      <summary><FontAwesomeIcon :icon="groupIcons[group.id]" class="disclosure-prefix" aria-hidden="true" />{{ group.label }} <span v-if="checklist && ['requirements', 'documents'].includes(group.id)" class="opportunity-context__progress">{{ progress(group.items) }}</span></summary>
       <ContextValue v-if="['requirements', 'documents'].includes(group.id)" class="opportunity-context__value" :node="{ id: group.id, label: group.label, children: group.items }" table />
       <div v-else class="opportunity-context__fields">
         <div v-for="item in group.items" :key="item.id" class="opportunity-context__field" :class="item.kind ? `opportunity-context__field--${item.kind}` : undefined">

@@ -129,6 +129,7 @@ function resetEdits() {
 <template>
   <FormBuilder class="anonymization-panel" :state="draft" privacy-mode :toolbar-visible="false" :read-version="() => null" :save-version="() => false">
     <template #before-tabs>
+      <header class="workspace-page-heading"><h2>{{ t('privacy') }}</h2></header>
       <div class="privacy-editor-intro">
         <fieldset class="privacy-automatic">
           <legend>{{ t('privacyAutomaticMasking') }}<InfoHint :lang="state.lang" :label="t('privacyAutomaticMasking')" :text="t('privacyEditorHelp')" /></legend>
@@ -150,7 +151,7 @@ function resetEdits() {
 </template>
 
 <style scoped>
-.privacy-editor-intro { flex: none; display: grid; gap: 4px; padding-bottom: 12px; }
+.privacy-editor-intro { flex: none; display: grid; gap: 4px; padding: 12px; }
 .privacy-automatic { min-width: 0; margin: 0; padding: 0; border: 0; }
 .privacy-automatic legend { padding: 0 0 4px; color: var(--ui-text); font-size: 13px; font-weight: 600; }
 .privacy-automatic__fields { display: flex; flex-wrap: wrap; gap: 0 16px; }

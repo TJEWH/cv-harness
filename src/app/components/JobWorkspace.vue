@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import InfoHint from '../../shared/ui/InfoHint.vue';
 import { computed, nextTick, onBeforeUnmount, reactive, ref, shallowReactive, shallowRef, watch } from 'vue';
-import { faChartSimple, faFilter, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
+import { faChartSimple, faCommentDots, faFilter, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CvState, SavedConfiguration } from '../../documents/cv/types';
 import type { Application, Opportunity, OpportunityReviewState } from '../cloudTypes';
@@ -746,7 +746,7 @@ useToastWatch(() => notice.value, () => {
       <div class="opportunity-detail__body">
         <button v-if="pendingReviewSelections.get(selectedOpportunity.id)?.status === 'error'" class="btn" type="button" @click="saveReviewSelection(selectedOpportunity, reviewSelection(selectedOpportunity.id))">{{ text('Retry interest save', 'Interesse erneut speichern') }}</button>
         <details :key="selectedOpportunity.id" class="opportunity-evaluation personal-evaluation disclosure-row" open>
-          <summary id="opportunity-evaluation-heading">{{ text('Personal Evaluation', 'Persönliche Einschätzung') }}</summary>
+          <summary id="opportunity-evaluation-heading"><font-awesome-icon :icon="faCommentDots" class="disclosure-prefix" aria-hidden="true" />{{ text('Personal Evaluation', 'Persönliche Einschätzung') }}</summary>
           <OpportunityFeedbackControls v-if="tab === 'opportunities' && active" ref="opportunityFeedback" :owner-id="userId" :opportunity="selectedOpportunity" :review="reviewById.get(selectedOpportunity.id)"
             v-model:evaluation-text="opportunityComment" :evaluation-status="commentStatus" :evaluation-error="commentError" evaluation-input-id="opportunity-comment" evaluation-labelledby="opportunity-evaluation-heading"
             :application="applicationByOpportunity.get(selectedOpportunity.id)" :lang="lang" :busy="saving"
@@ -762,7 +762,7 @@ useToastWatch(() => notice.value, () => {
     <ApplicationWorkspace ref="applicationWorkspace" tabindex="-1" :aria-label="editingApplication ? contextTitle(editingApplication) : undefined" v-if="editingApplication" v-show="tab === 'applications'" :active="props.active !== false && tab === 'applications'" :checklist-saving="saving" @toggle-checklist="(key, completed) => changeChecklist(editingApplication!, key, completed)" :key="userId + ':' + editingApplication.id" :application="editingApplication" :client="client" :user-id="userId" :lang="lang" :project-id="projectId" :configurations="configurations" :read-version="readVersion" :create-variant="createVariant" :flush-evaluation="flushEvaluation" :publish-cv="(state) => updateApplication(editingApplication!.id, { cvState: state })" @change-stage="stage => setApplicationStage(editingApplication!.id, stage)" @close="closeApplication" @edit-variant="id => emit('edit-variant', id)">
       <template #preparation-evaluation>
         <details class="application-evaluation personal-evaluation disclosure-row" open>
-          <summary :id="`application-evaluation-${editingApplication.id}`">{{ text('Personal Evaluation', 'Persönliche Einschätzung') }}</summary>
+          <summary :id="`application-evaluation-${editingApplication.id}`"><font-awesome-icon :icon="faCommentDots" class="disclosure-prefix" aria-hidden="true" />{{ text('Personal Evaluation', 'Persönliche Einschätzung') }}</summary>
           <OpportunityFeedbackControls v-if="tab === 'applications' && active && opportunityById.get(editingApplication.opportunity_id)" ref="applicationFeedback" :owner-id="userId" :opportunity="opportunityById.get(editingApplication.opportunity_id)!" :review="reviewById.get(editingApplication.opportunity_id)"
             v-model:evaluation-text="opportunityComment" :evaluation-status="commentStatus" :evaluation-error="commentError" :evaluation-labelledby="`application-evaluation-${editingApplication.id}`"
             :application="editingApplication" :lang="lang" :busy="saving"

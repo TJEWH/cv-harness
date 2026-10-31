@@ -359,7 +359,7 @@ onBeforeUnmount(() => { if (form.value && status.value !== 'saved') retainSearch
 </script>
 <template>
   <section class="search-templates" :aria-busy="loadingCloud || status === 'saving'">
-    <header class="search-heading">
+    <header class="search-heading workspace-page-heading">
       <h2>{{ text('Meta research', 'Metasuche') }}<InfoHint :lang="lang" :label="text('Meta research', 'Metasuche')" :text="text('Set your search criteria and schedule. You can reuse these interests in motivation letters.', 'Lege Suchkriterien und Zeitplan fest. Du kannst diese Interessen auch in Motivationsschreiben verwenden.')" /></h2>
     </header>
     <button v-if="error && !form" type="button" @click="retryLoad">{{ text('Retry loading search', 'Suche erneut laden') }}</button>
@@ -441,8 +441,8 @@ onBeforeUnmount(() => { if (form.value && status.value !== 'saved') retainSearch
 
 <style scoped>
 .search-templates { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 28px 32px; color: var(--ui-text); overflow: hidden; }
-.search-heading { margin-bottom: 20px; flex-shrink: 0; }
-.search-heading h2 { margin: 0 0 8px; font: 700 22px/1.3 var(--font-ui); color: var(--ui-text); text-shadow: none; text-transform: none; letter-spacing: 0; }
+.search-heading { margin: 0; padding-bottom: 10px; flex-shrink: 0; border-bottom: 1px solid var(--ui-divider); }
+.search-heading h2 { margin: 0; font: 700 22px/1.3 var(--font-ui); color: var(--ui-text); text-shadow: none; text-transform: none; letter-spacing: 0; }
 .search-templates p, .search-library p { margin: 0; max-width: 75ch; color: var(--ui-muted); font-size: 13px; line-height: 1.6; }
 .search-runner-setup { font-family: var(--font-ui); }
 .search-runner-setup code { overflow-wrap: anywhere; }
@@ -465,6 +465,7 @@ onBeforeUnmount(() => { if (form.value && status.value !== 'saved') retainSearch
 .search-templates button:disabled, .search-library button:disabled { opacity: .55; cursor: default; }
 .search-templates :is(button,input,select,textarea,summary):focus-visible, .search-library :is(button,select,summary):focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
 .search-templates label, .search-library label { display: grid; gap: 7px; color: var(--ui-text); font: 600 12px/1.4 var(--font-ui); }
+.search-editor > .search-form:first-child > .search-section:first-of-type { border-top: 0; }
 .search-section { border-top: 1px solid var(--ui-divider); min-width: 0; }
 .search-section > summary { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 16px; box-sizing: border-box; cursor: pointer; list-style: none; font: 600 14px/1.5 var(--font-ui); }
 .search-section > summary::-webkit-details-marker { display: none; }
@@ -488,7 +489,6 @@ onBeforeUnmount(() => { if (form.value && status.value !== 'saved') retainSearch
 .search-templates textarea { resize: vertical; caret-color: var(--ui-accent); }
 @media (max-width: 760px) {
   .search-templates { padding: 20px 12px; overflow: auto; overscroll-behavior: contain; }
-  .search-heading { margin-bottom: 20px; }
   .search-layout { display: flex; flex-direction: column; flex: 0 0 auto; overflow: visible; }
   .search-editor { overflow: visible; }
   .search-schedule { grid-template-columns: minmax(0, 1fr); }
