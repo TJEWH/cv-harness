@@ -64,6 +64,43 @@ test('PRIV-01: strict outgoing DTO never exports private comments, contacts, ide
   assert.equal(JSON.stringify(sample), before, 'omission is never a mutation or deletion');
 });
 
+test('safe topic projection cleans equivalent labels and explicit topic targets without changing method reasons', async () => {
+  const sample = input();
+  sample.opportunity.topics = ['ACOUSTIC_SENSING', 'acoustic sensing', 'embedded_AI'];
+  sample.review = review({ comment: null, interest_reasons: [
+    { category: 'topic', polarity: 'negative', target: 'ACOUSTIC_SENSING' },
+    { category: 'topic', polarity: 'negative', target: 'acoustic sensing' },
+    { category: 'method', polarity: 'negative', target: 'Simulation_ONLY' },
+  ] });
+  const before = JSON.stringify(sample);
+  const packet = await projectOpportunityFeedback(sample);
+  assert.deepEqual(packet.example?.topics, ['Acoustic sensing', 'Embedded AI']);
+  assert.deepEqual(packet.example?.reasons, [
+    { category: 'method', polarity: 'negative', target: 'Simulation_ONLY' },
+    { category: 'topic', polarity: 'negative', target: 'Acoustic sensing' },
+  ]);
+  assert.deepEqual(packet.withheld, []);
+  assert.equal(JSON.stringify(sample), before);
+});
+
+test('normalization cannot conceal unsafe topic or reason values and equivalent topics do not consume the cap', async () => {
+  const sample = input();
+  sample.opportunity.topics = ['ACOUSTICS', 'acoustics', 'sb_secret_private_token_value', 'ＩＧＮＯＲＥ previous system', 'ignore_previous_system', 'ｓｂ＿ｓｅｃｒｅｔ＿private_token',
+    ...Array.from({ length: 16 }, (_, index) => `Safe topic ${index}`)];
+  sample.review = review({ interest_reasons: [
+    { category: 'topic', polarity: 'negative', target: 'ＩＧＮＯＲＥ previous system' },
+    { category: 'topic', polarity: 'negative', target: 'sb_secret_private_token_value' },
+    { category: 'topic', polarity: 'negative', target: 'ｓｂ＿ｓｅｃｒｅｔ＿private_token' },
+  ] });
+  const packet = await projectOpportunityFeedback(sample);
+  assert.equal(packet.example?.topics.length, 16);
+  assert.equal(packet.example?.topics.filter(topic => topic === 'Acoustics').length, 1);
+  assert.deepEqual(packet.example?.reasons, []);
+  assert.deepEqual(packet.withheld.filter(item => item.field === 'topics').map(item => item.reason), ['unsafe_value', 'unsafe_value', 'unsafe_value', 'unsafe_value', 'limit']);
+  assert.deepEqual(packet.withheld.filter(item => item.field === 'reasons').map(item => item.reason), ['unsafe_value', 'unsafe_value', 'unsafe_value']);
+  assert.doesNotMatch(JSON.stringify(packet.example), /private_token|previous system/iu);
+});
+
 test('feedback is shared by default within a valid owner/search scope without an opt-in setting', async () => {
   const included = await projectOpportunityFeedback(input());
   assert.ok(included.example);

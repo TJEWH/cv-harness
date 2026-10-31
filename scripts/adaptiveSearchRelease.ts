@@ -63,7 +63,7 @@ export function buildAdaptiveSearchReleaseManifest() {
     installed_definition_prerequisites: { encoding: 'sha256-utf8-pg_get_functiondef-pg17-v1', tested_postgres_major: 17, functions: prerequisites },
     runner_artifacts: ['src/features/meta-search/domain/adaptiveSearchProtocol.ts','src/features/meta-search/domain/adaptiveSearchTask.ts',
       'src/features/meta-search/domain/adaptiveSearchStartup.ts','src/features/opportunities/domain/opportunityResultSchema.ts','supabase/opportunity_schema_v6.json',
-      'src/features/opportunities/domain/opportunityFeedback.ts','src/features/opportunities/domain/opportunityFeedbackPrivacy.ts','src/features/meta-search/domain/adaptiveFeedbackSnapshots.ts',
+      'src/features/opportunities/domain/opportunityFeedback.ts','src/features/opportunities/domain/opportunityFeedbackPrivacy.ts','src/features/opportunities/domain/opportunityTopics.ts','src/features/meta-search/domain/adaptiveFeedbackSnapshots.ts',
       'src/features/meta-search/domain/adaptiveSearchPlans.ts','src/features/meta-search/domain/adaptiveSearchPlanner.ts','src/features/meta-search/domain/adaptiveSearchSources.ts',
       'src/features/meta-search/domain/adaptiveSearchQuality.ts','src/features/meta-search/composables/adaptiveSearchDashboard.ts','src/features/meta-search/data/searchTemplateCloud.ts',
       'src/documents/letter/searchLetterContext.ts','src/features/meta-search/components/AdaptiveSearchDashboard.vue','src/features/meta-search/components/AdaptiveSearchPolicyHint.vue','src/features/meta-search/components/SearchTemplates.vue',

@@ -5,6 +5,7 @@ import {
 } from './opportunityFeedback';
 import { safeWebUrl } from '../../../shared/lib/safeUrl';
 import { MAX_OPPORTUNITY_EVALUATION_LENGTH } from './opportunityEvaluation';
+import { normalizeOpportunityTopic } from './opportunityTopics';
 
 export const MAX_SEARCH_FEEDBACK_SUMMARY_LENGTH = 600;
 export const OPPORTUNITY_FEEDBACK_ALLOWLIST_VERSION = 'opportunity-feedback-safe-v1';
@@ -200,8 +201,10 @@ export async function projectOpportunityFeedback(input: OpportunityFeedbackProje
     else {
       for (const topic of input.opportunity.topics) {
         if (opportunityFeedbackTextIsSafe(topic, 120)) {
-          if (!example.topics.includes(topic) && example.topics.length < 16) example.topics.push(topic);
-          else if (!example.topics.includes(topic)) withhold('topics', 'limit');
+          const label = normalizeOpportunityTopic(topic).label;
+          if (!opportunityFeedbackTextIsSafe(topic.normalize('NFKC'), 120) || !opportunityFeedbackTextIsSafe(label, 120)) withhold('topics', 'unsafe_value');
+          else if (!example.topics.includes(label) && example.topics.length < 16) example.topics.push(label);
+          else if (!example.topics.includes(label)) withhold('topics', 'limit');
         } else withhold('topics', 'unsafe_value');
       }
       example.topics.sort();
@@ -209,9 +212,15 @@ export async function projectOpportunityFeedback(input: OpportunityFeedbackProje
   }
   try {
     for (const reason of normalizeOpportunityInterestReasons(input.review?.interest_reasons)) {
-      if (reason.target === undefined || opportunityFeedbackTextIsSafe(reason.target, 120)) example.reasons.push(reason);
-      else withhold('reasons', 'unsafe_value');
+      if (reason.target === undefined) example.reasons.push(reason);
+      else if (opportunityFeedbackTextIsSafe(reason.target, 120)
+        && (reason.category !== 'topic' || opportunityFeedbackTextIsSafe(reason.target.normalize('NFKC'), 120))) {
+        const target = reason.category === 'topic' ? normalizeOpportunityTopic(reason.target).label : reason.target;
+        if (opportunityFeedbackTextIsSafe(target, 120)) example.reasons.push({ ...reason, target });
+        else withhold('reasons', 'unsafe_value');
+      } else withhold('reasons', 'unsafe_value');
     }
+    example.reasons = normalizeOpportunityInterestReasons(example.reasons);
   } catch { withhold('reasons', 'invalid_value'); }
   const summary = await includedOpportunitySearchSummary(input.review);
   if (input.user_id !== capturedOwner || input.search_id !== capturedSearch || input.opportunity.id !== id

@@ -8,6 +8,7 @@ import { buildAdaptiveRecurringSearchPrompt, loadAdaptiveSearchRunnerState, read
 import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSetupReadSql, buildSearchSystemPrompt, buildSearchUserPrompt } from '../src/features/meta-search/domain/searchPrompts';
 import { saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
 import { DEFAULT_SEARCH_TEMPLATES, searchTemplateContentKey } from '../src/features/meta-search/data/useSearchTemplates';
+import { OPPORTUNITY_TOPIC_FORMAT_RULE } from '../src/features/opportunities/domain/opportunityTopics';
 
 const owner = '91000000-0000-4000-8000-000000000001';
 const search = '91000000-0000-4000-8000-000000000002';
@@ -38,7 +39,7 @@ test('AF09 adaptive daily task text is byte-stable across current data revisions
   const revisedState = runner({ revision: 98, mode: 'adaptive', setup_id: null, migration_requested: false,
     binding: { ...binding, runner_capability: ADAPTIVE_BATCH_CAPABILITIES.capability_version } });
   assert.equal(buildRecurringSearchPrompt(next, { projectId: project, runner: revisedState }), expected);
-  assert.equal(buildSearchSystemPrompt(next, { projectId: project, runner: revisedState }), expected);
+  assert.equal(buildSearchSystemPrompt(next, { projectId: project, runner: revisedState }), `${expected}\n\n${OPPORTUNITY_TOPIC_FORMAT_RULE}`);
   assert.ok(buildSearchUserPrompt(next, { projectId: project, runner: revisedState }).includes('PRIVATE_CANARY'));
   for (const required of ['private.begin_adaptive_opportunity_search', 'private.submit_adaptive_search_batch', 'private.verify_and_complete_adaptive_search',
     '72 hours', 'unchanged or empty runs stay quiet', 'at most once', 'full sorted batch manifest', 'Notification delivery remains unknown']) assert.ok(expected.includes(required), required);

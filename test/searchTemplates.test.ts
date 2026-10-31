@@ -5,6 +5,7 @@ import type { SearchCloudTemplate } from '../src/features/meta-search/searchType
 import { createSearchTemplate, createSearchTemplateRepository, DEFAULT_SEARCH_TEMPLATES, readSearchTemplate, searchTemplateContentKey } from '../src/features/meta-search/data/useSearchTemplates';
 import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSystemPrompt, buildSearchUserPrompt, isSearchTemplateSaved, splitSearchEntries } from '../src/features/meta-search/domain/searchPrompts';
 import { importCloudSearchTemplate, saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../src/features/meta-search/data/searchTemplateCloud';
+import { OPPORTUNITY_TOPIC_FORMAT_RULE } from '../src/features/opportunities/domain/opportunityTopics';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 function memory() {
@@ -137,6 +138,13 @@ test('system prompts preserve dynamic protocol, evidence verification, numeric s
   for (const required of ['bootstrap_version=1', 'compatible=true', 'protocol_text', 'result_schema', 'private.begin_opportunity_search', 'separate call', '72 hours', '00:00', 'rolling', 'scale_min=0', 'scale_max=10', 'user reviews', 'permission', 'Stay quiet']) assert.ok(system.includes(required), required);
   assert.ok(system.includes('without inventing a stored deadline time'));
   assert.ok(!system.includes('private.submit_opportunity_search_result('));
+});
+
+test('initial search prompts request one consistent natural-language format for created topics', () => {
+  for (const prompt of [buildSearchSystemPrompt(template()), buildSearchUserPrompt(template())]) {
+    assert.ok(prompt.includes(OPPORTUNITY_TOPIC_FORMAT_RULE));
+    for (const required of ['spaces, never underscores', 'sentence case', 'technical acronyms', 'canonical label', 'only once per opportunity']) assert.ok(prompt.includes(required));
+  }
 });
 
 test('execution prompts bind the exact acknowledged search and block an unsaved replacement', () => {

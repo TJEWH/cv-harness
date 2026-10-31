@@ -320,7 +320,11 @@
     },
     {
       "path": "src/features/opportunities/domain/opportunityFeedbackPrivacy.ts",
-      "sha256": "0a2ec189b7c6e26d42682b92bb5888856d7ffaf79e2948ca6f232ab01f914cc2"
+      "sha256": "4d6c1cdb9bf9c62e2f1b61452e5147d32696ba1932c2f5323016464a72fc7b7e"
+    },
+    {
+      "path": "src/features/opportunities/domain/opportunityTopics.ts",
+      "sha256": "0f3be06bda3e935dbd21cf147bfb9e18ef0835839d331700cc44360fcd89f1bd"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveFeedbackSnapshots.ts",
