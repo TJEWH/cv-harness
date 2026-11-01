@@ -467,6 +467,10 @@ REVOKE ALL ON FUNCTION private.adaptive_batch_immutable() FROM PUBLIC;
 -- private.FUNCTION adaptive_batch_receipt(p_run_id uuid, p_batch_id uuid)
 REVOKE ALL ON FUNCTION private.adaptive_batch_receipt(p_run_id uuid, p_batch_id uuid) FROM PUBLIC;
 
+REVOKE ALL ON FUNCTION private.adaptive_item_receipt(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.save_adaptive_search_item(uuid,uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.verify_adaptive_search_item(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+
 -- private.FUNCTION adaptive_expected_safe(p_value jsonb)
 REVOKE ALL ON FUNCTION private.adaptive_expected_safe(p_value jsonb) FROM PUBLIC;
 

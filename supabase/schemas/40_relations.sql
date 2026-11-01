@@ -437,6 +437,10 @@ ALTER TABLE ONLY private.opportunity_search_adaptive_contexts
 ALTER TABLE ONLY private.opportunity_search_adaptive_items
     ADD CONSTRAINT opportunity_search_adaptive_items_run_id_batch_id_fkey FOREIGN KEY (run_id, batch_id) REFERENCES private.opportunity_search_adaptive_batches(run_id, batch_id) ON DELETE CASCADE;
 
+-- Standalone item saves still belong to a run when the optional batch is absent.
+ALTER TABLE ONLY private.opportunity_search_adaptive_items
+    ADD CONSTRAINT opportunity_search_adaptive_items_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.opportunity_search_runs(id) ON DELETE CASCADE;
+
 -- private.opportunity_search_identities opportunity_search_identities_opportunity_id_fkey
 ALTER TABLE ONLY private.opportunity_search_identities
     ADD CONSTRAINT opportunity_search_identities_opportunity_id_fkey FOREIGN KEY (opportunity_id) REFERENCES public.opportunities(id) ON DELETE CASCADE;

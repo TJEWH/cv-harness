@@ -1,6 +1,6 @@
 # Adaptive search with one startup response
 
-Manual and scheduled executions use the same saved recurring instructions. Each execution requests one bounded startup brief, researches the authorized scope, saves one opportunity per call through the existing batch helper, and requests separate completion verification. The normal database budget is **startup + B batches + completion = B + 2 calls**. Six opportunities normally require eight calls, plus any necessary coverage-only batches. One opportunity, or a zero-result run with one coverage batch, requires three calls.
+Manual and scheduled executions use the same saved recurring instructions. Each execution requests one bounded startup brief, researches the authorized scope, saves one opportunity per call through the existing batch helper, and requests separate completion verification. The normal database budget is **startup + N opportunity saves + completion with coverage = N + 2 calls**. Six opportunities require eight calls, one requires three, and an empty search requires two.
 
 ```text
 Scheduled time ────────────────┐
@@ -11,7 +11,7 @@ Direct execution prompt ──────┘          ▼
                                       │
                                   research
                                       │
-                              B result batches
+                              N canonical saves
                                       │
                            completion verification
 ```
@@ -26,11 +26,11 @@ Use the project bound to the saved search and retain the run UUID across a permi
 
 ## Saving opportunities and coverage
 
-The hosted runner sends one opportunity per `private.submit_adaptive_search_batch` save; the server retains its existing maximum of ten for API compatibility. Each opportunity keeps its stable item UUID, full canonical validation, verified decision-relevant facts and supporting evidence. Keep descriptive text concise, omit unknown optional fields and raw page scrapes, and include optional proposals only when their required evidence is available. Do not copy the startup bundle, feedback or schema into a save payload.
+The hosted runner sends one canonical opportunity directly to `private.submit_adaptive_search_batch(run_id,item_id,opportunity_json)`. Each opportunity keeps its stable item UUID, full canonical validation, verified decision-relevant facts and supporting evidence. Saving needs no query plan, checks or batch wrapper. Keep descriptive text concise and omit unknown optional fields and raw page scrapes. Do not copy the startup bundle, feedback or schema into a save payload.
 
-The first batch supplies the required query plan and actual checks. Later batches copy the returned `plan_hash`, omit the plan and include only new checks; attribution may reference checks already stored for the run. Record every required source check honestly, including zero-result or blocked checks. Keep pending candidates in the existing backlog under stable IDs so an interrupted run retains its unfinished leads. A coverage-only batch with no opportunities can record additional checks when necessary; it uses the same helper and adds one call.
+Keep the actual plan, checks and pending candidates during research. Submit them once through the completion helper's version-2 `finish` action, using the existing first-batch report shape as `coverage` with `opportunities:[]`. Record every required source check honestly, including zero-result or blocked checks, and keep unresolved candidates in the backlog under stable IDs. The server derives the exact manifest and applies the existing coverage rules. An invalid coverage report cannot undo earlier committed opportunity saves.
 
-Accepted batches remain pending verification. Completion independently verifies the complete accepted-batch manifest, persisted opportunities and actual research coverage. Report incomplete checks, unresolved candidates and partial saves honestly. Smaller save requests improve reviewability and preserve progress between calls; they do not guarantee that ChatGPT will omit an approval step. Never split or alter a blocked or denied request to avoid that approval.
+Accepted saves remain pending independent verification. Completion verifies persisted opportunities and actual coverage; the version-2 `verify_item` action can verify a saved item after a reporting failure without closing the run. Existing wrapped batches remain compatible. Report incomplete checks, unresolved candidates and verified partial saves honestly. Smaller save requests improve reviewability and preserve progress between calls; they do not guarantee that ChatGPT will omit an approval step. Never split or alter a blocked or denied request to avoid that approval.
 
 ## Starting again replaces an active execution
 
@@ -117,3 +117,7 @@ You do not paste a prompt before each scheduled occurrence. Changes to saved cri
 Repository tests should cover the single startup statement and matching SQL/frontend prompt, preservation of authoritative inputs and example selection, the UTF-8 response limit, transactional rollback on invalid or oversized replacement, same-UUID retries, concurrent new starts, stale-worker fencing, authorization and lease checks, and unchanged batch/completion verification. Management-only helper permissions must remain intact. Synthetic fixtures and the isolated test database provide evidence for those application contracts.
 
 Installing the database upgrade does not itself execute a search, replace a saved task prompt or change its schedule. Supersession occurs only when an authorized new startup is requested. Production configuration, connector output handling, unattended execution and the reason for a ChatGPT safety denial require separate evidence. Passing offline tests does not establish that a future request will pass a platform safety check.
+
+## Independent saving after research
+
+The [standalone-save workflow](adaptive-search-release.md#runner-and-setup) leaves this startup brief and its research context unchanged. New saved task instructions override only the historical save/receipt/completion shapes: submit one canonical opportunity directly, then report actual coverage in one final call whose manifest is assembled by the server. Existing wrapped batches remain compatible. After deployment, refresh the existing task once through its setup handoff; do not change its binding or schedule.

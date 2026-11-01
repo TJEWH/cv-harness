@@ -111,7 +111,7 @@ CREATE TABLE private.opportunity_search_adaptive_contexts (
 CREATE TABLE private.opportunity_search_adaptive_items (
     run_id uuid NOT NULL,
     item_id uuid NOT NULL,
-    batch_id uuid NOT NULL,
+    batch_id uuid,
     payload_hash text NOT NULL,
     opportunity_id uuid,
     outcome text NOT NULL,

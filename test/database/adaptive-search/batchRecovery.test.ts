@@ -437,11 +437,17 @@ test('targeted incremental-save upgrade preserves active research and exactly ma
   }
 });
 
-test('targeted diagnostics upgrade preserves existing state, installs current definitions and does not invent historical failures', () => {
+test('targeted diagnostics upgrade preserves existing state, installs its reviewed definitions and does not invent historical failures', () => {
   const signature = 'private.submit_adaptive_search_batch(uuid,uuid,jsonb)';
   const helperSignature = 'private.opportunity_search_schema_error_path(jsonb,jsonb,jsonb,integer)';
   const definition = (name: string) => sql(`select pg_get_functiondef('${name}'::regprocedure);`);
-  const currentSubmit = definition(signature), currentHelper = definition(helperSignature);
+  const currentHelper = definition(helperSignature);
+  const expectedSubmitSource = [...file('supabase/releases/adaptive-search-batch-diagnostics-v1.sql').matchAll(
+    /^CREATE OR REPLACE FUNCTION ([^\n]+)\n[\s\S]*?\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\2;/gmu,
+  )].find(match => match[1]!.startsWith('private.submit_adaptive_search_batch('))?.[3];
+  assert.ok(expectedSubmitSource);
+  const submitSource = () => sql(`select md5(prosrc) from pg_proc where oid='${signature}'::regprocedure;`);
+  const expectedSubmitHash = createHash('md5').update(expectedSubmitSource).digest('hex');
   const previous = [...file('supabase/releases/adaptive-search-incremental-saves-v1.sql').matchAll(
     /^CREATE OR REPLACE FUNCTION ([^\n]+)\n[\s\S]*?\bAS\s+(\$[A-Za-z0-9_]*\$)[\s\S]*?\2;/gmu,
   )].find(match => match[1]!.startsWith('private.submit_adaptive_search_batch('));
@@ -457,7 +463,7 @@ test('targeted diagnostics upgrade preserves existing state, installs current de
     const properties = sql(`select to_jsonb(p)-'prosrc' from pg_proc p where oid='${signature}'::regprocedure;`);
     const upgrade = file('supabase/releases/adaptive-search-batch-diagnostics-v1.sql');
     sql(upgrade);
-    assert.equal(definition(signature), currentSubmit);
+    assert.equal(submitSource(), expectedSubmitHash, 'Historical diagnostics installation must match its immutable artifact');
     assert.equal(definition(helperSignature), currentHelper);
     assert.equal(sql(`select to_jsonb(p)-'prosrc' from pg_proc p where oid='${signature}'::regprocedure;`), properties);
     assert.equal(rejection(f.run), null, 'Installation must not fabricate the lost old rejection');
@@ -467,7 +473,7 @@ test('targeted diagnostics upgrade preserves existing state, installs current de
     assert.equal(snapshot(f), before);
     assert.equal(sql(`select has_function_privilege('authenticated','${helperSignature}','execute');`), 'f');
     assert.throws(() => sql(upgrade), /Expected the reviewed|already exists/iu);
-    assert.equal(definition(signature), currentSubmit);
+    assert.equal(submitSource(), expectedSubmitHash, 'Historical diagnostics installation must match its immutable artifact');
   } finally {
     try { f?.cleanup(); } finally { reset(); }
   }

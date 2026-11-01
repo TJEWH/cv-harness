@@ -31,6 +31,7 @@ export function buildAdaptiveSearchReleaseManifest() {
       incremental_saves_upgrade: artifact('supabase/releases/adaptive-search-incremental-saves-v1.sql'),
       batch_diagnostics_upgrade: artifact('supabase/releases/adaptive-search-batch-diagnostics-v1.sql'),
       evidence_fields_upgrade: artifact('supabase/releases/adaptive-search-evidence-fields-v1.sql'),
+      standalone_saves_upgrade: artifact('supabase/releases/adaptive-search-standalone-saves-v1.sql'),
       lifecycle_contracts: ['supabase/contracts/adaptive-search-lifecycle.request.schema.json',
         'supabase/contracts/adaptive-search-lifecycle.response.schema.json'].map(artifact),
     },

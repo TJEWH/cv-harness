@@ -44,7 +44,7 @@ test('AF09 adaptive daily task text is byte-stable across current data revisions
   assert.equal(buildSearchSystemPrompt(next, { projectId: project, runner: revisedState }), `${expected}\n\n${OPPORTUNITY_TOPIC_FORMAT_RULE}`);
   assert.ok(buildSearchUserPrompt(next, { projectId: project, runner: revisedState }).includes('PRIVATE_CANARY'));
   for (const required of ['private.begin_adaptive_search_brief', 'private.submit_adaptive_search_batch', 'private.verify_and_complete_adaptive_search',
-    '72 hours', 'unchanged or empty runs stay quiet', 'full sorted batch manifest', 'Notification delivery remains unknown']) assert.ok(expected.includes(required), required);
+    '72 hours', 'unchanged or empty runs stay quiet', 'The server derives the manifest', 'Notification delivery remains unknown']) assert.ok(expected.includes(required), required);
   for (const forbidden of ['PRIVATE_CANARY', owner, setup, binding.task_id, 'private.begin_opportunity_search(', 'private.read_adaptive_search_setup', 'private.ack_adaptive_search_setup']) assert.ok(!expected.includes(forbidden), forbidden);
   assert.ok(expected.includes(search) && expected.includes(project));
 });
@@ -71,7 +71,7 @@ test('manual and scheduled adaptive instructions use one bounded startup call wi
   }
   assert.deepEqual([...new Set([...value.matchAll(/private\.([a-z_]+)\(/gu)].map(match => match[1]))].sort(),
     ['begin_adaptive_search_brief', 'submit_adaptive_search_batch', 'verify_and_complete_adaptive_search']);
-  assert.ok(value.length <= 7_500, 'keep the recurring handoff within its local prompt budget');
+  assert.ok(value.length <= 8_000, 'keep the recurring handoff within its local prompt budget');
   assert.ok(value.indexOf('RUN CONTEXT:') < value.indexOf('STARTUP:'), 'stable run identity is retained before startup');
   assert.ok(value.includes('Local persistence is optional'));
   assert.ok(!value.includes('nonce') && !value.includes('separate action'));
@@ -81,7 +81,7 @@ test('manual and scheduled adaptive instructions use one bounded startup call wi
   assert.ok(value.includes('No abort/handoff needed'));
   assert.ok(value.includes('never change UUID to reclaim execution'));
   assert.ok(!value.includes('FAILED-RUN CLEANUP'), 'owner cancellation uses the separate pinned lifecycle operation');
-  assert.ok(value.includes('2+B calls') && value.includes('three for one batch') && value.includes('eight for six single-item saves'));
+  assert.ok(value.includes('2+N calls for N opportunities'));
   assert.ok(value.includes('no pages, split queries or alternate startup'));
   assert.ok(value.includes('Denials stop all database calls'));
   assert.ok(!value.includes('private.read_opportunity_search_run'), 'completion reads its summary internally');
@@ -108,34 +108,40 @@ test('hosted response handling preserves captures, recognizes outer text and bou
   assert.ok(!value.includes('or re-fetch a received response'), 'known accepted startup recovery must not be contradicted');
 });
 
-test('hosted saves use one opportunity by default while preserving coverage and server limits', () => {
+test('hosted saves separate canonical intake from the unchanged adaptive research and coverage contract', () => {
   const value = buildAdaptiveRecurringSearchPrompt(search, project);
-  for (const instruction of ['Submit one verified opportunity per batch as ready', 'Preserve facts/evidence',
-    'First save pins actual plan/checks; later saves copy plan_hash and send only new checks',
-    'Attribution may reference earlier checks', 'Keep pending candidates in backlog with stable IDs',
-    'Zero-item coverage batches are allowed', '10 items/512 KiB, 256 KiB per item, 32 batches',
-    'Unresolved candidates/coverage remain failed/partial']) assert.ok(value.includes(instruction), instruction);
+  for (const instruction of ['Override only save/receipt/completion shapes in startup.protocol_text; preserve research/coverage rules',
+    'one canonical startup.result_schema object, no wrapper/plan/checks', 'Stable item UUIDs', 'Preserve facts/evidence',
+    '256 KiB/item, 320 items/run', 'actual query_plan and execution checks/backlog', 'plan_hash only if pinned',
+    'The server derives the manifest and verifies every save', 'Unresolved candidates/coverage remain failed/partial',
+    'Report rejection preserves earlier saves']) assert.ok(value.includes(instruction), instruction);
+  assert.ok(!value.includes('First save pins actual plan/checks'));
+  assert.ok(!value.includes('full sorted batch manifest'));
+  const finish = /with (\{"schema_version":2,"action":"finish"[^\n]+?)\. Use/u.exec(value)?.[1];
+  assert.ok(finish);
+  assert.deepEqual(JSON.parse(finish.replace('<report>', '{}')), { schema_version: 2, action: 'finish',
+    completion_id: '<stable_uuid>', status: 'complete', coverage: {} });
 });
 
-test('each response uses its own SQL column and batch success does not require startup-only flags', () => {
+test('save receipts have their own version and allow only a bounded confirmed-unsaved correction', () => {
   const value = buildAdaptiveRecurringSearchPrompt(search, project);
-  assert.ok(value.includes('Columns: startup for startup; submit_adaptive_search_batch for saving/receipt lookup; verify_and_complete_adaptive_search for completion'));
-  assert.ok(value.includes('compatible:false or accepted:false means rejection'));
-  assert.ok(value.includes('adaptive_contract_version=1, batch_schema_version=1, exact run_id/batch_id, payload_hash, plan_hash, items, manifest_hash and verification_required=true'));
-  assert.ok(value.includes('Success lacks compatible:true and accepted:true; skip startup checks'));
-  assert.ok(value.includes('Verify contract, exact IDs, persisted verification and terminal status'));
+  for (const instruction of ['Columns: startup for startup; submit_adaptive_search_batch for saving/receipt lookup; verify_and_complete_adaptive_search for completion',
+    'compatible:false or accepted:false means rejection',
+    'item_receipt_version=1, accepted=true, exact run_id/item_id, payload_hash, opportunity_id and outcome',
+    'Only invalid_opportunity with stored=false and correction_allowed=true permits one evidence-based correction using the same unaccepted item UUID',
+    'Still invalid: retain backlog; continue other items', 'Saved: verification_required=true; unresolved: retain backlog', 'Other rejections stop; accepted payloads are immutable',
+    'item_verification_version=1, exact run/item/opportunity IDs and verified=true',
+    'Require exact IDs, persisted_summary_read and terminal status']) assert.ok(value.includes(instruction), instruction);
 });
 
-test('an unavailable batch response permits one exact receipt read and no automatic write replay', () => {
+test('an unavailable save response permits one exact receipt read without write replay or denial bypass', () => {
   const value = buildAdaptiveRecurringSearchPrompt(search, project);
   for (const instruction of ['Batch writes use receipt lookup only, never automatic replay',
-    'After dispatched submission with an unavailable response, allow one SELECT private.submit_adaptive_search_batch(run_uuid::uuid,batch_uuid::uuid,NULL::jsonb) with exact IDs',
-    'This exception to the protocol ban on receipt reads sends no opportunity data and makes no writes',
-    'Never look up after rejection, denial, invalid contract or pending approval', 'Require the same receipt shape',
-    'batch_not_found or unavailable lookup stays unresolved: stop; no replay, changed IDs or completion',
-    'Acceptance still needs independent verification', 'Pending approval means wait; never retry, split or change transport to bypass it']) {
-    assert.ok(value.includes(instruction), instruction);
-  }
+    'After dispatch with unavailable response, allow one SELECT private.submit_adaptive_search_batch(run_uuid::uuid,item_uuid::uuid,NULL::jsonb) using exact IDs',
+    'Receipt lookup sends no opportunity data',
+    'Never look up after rejection, denial, invalid contract or pending approval', 'Require the same receipt',
+    'batch_not_found/unavailable stays unresolved: stop, no replay, changed IDs or completion',
+    'Pending approval means wait; never retry, split or change transport to bypass it']) assert.ok(value.includes(instruction), instruction);
   assert.ok(value.includes('Log no payloads, criteria, feedback, URLs, credentials or full errors'));
 });
 
