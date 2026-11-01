@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Application, Opportunity, OpportunityReview } from '../../../src/app/cloudTypes';
-import { buildOpportunityInsights, buildOpportunityInsightsAnalysisPrompt, prepareOpportunityInsights, filterOpportunityInsightTopics, OPPORTUNITY_INSIGHTS_MAX_TOPICS, type OpportunityInsightsInput } from '../../../src/features/opportunities/domain/opportunityInsights';
+import { buildOpportunityInsights, buildOpportunityInsightsAnalysisPrompt, prepareOpportunityInsights, filterOpportunityInsightTopics, OPPORTUNITY_INSIGHTS_MAX_TOPICS,
+  OPPORTUNITY_INSIGHTS_VERY_HIGH_INTEREST_MIN, type OpportunityInsightsInput } from '../../../src/features/opportunities/domain/opportunityInsights';
 import { runOpportunityGraphTask } from '../../../src/features/opportunities/domain/opportunityGraphTask';
 import { opportunityJobsAtInterest } from '../../../src/features/opportunities/domain/opportunityJobInterest';
 import type { OpportunityTopicHierarchyNode } from '../../../src/features/opportunities/domain/opportunityTopicHierarchy';
@@ -752,6 +753,8 @@ test('addition timelines use chronological calendar bins, known empty counts and
   assert.deepEqual(result.timeline.buckets.map(bucket => bucket.addedCount), [1, 0, 2, 0]);
   assert.deepEqual(result.timeline.buckets.map(bucket => bucket.reviewedCount), [1, 0, 1, 0]);
   assert.deepEqual(result.timeline.buckets.map(bucket => bucket.highInterestCount), [1, 0, 0, 0]);
+  assert.deepEqual(result.timeline.buckets.map(bucket => bucket.veryHighInterestCount), [0, 0, 0, 0]);
+  assert.deepEqual(result.timeline.buckets.map(bucket => bucket.lowInterestCount), [0, 0, 1, 0]);
   assert.deepEqual(result.timeline.buckets.map(bucket => bucket.mismatchCount), [0, 0, 1, 0]);
   assert.deepEqual(result.timeline.buckets[0]!.topicHighCounts, { robotics: 1 });
   assert.equal(result.timeline.buckets[0]!.alignment.spearman, null);
@@ -768,6 +771,58 @@ test('addition timelines use chronological calendar bins, known empty counts and
   assert.equal(narrow.timeline.buckets.length, 1);
   assert.equal(narrow.timeline.buckets[0]!.addedCount, 2);
   assert.equal(narrow.overview.buckets.reduce((count, bucket) => count + bucket.addedCount, 0), 3, 'brush overview is independent of the selected window');
+});
+
+test('outcome bands include canonical very-high, application and submission interest while keeping empty and unknown periods distinct', async () => {
+  const local = (day: number, hour = 12) => new Date(2026, 9, day, hour).toISOString();
+  const sample = input({ opportunities: [
+    ...[10, 11, 12, 13, 14, 15].map(index => opportunity(index, { created_at: local(26) })),
+    ...[16, 17, 22].map(index => opportunity(index, { created_at: local(27) })),
+    opportunity(18, { created_at: local(29) }), opportunity(19, { created_at: local(25) }),
+    opportunity(20, { created_at: local(31) }), opportunity(21, { created_at: null }),
+  ], reviews: [
+    review(10, { state: 'very_high_interest' }), review(11, { state: 'strong_interest' }),
+    review(12, { state: 'not_interested' }), review(13, { state: 'unreviewed', interest_rating: 9.999 }),
+    review(16, { state: 'interested' }), review(18, { state: 'very_high_interest', feedback_excluded: true }),
+    review(19, { state: 'not_interested' }), review(20, { state: 'very_high_interest' }),
+    review(21, { state: 'very_high_interest' }), review(22, { user_id: other, state: 'very_high_interest' }),
+  ], applications: [application(14), application(15, { status: 'submitted' }), application(17, { user_id: other, status: 'submitted' })],
+  rangeStart: local(26, 0), rangeEnd: new Date(new Date(local(30, 0)).getTime() - 1).toISOString(), now: local(30), aggregation: 'day' });
+  const result = buildOpportunityInsights(sample);
+  assert.equal(OPPORTUNITY_INSIGHTS_VERY_HIGH_INTEREST_MIN, 9);
+  assert.deepEqual(result.timeline.buckets.map(bucket => bucket.addedCount), [6, 3, 0, 0]);
+  assert.deepEqual(result.timeline.buckets.map(bucket => bucket.reviewedCount), [5, 1, 0, 0]);
+  assert.deepEqual(result.timeline.buckets.map(bucket => bucket.highInterestCount), [4, 0, 0, 0]);
+  assert.deepEqual(result.timeline.buckets.map(bucket => bucket.veryHighInterestCount), [3, 0, 0, 0]);
+  assert.deepEqual(result.timeline.buckets.map(bucket => bucket.lowInterestCount), [1, 0, 0, 0]);
+  assert.equal(result.graph.jobs.find(job => job.id === id(10))!.interestScore, 9, 'the categorical very-high boundary is included');
+  assert.equal(result.graph.jobs.find(job => job.id === id(11))!.interestScore, 8, 'the neighboring high category is below very-high');
+  assert.equal(result.graph.jobs.find(job => job.id === id(12))!.interestScore, 2, 'low choice uses its canonical score');
+  assert.equal(result.graph.jobs.find(job => job.id === id(16))!.interestScore, 6, 'medium choice stays outside the low band');
+  assert.equal(result.graph.jobs.find(job => job.id === id(14))!.interestScore, 9, 'an application enters both high-interest series');
+  assert.equal(result.graph.jobs.find(job => job.id === id(15))!.interestScore, 9.5, 'a confirmed submission enters both high-interest series');
+  assert.equal(result.graph.jobs.find(job => job.id === id(13))!.interestScore, null, 'an unreviewed numeric legacy override remains unknown');
+  assert.equal(result.overview.buckets.reduce((sum, bucket) => sum + bucket.lowInterestCount, 0), 2, 'overview keeps the earlier low-interest addition');
+  assert.equal(result.overview.buckets.reduce((sum, bucket) => sum + bucket.veryHighInterestCount, 0), 3, 'future, excluded, undated and foreign feedback cannot add dated very-high outcomes');
+  for (const bucket of result.timeline.buckets) {
+    assert(bucket.veryHighInterestCount <= bucket.highInterestCount);
+    assert(bucket.highInterestCount + bucket.lowInterestCount <= bucket.reviewedCount);
+  }
+  const packet = evidence((await buildOpportunityInsightsAnalysisPrompt({ ...sample, searchId: null, generatedAt: sample.now })).text);
+  assert.deepEqual(packet.addition_timeline.buckets.map((bucket: { veryHighInterestCount: number; lowInterestCount: number }) => [bucket.veryHighInterestCount, bucket.lowInterestCount]), [[3, 1], [0, 0], [0, 0], [0, 0]]);
+  assert.match(packet.interpretation.outcomes, /high interest >=8, very high interest >=9, and low interest <=4/u);
+  assert.match(packet.interpretation.outcomes, /Very high interest is a subset of high interest/u);
+});
+
+test('very-high and low outcome counts follow the requested Added-date week and month groups', () => {
+  const local = (month: number, day: number) => new Date(2026, month - 1, day, 12).toISOString();
+  const sample = input({ opportunities: [opportunity(10, { created_at: local(9, 30) }), opportunity(11, { created_at: local(10, 1) }), opportunity(12, { created_at: local(10, 9) })],
+    reviews: [review(10, { state: 'very_high_interest' }), review(11, { state: 'not_interested' }), review(12, { state: 'strong_interest' })],
+    rangeStart: new Date(2026, 8, 30).toISOString(), rangeEnd: new Date(2026, 9, 10).toISOString(), now: local(10, 11) });
+  const months = buildOpportunityInsights({ ...sample, aggregation: 'month' }).timeline.buckets;
+  assert.deepEqual(months.map(bucket => [bucket.highInterestCount, bucket.veryHighInterestCount, bucket.lowInterestCount]), [[1, 1, 0], [1, 0, 1]]);
+  const weeks = buildOpportunityInsights({ ...sample, aggregation: 'week' }).timeline.buckets;
+  assert.deepEqual(weeks.map(bucket => [bucket.highInterestCount, bucket.veryHighInterestCount, bucket.lowInterestCount]), [[1, 1, 1], [1, 0, 0]]);
 });
 
 test('calendar-day bins survive DST and auto granularity counts local days rather than elapsed hours', () => {

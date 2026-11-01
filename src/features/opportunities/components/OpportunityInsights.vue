@@ -44,6 +44,10 @@ const windowNow = ref(new Date().toISOString());
 const rangeDates = ref<{ start: string; end: string } | null>(null);
 const aggregation = ref<OpportunityInsightsAggregation>('auto');
 const timelineView = ref<'outcomes' | 'topics' | 'alignment'>('outcomes');
+const interestViews = ['reasons', 'distribution', 'institutions', 'countries'] as const;
+type InterestView = typeof interestViews[number];
+const interestView = ref<InterestView>('reasons');
+const insightsBody = ref<HTMLElement | null>(null);
 const brushActive = ref(false);
 const networkAvailable = ref(true);
 const selectedTopicIds = ref<string[]>([]);
@@ -83,6 +87,26 @@ function bodyTabKey(event: KeyboardEvent, tab: BodyTab) {
   event.preventDefault();
   const index = event.key === 'Home' ? 0 : event.key === 'End' ? bodyTabs.length - 1 : (bodyTabs.indexOf(tab) + direction + bodyTabs.length) % bodyTabs.length;
   activeBody.value = bodyTabs[index]!;
+  (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]')[index]?.focus();
+}
+function interestViewLabel(tab: InterestView) {
+  return tab === 'reasons' ? text('Feedback reasons', 'Feedbackgründe')
+    : tab === 'distribution' ? text('Interest score distribution', 'Verteilung der Interessenwerte')
+      : tab === 'institutions' ? text('High interest by institution', 'Hohes Interesse nach Einrichtung')
+        : text('High interest by country', 'Hohes Interesse nach Land');
+}
+function selectInterestView(tab: InterestView) {
+  interestView.value = tab;
+  if (insightsBody.value) insightsBody.value.scrollTop = 0;
+}
+function interestViewKey(event: KeyboardEvent, tab: InterestView) {
+  const previousKey = sidebarControlsActive.value ? 'ArrowUp' : 'ArrowLeft';
+  const nextKey = sidebarControlsActive.value ? 'ArrowDown' : 'ArrowRight';
+  const direction = event.key === previousKey ? -1 : event.key === nextKey ? 1 : 0;
+  if (!direction && event.key !== 'Home' && event.key !== 'End') return;
+  event.preventDefault();
+  const index = event.key === 'Home' ? 0 : event.key === 'End' ? interestViews.length - 1 : (interestViews.indexOf(tab) + direction + interestViews.length) % interestViews.length;
+  selectInterestView(interestViews[index]!);
   (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]')[index]?.focus();
 }
 function setInterestThreshold(event: Event) {
@@ -162,6 +186,7 @@ function resetOwnerState() {
   lowThreshold.value = 4;
   minimumJobCount.value = 3;
   timelineView.value = 'outcomes';
+  interestView.value = 'reasons';
 }
 function leadingTopicIds(topics: readonly OpportunityInsightTopicNode[]): string[] {
   return topics.filter(topic => topic.highInterestCount > 0)
@@ -255,9 +280,10 @@ watch(() => explorerGraph.value.jobs, jobs => {
 });
 const summary = computed(() => insights.value.summary);
 const highInterestPanels = computed(() => [
-  { key: 'institutions', label: text('Universities & institutions', 'Hochschulen & Einrichtungen'), groups: insights.value.highInterest.institutions, omitted: insights.value.highInterest.omittedInstitutions },
-  { key: 'countries', label: text('Countries', 'Länder'), groups: insights.value.highInterest.countries, omitted: insights.value.highInterest.omittedCountries },
+  { key: 'institutions', groups: insights.value.highInterest.institutions, omitted: insights.value.highInterest.omittedInstitutions },
+  { key: 'countries', groups: insights.value.highInterest.countries, omitted: insights.value.highInterest.omittedCountries },
 ]);
+const activeHighInterestPanel = computed(() => highInterestPanels.value.find(panel => panel.key === interestView.value) ?? highInterestPanels.value[0]!);
 const rate = (value: number | null) => value === null ? text('Unknown', 'Unbekannt') : `${number(value * 100, 0)}%`;
 const search = useOpportunityInsightsSearch({ ownerId: () => props.ownerId, client: () => props.client, projectRef: () => connectedProjectRef.value });
 const reasonRows = computed(() => OPPORTUNITY_INTEREST_REASON_CATEGORIES.map(category => ({
@@ -343,9 +369,14 @@ async function copyAnalysis() {
     </header></div>
 
     <template v-if="!loading">
-      <div class="insights-body-tabs" role="tablist" :aria-label="text('Insights views', 'Ansichten der Einblicke')"><button v-for="tab in bodyTabs" :id="`${id}-view-${tab}`" :key="tab" type="button" role="tab" :aria-label="bodyTabLabel(tab)" :aria-selected="activeBody === tab" :aria-controls="`${id}-body-${tab}`" :tabindex="activeBody === tab ? 0 : -1" @click="activeBody = tab" @keydown="bodyTabKey($event, tab)">{{ bodyTabLabel(tab) }}</button></div>
-      <div v-if="activeBody === 'development'" class="insights-development-tabs"><OpportunityInsightsTimelineControls :view="timelineView" :lang="lang" :panel-id="`${id}-development-chart`" @update:view="timelineView = $event" /></div>
-      <div :id="`${id}-body-${activeBody}`" :key="activeBody" class="insights-body" role="tabpanel" :aria-labelledby="`${id}-view-${activeBody}`" tabindex="0">
+      <div class="insights-body-tabs workspace-subtabs" role="tablist" :aria-label="text('Insights views', 'Ansichten der Einblicke')"><button v-for="tab in bodyTabs" :id="`${id}-view-${tab}`" :key="tab" type="button" class="btn" :class="{ 'is-active': activeBody === tab }" role="tab" :aria-label="bodyTabLabel(tab)" :aria-selected="activeBody === tab" :aria-controls="`${id}-body-${tab}`" :tabindex="activeBody === tab ? 0 : -1" @click="activeBody = tab" @keydown="bodyTabKey($event, tab)">{{ bodyTabLabel(tab) }}</button></div>
+      <DesktopSidebarPortal v-if="activeBody === 'development' || activeBody === 'clusters'" area="major" :active="sidebarActive">
+        <div class="insights-analysis-actions" :class="{ 'is-sidebar': sidebarControlsActive }">
+          <OpportunityInsightsTimelineControls v-if="activeBody === 'development'" :view="timelineView" :lang="lang" :panel-id="`${id}-development-chart`" :sidebar="sidebarControlsActive" @update:view="timelineView = $event" />
+          <div v-else class="insights-pattern-tabs workspace-subtabs" role="tablist" :aria-orientation="sidebarControlsActive ? 'vertical' : 'horizontal'" :aria-label="text('Interest pattern views', 'Ansichten der Interessenmuster')"><button v-for="tab in interestViews" :id="`${id}-pattern-tab-${tab}`" :key="tab" type="button" class="btn" :class="{ 'is-active': interestView === tab }" role="tab" :aria-selected="interestView === tab" :aria-controls="`${id}-pattern-panel-${tab}`" :tabindex="interestView === tab ? 0 : -1" @click="selectInterestView(tab)" @keydown="interestViewKey($event, tab)">{{ interestViewLabel(tab) }}</button></div>
+        </div>
+      </DesktopSidebarPortal>
+      <div :id="`${id}-body-${activeBody}`" :key="activeBody" ref="insightsBody" class="insights-body" role="tabpanel" :aria-labelledby="`${id}-view-${activeBody}`" tabindex="0">
       <div v-if="search.error.value" class="insights-context-recovery"><button class="btn" type="button" :disabled="search.loading.value" @click="search.refresh">{{ text('Reload analysis context', 'Analysekontext erneut laden') }}</button></div>
       <OpportunityInsightsTimeline v-if="activeBody === 'development'" :key="ownerId" :timeline="insights.timeline" :topics="insights.graph.topics" :selected-topic-ids="timelineTopicIds" :selected-job="selectedJob" :lang="lang" :aggregation="aggregation" :view="timelineView" :show-controls="false" :panel-id="`${id}-development-chart`" @update:aggregation="aggregation = $event" @update:view="timelineView = $event" />
       <dl v-if="activeBody === 'development'" class="insights-summary">
@@ -356,7 +387,7 @@ async function copyAnalysis() {
         <div><dt>{{ text('Excluded', 'Ausgeschlossen') }}</dt><dd>{{ number(summary.excludedCount, 0) }}</dd></div>
       </dl>
 
-      <div v-if="!summary.catalogueCount" class="insights-empty">
+      <div v-if="!summary.catalogueCount" :id="activeBody === 'clusters' ? `${id}-pattern-panel-${interestView}` : undefined" class="insights-empty" :role="activeBody === 'clusters' ? 'tabpanel' : undefined" :aria-labelledby="activeBody === 'clusters' ? `${id}-pattern-tab-${interestView}` : undefined" :tabindex="activeBody === 'clusters' ? 0 : undefined">
         <h3>{{ opportunities.length ? text('No jobs added in this window', 'Keine Stellen in diesem Zeitraum hinzugefügt') : text('Your feedback starts the picture', 'Dein Feedback macht das Bild sichtbar') }}</h3>
         <p>{{ opportunities.length ? text('Choose a wider window to include more catalogue additions.', 'Wähle einen größeren Zeitraum, um mehr Katalogzugänge einzubeziehen.') : text('Review opportunities in Results to see interest patterns here.', 'Bewerte Stellen unter Ergebnisse, um hier Interessenmuster zu sehen.') }}</p>
         <button v-if="opportunities.length && rangeDates" class="btn" type="button" @click="showAllFeedback">{{ text('Show all history', 'Gesamten Verlauf anzeigen') }}</button>
@@ -437,8 +468,8 @@ async function copyAnalysis() {
 
         </section>
       </section>
-      <template v-if="activeBody === 'clusters'">
-      <section class="insights-chart" :aria-labelledby="`${id}-reasons`">
+      <div v-if="activeBody === 'clusters'" :id="`${id}-pattern-panel-${interestView}`" :key="interestView" class="insights-pattern-panel" role="tabpanel" :aria-labelledby="`${id}-pattern-tab-${interestView}`" tabindex="0">
+      <section v-if="interestView === 'reasons'" class="insights-chart" :aria-labelledby="`${id}-reasons`">
           <div class="insights-section-heading"><h3 :id="`${id}-reasons`">{{ text('What drives your feedback', 'Was dein Feedback bestimmt') }}</h3><InfoHint :lang="lang" :label="text('Feedback reasons', 'Feedbackgründe')" :text="text('Compare the positive and negative reasons you selected, counting each job once per category and direction. One job can count in several categories.', 'Vergleiche deine gewählten positiven und negativen Gründe; zähle jede Stelle einmal je Kategorie und Richtung. Eine Stelle kann zu mehreren Kategorien zählen.')" /></div>
           <div class="insights-legend"><span class="is-negative">{{ text('Avoid', 'Vermeiden') }}</span><span>{{ text('Prefer', 'Bevorzugen') }}</span></div>
           <ol v-if="reasonRows.length" class="insights-reasons">
@@ -451,8 +482,8 @@ async function copyAnalysis() {
           <p v-else class="insights-empty-note">{{ text('No structured reasons yet. Select reasons when reviewing opportunities to compare them here.', 'Noch keine strukturierten Gründe. Wähle bei der Bewertung Gründe aus, um sie hier zu vergleichen.') }}</p>
         </section>
 
-      <section class="insights-chart" :aria-labelledby="`${id}-distribution`">
-          <div class="insights-section-heading"><h3 :id="`${id}-distribution`">{{ text('Interest distribution', 'Verteilung des Interesses') }}</h3><InfoHint :lang="lang" :label="text('Interest distribution', 'Verteilung des Interesses')" :text="text('Interest scores are Low 2, Medium 6, High 8 and Very high 9; applications score 9 and submissions 9.5. Jobs with unknown interest are excluded.', 'Die Interessenwerte sind Gering 2, Mittel 6, Hoch 8 und Sehr hoch 9; Bewerbungen zählen mit 9 und Einreichungen mit 9,5. Stellen mit unbekanntem Interesse zählen nicht mit.')" /></div>
+      <section v-else-if="interestView === 'distribution'" class="insights-chart" :aria-labelledby="`${id}-distribution`">
+          <div class="insights-section-heading"><h3 :id="`${id}-distribution`">{{ interestViewLabel('distribution') }}</h3><InfoHint :lang="lang" :label="interestViewLabel('distribution')" :text="text('Interest scores are Low 2, Medium 6, High 8 and Very high 9; applications score 9 and submissions 9.5. Jobs with unknown interest are excluded.', 'Die Interessenwerte sind Gering 2, Mittel 6, Hoch 8 und Sehr hoch 9; Bewerbungen zählen mit 9 und Einreichungen mit 9,5. Stellen mit unbekanntem Interesse zählen nicht mit.')" /></div>
           <ol class="insights-bars" :aria-label="text('Interest from 0 to 10', 'Interesse von 0 bis 10')">
             <li v-for="bucket in insights.histogram" :key="bucket.min">
               <span class="insights-bar-label">{{ bucket.label }}</span>
@@ -463,27 +494,24 @@ async function copyAnalysis() {
           <p v-if="!summary.scoredCount" class="insights-empty-note">{{ text('No interest scores yet. Choose an interest level for an opportunity or create an application.', 'Noch keine Interessenwerte. Wähle eine Interessenstufe für eine Stelle oder lege eine Bewerbung an.') }}</p>
           <dl class="insights-origins"><div v-for="origin in insights.origins" :key="origin.origin"><dt>{{ originLabel(origin.origin) }}</dt><dd>{{ number(origin.count, 0) }}</dd></div></dl>
         </section>
-      <section class="insights-section insights-places" :aria-labelledby="`${id}-places`">
+      <section v-else class="insights-section insights-places" :aria-labelledby="`${id}-high-${activeHighInterestPanel.key}`">
         <div class="insights-section-heading">
-          <h3 :id="`${id}-places`">{{ text('Where your high interest clusters', 'Wo sich dein hohes Interesse bündelt') }}</h3>
-          <InfoHint :lang="lang" :label="text('High-interest institutions and countries', 'Hochschulen und Länder mit hohem Interesse')" :text="text('Compare jobs with interest 8+ against all scored jobs in each group, including applications and submissions. Mean is the average for the 8+ subset.', 'Vergleiche Stellen ab Interessenwert 8 mit allen bewerteten Stellen je Gruppe, einschließlich Bewerbungen und Einreichungen. Das Mittel bezieht sich auf die Teilmenge ab 8.')" />
+          <h3 :id="`${id}-high-${activeHighInterestPanel.key}`">{{ interestViewLabel(interestView) }}</h3>
+          <InfoHint :lang="lang" :label="interestViewLabel(interestView)" :text="text('Compare jobs with interest 8+ against all scored jobs in each group, including applications and submissions. Mean is the average for the 8+ subset.', 'Vergleiche Stellen ab Interessenwert 8 mit allen bewerteten Stellen je Gruppe, einschließlich Bewerbungen und Einreichungen. Das Mittel bezieht sich auf die Teilmenge ab 8.')" />
         </div>
-        <div class="insights-place-panels">
-          <section v-for="panel in highInterestPanels" :key="panel.key" class="insights-cohort-panel" :aria-labelledby="`${id}-high-${panel.key}`">
-            <h4 :id="`${id}-high-${panel.key}`">{{ panel.label }}</h4>
-            <ol v-if="panel.groups.length" class="insights-cohorts">
-              <li v-for="group in panel.groups" :key="group.label ?? 'unknown'">
+          <div class="insights-cohort-panel">
+            <ol v-if="activeHighInterestPanel.groups.length" class="insights-cohorts">
+              <li v-for="group in activeHighInterestPanel.groups" :key="group.label ?? 'unknown'">
                 <div class="insights-cohort-label"><span>{{ group.label ?? text('Unknown / withheld', 'Unbekannt / zurückgehalten') }}</span><small>{{ number(group.highInterestCount, 0) }} {{ text('high', 'hoch') }} / {{ number(group.reviewedCount, 0) }} {{ text('reviewed', 'bewertet') }}</small></div>
                 <div class="insights-cohort-value"><span>{{ rate(group.highInterestShare) }}</span><small v-if="group.meanInterest !== null">{{ text('Mean', 'Mittel') }} {{ number(group.meanInterest) }} / 10</small></div>
                 <span class="insights-track" aria-hidden="true"><span class="insights-bar" :style="{ width: `${(group.highInterestShare ?? 0) * 100}%` }" /></span>
               </li>
             </ol>
             <p v-else class="insights-empty-note">{{ text('No explicit high-interest feedback in this breakdown yet.', 'Noch kein ausdrücklich hohes Interesse in dieser Aufteilung.') }}</p>
-            <p v-if="panel.omitted" class="insights-omitted">{{ number(panel.omitted, 0) }} {{ text('more groups outside this view', 'weitere Gruppen außerhalb dieser Ansicht') }}</p>
-          </section>
-        </div>
+            <p v-if="activeHighInterestPanel.omitted" class="insights-omitted">{{ number(activeHighInterestPanel.omitted, 0) }} {{ text('more groups outside this view', 'weitere Gruppen außerhalb dieser Ansicht') }}</p>
+          </div>
       </section>
-      </template>
+      </div>
 
       </template>
 
@@ -504,11 +532,17 @@ async function copyAnalysis() {
 .insights-heading, .insights-title, .insights-section-heading { display: flex; align-items: center; min-width: 0; }
 .insights-heading-inset { flex: 0 0 auto; padding: 24px 32px 0; }
 .insights-heading { flex: 0 0 auto; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 0; padding-bottom: 10px; border-bottom: 1px solid var(--ui-divider); }
-.insights-development-tabs { flex: 0 0 auto; padding-inline: 32px; }
-.insights-body-tabs { display: flex; flex: 0 0 auto; gap: 4px; padding-inline: 32px; border-bottom: 1px solid var(--ui-divider); overflow-x: auto; scrollbar-width: thin; }
-.insights-body-tabs button { flex: 0 0 auto; appearance: none; min-height: 42px; padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--ui-muted); font: 600 12px/1.5 var(--font-ui); cursor: pointer; white-space: nowrap; }
-.insights-body-tabs button[aria-selected=true] { color: var(--ui-accent); border-bottom-color: var(--ui-accent); }
-.insights-body-tabs button:hover { color: var(--ui-text); background: var(--ui-surface-hover); }
+.insights-analysis-actions { flex: 0 0 auto; padding-inline: 32px; }
+.insights-analysis-actions.is-sidebar { padding: 0; }
+.insights-body-tabs { display: flex; flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; margin: 0; padding: 8px 32px; border-bottom: 1px solid var(--ui-divider); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.insights-pattern-tabs { display: flex; flex: 0 0 auto; flex-wrap: nowrap; gap: 6px; margin: 0; padding-block: 8px; border-bottom: 1px solid var(--ui-divider); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.insights-body-tabs .btn, .insights-pattern-tabs .btn { flex: 0 0 auto; white-space: nowrap; }
+.insights-pattern-tabs .btn { min-height: 38px; font: 600 12px/1.5 var(--font-ui); }
+.insights-body-tabs .btn:not(.is-active), .insights-pattern-tabs .btn:not(.is-active) { color: var(--ui-muted); }
+.insights-body-tabs .btn:not(.is-active):hover, .insights-pattern-tabs .btn:not(.is-active):hover { color: var(--ui-text); background: var(--ui-surface-hover); }
+.insights-analysis-actions.is-sidebar .insights-pattern-tabs { flex-direction: column; gap: 6px; padding: 0; border: 0; overflow: visible; }
+.insights-analysis-actions.is-sidebar .insights-pattern-tabs .btn { width: 100%; justify-content: flex-start; text-align: left; white-space: normal; }
+.insights-pattern-panel { min-width: 0; }
 .insights-body { flex: 1 1 auto; min-height: 0; padding: 24px 32px 32px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .insights-time-window { flex: 0 0 auto; padding: 4px 32px; border-top: 1px solid var(--ui-divider); background: var(--ui-surface); }
 .insights-title, .insights-section-heading { gap: 4px; }
@@ -517,8 +551,9 @@ async function copyAnalysis() {
 .opportunity-insights h4 { margin: 0; color: var(--ui-text); text-shadow: none; font: 600 13px/1.5 var(--font-ui); }
 .opportunity-insights p { max-width: 70ch; margin: 0; }
 .opportunity-insights .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; font: 600 12px/1.5 var(--font-ui); background: var(--ui-control); }
-.opportunity-insights .btn:hover:not(:disabled) { background: var(--ui-surface-hover); }
+.opportunity-insights .btn:hover:not(:disabled):not(.is-active) { background: var(--ui-surface-hover); }
 .opportunity-insights .insights-copy { border-color: var(--ui-accent-border); color: var(--ui-accent); }
+.insights-body-tabs .btn.is-active, .insights-pattern-tabs .btn.is-active { border-color: var(--ui-accent-border); background: var(--ui-active); color: var(--ui-accent); }
 .insights-context-recovery { margin-bottom: 20px; }
 .insights-summary { display: flex; flex-wrap: wrap; gap: 16px 32px;}
 .insights-summary > div { display: grid; gap: 2px; }
@@ -626,10 +661,7 @@ async function copyAnalysis() {
 .insights-reason-count { display: flex; flex-direction: column; align-items: flex-end; font-size: 11px; line-height: 1.5; }
 .insights-reason-count > .is-negative { color: var(--ui-score-red); }
 .insights-section { margin-top: 0; }
-.insights-places { margin-top: 32px; }
-.insights-place-panels { display: grid; gap: 32px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .insights-cohort-panel { min-width: 0; }
-.insights-cohort-panel h4 { margin-bottom: 16px; }
 .insights-cohorts { display: grid; gap: 18px; list-style: none; padding: 0; margin: 0; }
 .insights-cohorts > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; align-items: start; }
 .insights-cohorts .insights-track { grid-column: 1 / -1; height: 8px; }
@@ -647,6 +679,7 @@ async function copyAnalysis() {
 .insights-prompt-body { display: grid; gap: 8px; }
 .insights-prompt-body :deep(textarea) { box-sizing: border-box; width: 100%; resize: vertical; font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .opportunity-insights :is(button, summary, textarea, input):focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 3px; }
+.insights-body-tabs .btn:focus-visible, .insights-pattern-tabs .btn:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; }
 .opportunity-insights button:disabled { opacity: .5; cursor: default; }
 @container (max-width: 680px) {
   .insights-job-interest { flex-basis: 140px; max-width: none; }
@@ -656,14 +689,15 @@ async function copyAnalysis() {
   .insights-topic-list { max-height: 175px; }
   .insights-excluded-topic-list label { min-height: 44px; }
   .insights-context-topics { grid-template-columns: minmax(0, 1fr); }
-  .insights-place-panels { grid-template-columns: minmax(0, 1fr); gap: 24px; }
 }
 @media (max-width: 760px) {
   .insights-current-filter label { min-height: 44px; }
   .insights-heading-inset { padding: 16px 16px 0; }
   .insights-heading { align-items: flex-start; }
-  .insights-body-tabs, .insights-development-tabs { padding-inline: 16px; }
-  .insights-body-tabs button { min-height: 44px; }
+  .insights-body-tabs, .insights-analysis-actions { padding-inline: 16px; }
+  .insights-body-tabs, .insights-pattern-tabs { gap: 0; height: 44px; padding-block: 0; scrollbar-width: none; }
+  .insights-body-tabs .btn, .insights-pattern-tabs .btn { flex: 1 0 auto; min-height: 44px; }
+  .insights-body-tabs .btn.is-active, .insights-pattern-tabs .btn.is-active { border-bottom-color: var(--ui-accent); color: var(--ui-text); }
   .insights-body { padding: 20px 16px 28px; }
   .insights-time-window { padding: 4px 16px; }
   .insights-filter-slider { max-width: none; }

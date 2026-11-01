@@ -10,6 +10,7 @@ import type { Application, Opportunity, OpportunityReview } from '../../../src/a
 import { useOpportunityInsightsSearch } from '../../../src/features/opportunities/composables/useOpportunityInsightsSearch';
 import { buildOpportunityInsights, prepareOpportunityInsights, type OpportunityInsightsAnalysis, type OpportunityInsightsAnalysisInput } from '../../../src/features/opportunities/domain/opportunityInsights';
 import { useToasts, useToastWatch } from '../../../src/shared/ui/useToasts';
+import { provideDesktopSidebar, useDesktopSidebar } from '../../../src/shared/ui/desktopSidebar';
 import { opportunityAssessmentFixture, opportunityFixture } from '../../support/fixtures/opportunity';
 import { createSearchTemplate } from '../../../src/features/meta-search/data/searchTemplateRepository';
 import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../../../src/features/meta-search/data/searchTemplateCloud';
@@ -28,9 +29,17 @@ const opportunityId = '92000000-0000-4000-8000-000000000003';
 const safePrompt: OpportunityInsightsAnalysis = { text: 'SAFE SYNTHETIC ANALYSIS\n{"examples":[]}', exampleCount: 1,
   eligibleExampleCount: 1, omittedExamples: 0, withheldFields: 0 };
 
-interface HostNode { tag?: string; text?: string; props: Record<string, unknown>; children: HostNode[]; parent?: HostNode; value?: unknown; options?: HostNode[]; addEventListener(): void; removeEventListener(): void }
+interface HostNode {
+  tag?: string; text?: string; props: Record<string, unknown>; children: HostNode[]; parent?: HostNode; parentElement?: HostNode;
+  value?: unknown; options?: HostNode[]; scrollTop: number; focused: boolean;
+  focus(): void; querySelectorAll(selector: string): HostNode[]; addEventListener(): void; removeEventListener(): void;
+}
 function node(tag?: string, text?: string): HostNode {
-  const value: HostNode = { tag, text, props: {}, children: [], addEventListener() {}, removeEventListener() {} };
+  const value: HostNode = { tag, text, props: {}, children: [], scrollTop: 0, focused: false, focus() { value.focused = true; },
+    querySelectorAll(selector) { return descendants(value).filter(item => selector === '[role=tab]' || selector === '[role="tab"]'
+      ? item.props.role === 'tab' : selector.startsWith('.') && selector.slice(1).split('.').every(className => String(item.props.class).split(' ').includes(className))); },
+    addEventListener() {}, removeEventListener() {} };
+  Object.defineProperty(value, 'parentElement', { get: () => value.parent });
   Object.defineProperty(value, 'options', { get: () => value.children.filter(child => child.tag === 'option') });
   Object.defineProperty(value, 'value', { get: () => value.props.value ?? value.text ?? '', set: next => { value.props.value = next; } });
   return value;
@@ -125,7 +134,7 @@ function jobReview(index: number, rating: 2 | 6 | 8 | 9, reasons: OpportunityRev
 }
 
 function mount(t: TestContext, initial: { opportunities?: Opportunity[]; reviews?: OpportunityReview[]; currentTime?: Date; loading?: boolean; sidebarActive?: boolean; client?: SupabaseClient | null; projectRef?: string } = {},
-  connection: { configuredProject?: string; realSearch?: boolean } = {}) {
+  connection: { configuredProject?: string; realSearch?: boolean; desktopSidebar?: boolean } = {}) {
   useToasts().clear();
   const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
   Object.defineProperty(globalThis, 'document', { configurable: true, value: { activeElement: null } });
@@ -153,7 +162,7 @@ function mount(t: TestContext, initial: { opportunities?: Opportunity[]; reviews
       brushProps = props; brushEmit = emit; onBeforeUnmount(() => { brushProps = null; });
       return () => h('section', { 'data-mock': 'brush' });
     } });
-  const Controls = defineComponent({ props: ['view', 'lang', 'panelId'], emits: ['update:view'], setup: (props, { emit }) => {
+  const Controls = defineComponent({ props: ['view', 'lang', 'panelId', 'sidebar'], emits: ['update:view'], setup: (props, { emit }) => {
     controlsProps = props; controlsEmit = emit; onBeforeUnmount(() => { controlsProps = null; });
     return () => h('nav', { 'data-mock': 'fixed-timeline-controls' });
   } });
@@ -166,6 +175,7 @@ function mount(t: TestContext, initial: { opportunities?: Opportunity[]; reviews
     } });
   const module = (path: string) => path.endsWith('AutosaveTextarea.vue') ? { default: AutosaveTextarea }
     : path.endsWith('DesktopSidebarPortal.vue') ? { default: DesktopSidebarPortal }
+    : path === '../../../shared/ui/desktopSidebar' ? { useDesktopSidebar }
     : path.endsWith('OpportunityInsightsTimeline.vue') ? { default: Timeline }
       : path.endsWith('OpportunityInsightsBrush.vue') ? { default: Brush }
       : path.endsWith('OpportunityInsightsTimelineControls.vue') ? { default: Controls }
@@ -205,7 +215,11 @@ function mount(t: TestContext, initial: { opportunities?: Opportunity[]; reviews
     applications: [] as Application[], currentTime: undefined as Date | undefined, sidebarActive: true, ...initial });
   let instance: unknown;
   const root = node('root');
-  const app = renderer.createApp({ render: () => h(component, { ...props, onOpenOpportunity: (id: string) => openedOpportunities.push(id), ref: (value: unknown) => { instance = value; } }) });
+  const desktop = ref(connection.desktopSidebar ?? false);
+  const app = renderer.createApp({ setup() {
+    provideDesktopSidebar(desktop);
+    return () => h(component, { ...props, onOpenOpportunity: (id: string) => openedOpportunities.push(id), ref: (value: unknown) => { instance = value; } });
+  } });
   app.mount(root);
   const editor = (instance as { $: { setupState: Editor } }).$.setupState;
   let closed = false;
@@ -216,7 +230,9 @@ function mount(t: TestContext, initial: { opportunities?: Opportunity[]; reviews
   t.after(() => { close(); useToasts().clear(); });
   const button = (label: string) => descendants(root).find(item => item.tag === 'button'
     && (item.props['aria-label'] === label || nodeText(item) === label));
-  return { props, editor, handlers, calls, publications, openedOpportunities, search, searchOptions: searchOptions!, close,
+  const byClass = (value: string) => descendants(root).find(item => value.split(' ').every(className => String(item.props.class).split(' ').includes(className)));
+  const navTabs = (className: string) => byClass(className) ? descendants(byClass(className)!).filter(item => item.tag === 'button' && item.props.role === 'tab') : [];
+  return { props, desktop, editor, handlers, calls, publications, openedOpportunities, search, searchOptions: searchOptions!, close,
     prompt: () => descendants(root).find(value => value.tag === 'textarea'),
     dateInput: (bound: 'start' | 'end') => descendants(root).find(value => value.tag === 'input'
       && value.props.type === 'date' && String(value.props.id).endsWith(`-${bound}-date`)),
@@ -227,13 +243,21 @@ function mount(t: TestContext, initial: { opportunities?: Opportunity[]; reviews
     controlsEmit: (event: 'update:view', ...args: unknown[]) => controlsEmit(event, ...args),
     networkLifecycle: () => ({ mounts: networkMounts, unmounts: networkUnmounts }),
     networkEmit: (event: NetworkEvent, ...args: unknown[]) => networkEmit(event, ...args),
-    byClass: (value: string) => descendants(root).find(item => item.props.class === value),
+    byClass,
     byId: (value: string) => descendants(root).find(item => item.props.id === value),
     sidebarPortal: (area: 'major' | 'minor') => descendants(root).find(item => item.props['data-mock'] === 'sidebar-portal' && item.props['data-area'] === area),
+    sidebarPortals: (area: 'major' | 'minor') => descendants(root).filter(item => item.props['data-mock'] === 'sidebar-portal' && item.props['data-area'] === area),
     button,
     showBody: async (label: 'Trends' | 'Clusters' | 'Interest patterns') => {
       const target = button(label); assert(target); (target.props.onClick as () => void)(); await nextTick();
     },
+    showPattern: async (label: string) => {
+      const target = navTabs('insights-pattern-tabs').find(item => item.props['aria-label'] === label || nodeText(item) === label);
+      assert(target, `the interest-pattern tab ${label} is rendered`); (target.props.onClick as () => void)(); await nextTick();
+    },
+    patternTabs: () => navTabs('insights-pattern-tabs'),
+    patternPanel: () => descendants(root).find(item => item.props.role === 'tabpanel' && String(item.props.id).includes('-pattern-panel-')),
+    bodyText: () => byClass('insights-body') ? nodeText(byClass('insights-body')!) : '',
     showTopicClusters: async () => {
       const target = button('Topic clusters'); assert(target); (target.props.onClick as () => void)(); await nextTick();
     },
@@ -241,7 +265,7 @@ function mount(t: TestContext, initial: { opportunities?: Opportunity[]; reviews
       const target = descendants(root).find(item => item.tag === 'label' && nodeText(item.children.find(child => child.tag === 'span') ?? item).startsWith(label));
       return target && descendants(target).find(item => item.tag === 'select' || item.tag === 'input');
     },
-    bodyTabs: () => descendants(root).filter(item => item.tag === 'button' && item.props.role === 'tab'),
+    bodyTabs: () => navTabs('insights-body-tabs'),
     copyButton: () => descendants(root).find(item => item.tag === 'button' && item.props.class === 'btn insights-copy')!,
     renderedText: () => descendants(root).map(value => value.text ?? '').join(' '),
     promptDisclosure: () => descendants(root).find(value => value.tag === 'details' && value.props.class === 'insights-prompt') };
@@ -351,7 +375,7 @@ test('body tabs mount only their active visualization while retaining one shared
   assert.equal(view.chart(), undefined);
   assert.equal(view.timeline(), brush);
   assert.equal(view.timeline().rangeEnd, selected.end);
-  assert.match(view.renderedText(), /Where your high interest clusters/u);
+  assert.match(view.bodyText(), /What drives your feedback/u);
   assert.deepEqual(view.networkLifecycle(), { mounts: 1, unmounts: 1 });
   await view.showBody('Trends');
   assert.equal(view.chart()!.timeline.start, startOfDay(selected.start));
@@ -406,9 +430,10 @@ test('job clusters are the first and default mode with each mode’s sliders bes
   assert.equal(view.control('Minimum matching jobs')!.props.value, 3, 'account changes restore the default count before cohort clamping');
 });
 
-test('explorer sidebar groups mount only for Topics with distinct ordered targets for child controls', async t => {
+test('major actions switch between analysis navigation and explorer controls without leaving inactive controls behind', async t => {
   const view = mount(t);
-  assert.equal(view.sidebarPortal('major'), undefined);
+  assert(view.sidebarPortal('major'));
+  assert(descendants(view.sidebarPortal('major')!).some(item => item.props['data-mock'] === 'fixed-timeline-controls'));
   assert.equal(view.sidebarPortal('minor'), undefined);
   await view.showBody('Clusters');
   const major = view.sidebarPortal('major')!, minor = view.sidebarPortal('minor')!;
@@ -434,7 +459,7 @@ test('explorer sidebar groups mount only for Topics with distinct ordered target
   assert.equal(view.network()!.cameraControlsTarget, cameraTarget);
   for (const label of ['Trends', 'Interest patterns'] as const) {
     await view.showBody(label);
-    assert.equal(view.sidebarPortal('major'), undefined);
+    assert.equal(view.sidebarPortals('major').length, 1, 'the active analysis row replaces explorer actions');
     assert.equal(view.sidebarPortal('minor'), undefined);
     assert.equal(view.byId(presentationTarget.slice(1)), undefined);
     assert.equal(view.byId(cameraTarget.slice(1)), undefined);
@@ -468,7 +493,7 @@ test('sidebar activity and body switches preserve explorer evidence while accoun
     assert.deepEqual(view.networkLifecycle(), lifecycle, 'sidebar activity does not recreate the graph');
   }
   await view.showBody('Trends');
-  assert.equal(view.sidebarPortal('major'), undefined);
+  assert(descendants(view.sidebarPortal('major')!).some(item => item.props['data-mock'] === 'fixed-timeline-controls'));
   assert.equal(view.chart()!.selectedJob.id, fixtureId(10));
   assert.equal(view.editor.preparedText, prepared);
   await view.showBody('Clusters');
@@ -493,7 +518,7 @@ test('sidebar activity and body switches preserve explorer evidence while accoun
   assert.equal(view.editor.preparedText, topicPrepared);
   assert.equal(view.sidebarPortal('major')!.props['data-active'], false);
   view.props.ownerId = fixtureId(99); await nextTick();
-  assert.equal(view.sidebarPortal('major'), undefined, 'the former account cannot leave explorer controls in the sidebar');
+  assert(descendants(view.sidebarPortal('major')!).some(item => item.props['data-mock'] === 'fixed-timeline-controls'), 'account reset replaces former explorer controls with default Trends navigation');
   assert.equal(view.sidebarPortal('minor'), undefined);
   assert.equal(view.editor.preparedText, '');
   await view.showBody('Clusters');
@@ -967,12 +992,13 @@ test('committed range changes reuse prepared evidence and the all-history overvi
   assert.notEqual(view.timeline().domainEnd, clock);
 });
 
-test('fixed development controls preserve their view and topic trends recover a selected-cohort fallback after filters clear graph selection', async t => {
+test('Trends major actions preserve their view and topic trends recover a selected-cohort fallback after filters clear graph selection', async t => {
   const view = mount(t, { opportunities: [job(10, 'Current acoustic interest', ['Acoustics'], 20), job(11, 'Rare low topic', ['Theory'], 10), job(12, 'Older robotics', ['Robotics'], 40)],
     reviews: [jobReview(10, 9), jobReview(11, 2), jobReview(12, 8)] });
-  const fixed = view.byClass('insights-development-tabs')!;
+  const fixed = view.byClass('insights-analysis-actions')!;
   assert(fixed);
-  assert.notEqual(fixed.parent, view.byClass('insights-body'), 'the second tab row sits outside the scrolling body');
+  assert(descendants(view.sidebarPortal('major')!).includes(fixed));
+  assert(!descendants(view.byClass('insights-body')!).includes(fixed), 'analysis navigation sits outside the scrolling body');
   view.controlsEmit('update:view', 'topics'); await nextTick();
   assert.equal(view.chart()!.view, 'topics');
   await view.showBody('Clusters');
@@ -989,17 +1015,176 @@ test('fixed development controls preserve their view and topic trends recover a 
   assert.equal(descendants(footer).filter(item => item.tag === 'button').length, 0, 'the footer contains only the shared brush');
 });
 
-test('interest distribution is visible in high-interest clusters outside detailed statistics', async t => {
+test('interest-pattern subtabs mount only their active breakdown outside detailed statistics', async t => {
   const view = mount(t);
-  assert.doesNotMatch(view.renderedText(), /Interest distribution|What drives your feedback|Detailed statistics/u);
+  assert.doesNotMatch(view.renderedText(), /Interest score distribution|What drives your feedback|Detailed statistics/u);
   await view.showBody('Interest patterns');
-  assert.match(view.renderedText(), /Interest distribution/u);
-  assert.match(view.renderedText(), /What drives your feedback/u);
-  assert.match(view.renderedText(), /Where your high interest clusters/u);
+  assert.deepEqual(view.patternTabs().map(nodeText), ['Feedback reasons', 'Interest score distribution', 'High interest by institution', 'High interest by country']);
+  assert.match(view.bodyText(), /What drives your feedback/u);
+  assert.doesNotMatch(view.bodyText(), /Interest score distribution|High interest by institution|High interest by country/u);
+  assert.equal(view.byClass('insights-bars'), undefined);
+  assert.equal(view.byClass('insights-origins'), undefined);
+  await view.showPattern('Interest score distribution');
+  assert.match(view.bodyText(), /Interest score distribution/u);
+  assert.doesNotMatch(view.bodyText(), /What drives your feedback|High interest by institution|High interest by country/u);
   assert(view.byClass('insights-bars'));
+  assert(view.byClass('insights-origins'));
+  await view.showPattern('High interest by institution');
+  assert.match(view.bodyText(), /High interest by institution/u);
+  assert.doesNotMatch(view.bodyText(), /What drives your feedback|Interest score distribution|High interest by country/u);
+  assert.equal(view.byClass('insights-bars'), undefined);
+  await view.showPattern('High interest by country');
+  assert.match(view.bodyText(), /High interest by country/u);
+  assert.doesNotMatch(view.bodyText(), /What drives your feedback|Interest score distribution|High interest by institution/u);
   assert.equal(view.byClass('insights-details'), undefined);
   assert.equal(view.chart(), undefined);
   assert.equal(view.network(), null);
+});
+
+test('interest-pattern navigation provides linked tab panels and keyboard focus outside the scrolling body', async t => {
+  const view = mount(t); await view.showBody('Interest patterns');
+  const navigation = view.byClass('insights-pattern-tabs')!, body = view.byClass('insights-body')!;
+  assert.equal(navigation.props.role, 'tablist');
+  assert.equal(navigation.props['aria-orientation'], 'horizontal');
+  assert(!descendants(body).includes(navigation), 'pattern navigation remains available while its data panel scrolls');
+  assert.equal(view.bodyTabs().length, 3, 'the primary navigation does not absorb the four pattern subtabs');
+  assert.equal(view.patternTabs().length, 4);
+  assert(String(navigation.props.class).includes('workspace-subtabs'));
+  assert(String(view.byClass('insights-body-tabs')!.props.class).includes('workspace-subtabs'));
+  const activeTab = () => view.patternTabs().find(tab => tab.props['aria-selected'] === true)!;
+  const assertLinkedPanel = () => {
+    const active = activeTab(), panel = view.patternPanel()!;
+    assert(panel); assert.equal(active.props['aria-controls'], panel.props.id);
+    assert.equal(panel.props['aria-labelledby'], active.props.id);
+    assert.equal(view.patternTabs().filter(tab => tab.props.tabindex === 0).length, 1);
+    assert.equal(active.props.tabindex, 0);
+    assert(String(active.props.class).split(' ').includes('is-active'));
+    assert(view.patternTabs().every(tab => String(tab.props.class).split(' ').includes('btn')));
+  };
+  assert.equal(nodeText(activeTab()), 'Feedback reasons'); assertLinkedPanel();
+  const key = async (value: string) => {
+    const target = activeTab(); let prevented = false;
+    (target.props.onKeydown as (event: KeyboardEvent) => void)({ key: value, currentTarget: target, preventDefault() { prevented = true; } } as unknown as KeyboardEvent);
+    await nextTick(); return prevented;
+  };
+  body.scrollTop = 600;
+  assert.equal(await key('ArrowRight'), true); assert.equal(nodeText(activeTab()), 'Interest score distribution');
+  assert.equal(body.scrollTop, 0, 'changing the breakdown starts its content at the top');
+  assert(activeTab().focused); assertLinkedPanel();
+  assert.equal(await key('End'), true); assert.equal(nodeText(activeTab()), 'High interest by country'); assertLinkedPanel();
+  assert.equal(await key('ArrowRight'), true); assert.equal(nodeText(activeTab()), 'Feedback reasons');
+  assert.equal(await key('ArrowLeft'), true); assert.equal(nodeText(activeTab()), 'High interest by country');
+  assert.equal(await key('Home'), true); assert.equal(nodeText(activeTab()), 'Feedback reasons');
+  assert.equal(await key('Tab'), false, 'Tab preserves native page navigation'); assertLinkedPanel();
+});
+
+test('Trends and Interest patterns occupy major actions with responsive orientation and scoped sidebar activity', async t => {
+  const view = mount(t, {}, { desktopSidebar: true }), brush = view.timeline();
+  const assertOneMajor = () => {
+    assert.equal(view.sidebarPortals('major').length, 1);
+    assert.equal(view.sidebarPortal('minor'), undefined);
+    assert.equal(view.sidebarPortal('major')!.props['data-active'], view.props.sidebarActive);
+    return view.sidebarPortal('major')!;
+  };
+  assert(descendants(assertOneMajor()).some(item => item.props['data-mock'] === 'fixed-timeline-controls'));
+  assert.equal(view.controls()!.sidebar, true);
+  assert(String(view.byClass('insights-analysis-actions')!.props.class).split(' ').includes('is-sidebar'));
+  view.controlsEmit('update:view', 'alignment'); await nextTick();
+  await view.showBody('Interest patterns');
+  const navigation = view.byClass('insights-pattern-tabs')!;
+  assert(descendants(assertOneMajor()).includes(navigation));
+  assert.equal(view.controls(), null, 'Trends navigation unmounts when Interest patterns is active');
+  assert.equal(navigation.props['aria-orientation'], 'vertical');
+  assert(!descendants(view.byClass('insights-body')!).includes(navigation));
+  const activeTab = () => view.patternTabs().find(tab => tab.props['aria-selected'] === true)!;
+  const key = async (value: string) => {
+    const target = activeTab(); let prevented = false;
+    (target.props.onKeydown as (event: KeyboardEvent) => void)({ key: value, currentTarget: target, preventDefault() { prevented = true; } } as unknown as KeyboardEvent);
+    await nextTick(); return prevented;
+  };
+  assert.equal(await key('ArrowRight'), false, 'horizontal arrows preserve their native behavior in the vertical sidebar');
+  assert.equal(await key('ArrowDown'), true); assert.equal(nodeText(activeTab()), 'Interest score distribution');
+  assert(activeTab().focused);
+  assert.equal(await key('End'), true); assert.equal(nodeText(activeTab()), 'High interest by country');
+  assert.equal(await key('ArrowDown'), true); assert.equal(nodeText(activeTab()), 'Feedback reasons');
+  assert.equal(await key('ArrowUp'), true); assert.equal(nodeText(activeTab()), 'High interest by country');
+  assert.equal(await key('Home'), true); assert.equal(nodeText(activeTab()), 'Feedback reasons');
+  await view.showPattern('High interest by country');
+  for (const state of [{ desktop: false, active: true }, { desktop: true, active: false }, { desktop: true, active: true }]) {
+    view.desktop.value = state.desktop; view.props.sidebarActive = state.active; await nextTick();
+    assertOneMajor();
+    assert.equal(navigation.props['aria-orientation'], state.desktop && state.active ? 'vertical' : 'horizontal');
+    assert.equal(String(view.byClass('insights-analysis-actions')!.props.class).split(' ').includes('is-sidebar'), state.desktop && state.active);
+    assert.equal(nodeText(activeTab()), 'High interest by country', 'moving the navigation preserves its selected view');
+    assert.equal(view.timeline(), brush, 'moving the controls preserves the shared brush');
+  }
+  await view.showBody('Trends'); assertOneMajor();
+  assert.equal(view.patternTabs().length, 0);
+  assert.equal(view.controls()!.view, 'alignment', 'Trends retains its chosen view');
+  assert.equal(view.controls()!.sidebar, true);
+  view.desktop.value = false; await nextTick();
+  assert.equal(view.controls()!.sidebar, false, 'mobile uses the inline horizontal controls');
+  view.props.sidebarActive = false; view.desktop.value = true; await nextTick();
+  assert.equal(view.controls()!.sidebar, false, 'inactive workspaces cannot retain sidebar orientation');
+  assert.equal(assertOneMajor().props['data-active'], false);
+  view.props.ownerId = fixtureId(99); await nextTick();
+  assert.equal(view.controls()!.view, 'outcomes'); assertOneMajor();
+});
+
+test('pattern presentation changes preserve the shared brush, selected dates and prepared or pending analysis', async t => {
+  const view = mount(t), brush = view.timeline(), selectedRange = { start: localDay(25), end: localDay(5) };
+  view.timelineEmit('update:range', selectedRange); await nextTick();
+  await view.showBody('Interest patterns');
+  const pending = deferred<OpportunityInsightsAnalysis>(); view.handlers.build = () => pending.promise;
+  const copying = view.editor.copyAnalysis();
+  for (const label of ['Interest score distribution', 'High interest by institution', 'High interest by country']) {
+    await view.showPattern(label);
+    assert.equal(view.timeline(), brush); assert.equal(view.timeline().rangeStart, selectedRange.start); assert.equal(view.timeline().rangeEnd, selectedRange.end);
+    assert.equal(view.calls[0]!.signal?.aborted, false, 'choosing a presentation does not cancel the same analysis evidence');
+  }
+  pending.resolve(safePrompt); await copying; await nextTick();
+  assert.equal(view.editor.preparedText, safePrompt.text); assert.deepEqual(view.publications, [safePrompt.text]);
+  await view.showBody('Trends'); assert.equal(view.patternTabs().length, 0);
+  assert.equal(view.editor.preparedText, safePrompt.text); assert.equal(view.timeline(), brush);
+  await view.showBody('Interest patterns');
+  assert.equal(nodeText(view.patternTabs().find(tab => tab.props['aria-selected'])!), 'High interest by country', 'returning to Interest patterns restores its selected breakdown');
+  assert.equal(view.editor.preparedText, safePrompt.text);
+  const nextRange = { start: localDay(22), end: localDay(10) };
+  view.timelineEmit('update:range', nextRange); await nextTick();
+  assert.equal(view.timeline(), brush); assert.equal(view.timeline().rangeStart, nextRange.start); assert.equal(view.timeline().rangeEnd, nextRange.end);
+  assert.equal(nodeText(view.patternTabs().find(tab => tab.props['aria-selected'])!), 'High interest by country');
+  assert.equal(view.editor.preparedText, '', 'a changed cohort still invalidates an analysis prepared for earlier dates');
+});
+
+test('pattern empty states are independent and account changes reset the localized breakdown to feedback reasons', async t => {
+  const view = mount(t, { opportunities: [], reviews: [] }); await view.showBody('Interest patterns');
+  for (const label of ['Feedback reasons', 'Interest score distribution', 'High interest by institution', 'High interest by country']) {
+    await view.showPattern(label);
+    const active = view.patternTabs().find(tab => tab.props['aria-selected'])!, panel = view.patternPanel()!;
+    assert.match(view.bodyText(), /Your feedback starts the picture/u);
+    assert.equal(panel.props.id, active.props['aria-controls']); assert.equal(panel.props['aria-labelledby'], active.props.id);
+  }
+  view.props.opportunities = [job(10, 'Unrated acoustic research', ['Acoustics'], 10)]; await nextTick();
+  await view.showPattern('Feedback reasons');
+  assert.match(view.bodyText(), /No structured reasons yet/u);
+  assert.doesNotMatch(view.bodyText(), /No interest scores yet|No explicit high-interest feedback/u);
+  await view.showPattern('Interest score distribution');
+  assert.match(view.bodyText(), /No interest scores yet/u); assert.doesNotMatch(view.bodyText(), /No structured reasons yet|No explicit high-interest feedback/u);
+  await view.showPattern('High interest by institution');
+  assert.match(view.bodyText(), /High interest by institution.*No explicit high-interest feedback/u);
+  assert.doesNotMatch(view.bodyText(), /No structured reasons yet|No interest scores yet/u);
+  await view.showPattern('High interest by country');
+  assert.match(view.bodyText(), /High interest by country.*No explicit high-interest feedback/u);
+  view.props.ownerId = fixtureId(99); await nextTick();
+  assert.equal(view.patternTabs().length, 0); assert.equal(view.bodyTabs()[0]!.props['aria-selected'], true);
+  await view.showBody('Interest patterns');
+  assert.equal(nodeText(view.patternTabs().find(tab => tab.props['aria-selected'])!), 'Feedback reasons');
+  view.props.lang = 'de'; await nextTick();
+  assert.deepEqual(view.patternTabs().map(nodeText), ['Feedbackgründe', 'Verteilung der Interessenwerte', 'Hohes Interesse nach Einrichtung', 'Hohes Interesse nach Land']);
+  assert.match(view.bodyText(), /Was dein Feedback bestimmt/u);
+  await view.showPattern('Verteilung der Interessenwerte'); assert.match(view.bodyText(), /Verteilung der Interessenwerte/u);
+  await view.showPattern('Hohes Interesse nach Einrichtung'); assert.match(view.bodyText(), /Hohes Interesse nach Einrichtung/u);
+  await view.showPattern('Hohes Interesse nach Land'); assert.match(view.bodyText(), /Hohes Interesse nach Land/u);
 });
 
 test('initial top-five topics and network selections synchronize trend topics and matching jobs', async t => {
@@ -1501,14 +1686,16 @@ test('Interest patterns includes all new reason categories and names application
   const labels = nodeText(reasons);
   for (const label of ['Background fit', 'Project context', 'Requirements', 'Availability', 'Tools+hardware', 'Salary']) assert.ok(labels.includes(label), label);
   assert.doesNotMatch(labels, /background_fit|project_context|Funding/);
+  await view.showPattern('Interest score distribution');
   assert.match(nodeText(view.byClass('insights-origins')!), /Application 1.*Submission 0/u);
   view.props.applications[0]!.status = 'submitted';
   await nextTick();
   assert.match(nodeText(view.byClass('insights-origins')!), /Application 0.*Submission 1/u);
   view.props.lang = 'de';
   await nextTick();
-  assert.match(nodeText(view.byClass('insights-reasons')!), /Passung zum Hintergrund.*Projektkontext.*Tools\+Hardware.*Gehalt.*Anforderungen.*Verfügbarkeit/u);
   assert.match(nodeText(view.byClass('insights-origins')!), /Bewerbung 0.*Einreichung 1/u);
+  await view.showPattern('Feedbackgründe');
+  assert.match(nodeText(view.byClass('insights-reasons')!), /Passung zum Hintergrund.*Projektkontext.*Tools\+Hardware.*Gehalt.*Anforderungen.*Verfügbarkeit/u);
 });
 
 test('retired numeric overrides do not alter a categorical interest cohort or selected job', async t => {

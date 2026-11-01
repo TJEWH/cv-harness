@@ -28,7 +28,7 @@ const localView = ref<View>('outcomes'), metric = ref<Metric>('hit'), activeBuck
 const view = computed(() => props.view ?? localView.value);
 const timelineHint = computed(() => {
   const basis = text('Group jobs by catalogue Added date and compare your current feedback.', 'Gruppiere Stellen nach ihrem Hinzufügedatum im Katalog und vergleiche dein aktuelles Feedback dazu.');
-  if (view.value === 'outcomes') return `${basis} ${text('Bars count added jobs. Lines count jobs with an interest selection, application or submission: reviewed, interest ≥8 and mismatches (fit ≥8, interest ≤4). Counts overlap.', 'Balken zählen hinzugefügte Stellen. Die Linien berücksichtigen Interessenauswahl, Bewerbungen und Einreichungen: bewertete Stellen, Interesse ≥8 und Fehlpassungen (Passung ≥8, Interesse ≤4). Die Zählungen überschneiden sich.')}`;
+  if (view.value === 'outcomes') return `${basis} ${text('Bars count added jobs; lines count reviewed jobs, including applications and submissions: high interest ≥8, very high ≥9, low ≤4, and mismatches (fit ≥8, interest ≤4). Counts overlap: high includes very high; unknown interest is excluded from the lines.', 'Balken zählen hinzugefügte Stellen; Linien zählen bewertete Stellen einschließlich Bewerbungen und Einreichungen: hohes Interesse ≥8, sehr hohes ≥9, geringes ≤4 und Fehlpassungen (Passung ≥8, Interesse ≤4). Die Zählungen überschneiden sich: Hohes umfasst sehr hohes Interesse; unbekanntes Interesse zählt nicht in den Linien.')}`;
   if (view.value === 'topics') return `${basis} ${text('Each line counts jobs with interest ≥8 for one topic, including applications and submissions. A job with several topics can count in several lines.', 'Jede Linie zählt Stellen ab Interessenwert 8 für ein Thema, einschließlich Bewerbungen und Einreichungen. Eine Stelle kann in mehreren Themenlinien zählen.')}`;
   if (metric.value === 'hit') return `${basis} ${text('Among jobs with current fit ≥8 and an interest score, the hit rate is the share with your interest ≥8. The 95% band shows uncertainty from sample size; gaps mean no qualifying jobs.', 'Die Trefferquote ist der Anteil der Stellen mit deinem Interesse ≥8 unter Stellen mit aktueller Passung ≥8 und Interessenwert. Das 95%-Band zeigt die Unsicherheit durch den Stichprobenumfang; Lücken bedeuten keine passenden Wertepaare.')}`;
   if (metric.value === 'gap') return `${basis} ${text('The absolute gap averages |current fit − your current interest| across jobs with both scores; lower means closer agreement. Gaps mean no score pairs.', 'Die absolute Abweichung ist der Mittelwert von |aktuelle Passung − dein aktuelles Interesse| für Stellen mit beiden Werten; kleiner bedeutet höhere Übereinstimmung. Lücken bedeuten keine Wertepaare.')}`;
@@ -53,17 +53,21 @@ const chosenTopics = computed(() => {
     .sort((a, b) => b.highInterestCount - a.highInterestCount || a.id.localeCompare(b.id)).slice(0, 5);
 });
 const colors = ['var(--ui-accent)', '#91b9e9', '#dbc18d', '#c6a4da', '#e7a4b5'];
-interface Series { key: string; label: string; color: string; values: (number | null)[] }
+interface Series { key: string; label: string; color: string; dash?: string; lineStyle?: 'dashed' | 'dotted'; values: (number | null)[] }
 const series = computed<Series[]>(() => {
   if (view.value === 'outcomes') return [
     { key: 'reviewed', label: text('Reviewed', 'Bewertet'), color: '#91b9e9', values: bins.value.map(bucket => bucket.reviewedCount) },
     { key: 'high', label: text('High interest', 'Hohes Interesse'), color: colors[0]!, values: bins.value.map(bucket => bucket.highInterestCount) },
+    { key: 'very-high', label: text('Very high interest', 'Sehr hohes Interesse'), color: colors[3]!, dash: '6 4', lineStyle: 'dashed', values: bins.value.map(bucket => bucket.veryHighInterestCount) },
+    { key: 'low', label: text('Low interest', 'Geringes Interesse'), color: colors[2]!, dash: '2 4', lineStyle: 'dotted', values: bins.value.map(bucket => bucket.lowInterestCount) },
     { key: 'mismatch', label: text('Misaligned jobs', 'Fehlpassungen'), color: 'var(--ui-score-red)', values: bins.value.map(bucket => bucket.mismatchCount) },
   ];
   if (view.value === 'topics') return chosenTopics.value.map((topic, index) => ({ key: topic.id, label: topic.label, color: colors[index]!, values: bins.value.map(bucket => bucket.topicHighCounts[topic.id] ?? 0) }));
   return [{ key: metric.value, label: metric.value === 'hit' ? text('High-fit hit rate', 'Trefferquote hoher Passung') : metric.value === 'gap' ? text('Absolute gap', 'Absolute Abweichung') : text('Rank agreement', 'Rangübereinstimmung'), color: colors[0]!,
     values: bins.value.map(bucket => metric.value === 'hit' ? bucket.alignment.highFitHitRate : metric.value === 'gap' ? bucket.alignment.meanAbsoluteGap : bucket.alignment.spearman) }];
 });
+// Paint patterned lines last so equal counts retain both the solid and patterned evidence.
+const plottedSeries = computed(() => [...series.value.filter(row => !row.dash), ...series.value.filter(row => row.dash)]);
 const yDomain = computed(() => view.value === 'alignment' ? metric.value === 'rank' ? { min: -1, max: 1 } : { min: 0, max: metric.value === 'hit' ? 1 : 10 }
   : { min: 0, max: Math.max(1, ...series.value.flatMap(row => row.values.flatMap(value => value === null ? [] : [value])), ...(view.value === 'outcomes' ? bins.value.map(bucket => bucket.addedCount) : [])) });
 const y = (value: number) => plotBottom - (value - yDomain.value.min) / (yDomain.value.max - yDomain.value.min) * (plotBottom - inset.top);
@@ -93,7 +97,7 @@ const metricLabel = (bucket: Bucket): string => {
   if (metric.value === 'rank' && bucket.pairedCount < 5) return text('Needs at least 5 pairs', 'Mindestens 5 Wertepaare nötig');
   return text('Scores do not vary', 'Werte variieren nicht');
 };
-const bucketLabel = (bucket: Bucket) => `${date(bucket.start)} – ${date(bucket.end)}: ${number(bucket.addedCount)} ${text('added', 'hinzugefügt')}, ${number(bucket.reviewedCount)} ${text('reviewed', 'bewertet')}, ${number(bucket.highInterestCount)} ${text('high interest', 'hohes Interesse')}, ${number(bucket.mismatchCount)} ${text('misaligned', 'Fehlpassungen')}, ${number(bucket.pairedCount)} ${text('score pairs', 'Wertepaare')}`;
+const bucketLabel = (bucket: Bucket) => `${date(bucket.start)} – ${date(bucket.end)}: ${number(bucket.addedCount)} ${text('added', 'hinzugefügt')}, ${number(bucket.reviewedCount)} ${text('reviewed', 'bewertet')}, ${number(bucket.highInterestCount)} ${text('high interest', 'hohes Interesse')}, ${number(bucket.veryHighInterestCount)} ${text('very high interest', 'sehr hohes Interesse')}, ${number(bucket.lowInterestCount)} ${text('low interest', 'geringes Interesse')}, ${number(bucket.mismatchCount)} ${text('misaligned', 'Fehlpassungen')}, ${number(bucket.pairedCount)} ${text('score pairs', 'Wertepaare')}`;
 const noValues = computed(() => !series.value.some(row => row.values.some(value => value !== null)));
 const selectedMarker = computed(() => { const time = props.selectedJob?.addedAt ? Date.parse(props.selectedJob.addedAt) : NaN; return Number.isFinite(time) && time >= extent.value.start && time <= extent.value.end ? x(time) : null; });
 
@@ -118,14 +122,14 @@ onBeforeUnmount(() => observer?.disconnect());
     <div :id="plotId" role="tabpanel" :aria-labelledby="`${plotId}-${view}`">
       <div class="timeline-legend">
         <span v-if="view === 'outcomes'" class="timeline-key is-added">{{ text('Added', 'Hinzugefügt') }}</span>
-        <span v-for="row in series" :key="row.key" class="timeline-key" :style="{ '--series-color': row.color }">{{ row.label }}</span>
+        <span v-for="row in series" :key="row.key" class="timeline-key" :style="{ '--series-color': row.color, '--series-line-style': row.lineStyle ?? 'solid' }">{{ row.label }}</span>
         <label v-if="view === 'alignment'" class="timeline-metric"><span>{{ text('Measure', 'Kennzahl') }}</span><select :value="metric" @change="metric = ($event.target as HTMLSelectElement).value as Metric"><option value="hit">{{ text('High-fit hit rate', 'Trefferquote hoher Passung') }}</option><option value="gap">{{ text('Absolute score gap', 'Absolute Werteabweichung') }}</option><option value="rank">{{ text('Rank agreement', 'Rangübereinstimmung') }}</option></select></label>
       </div>
       <svg v-if="timeline.unavailableReason !== 'too_many_buckets'" class="timeline-plot" :viewBox="`0 0 ${width} ${height}`" :aria-label="text('Current feedback by job addition date', 'Aktuelles Feedback nach Hinzufügedatum')" role="group">
         <g v-for="tick in yTicks" :key="tick" class="timeline-axis"><line :x1="inset.left" :x2="plotRight" :y1="y(tick)" :y2="y(tick)" /><text :x="inset.left - 9" :y="y(tick) + 4" text-anchor="end">{{ tickLabel(tick) }}</text></g>
         <g v-if="view === 'outcomes'" class="timeline-volume"><rect v-for="(bucket, index) in bins" :key="index" :x="x(Date.parse(bucket.start)) + 1" :y="y(bucket.addedCount)" :width="Math.max(1, x(Date.parse(bucket.end) + 1) - x(Date.parse(bucket.start)) - 2)" :height="Math.max(0, plotBottom - y(bucket.addedCount))" /></g>
         <path v-for="(band, index) in intervalPaths" :key="`band-${index}`" :d="band" class="timeline-interval" />
-        <g v-for="row in series" :key="row.key" :style="{ color: row.color }"><path :d="path(row.values)" class="timeline-line" /><template v-for="(value, index) in row.values" :key="index"><circle v-if="value !== null" :cx="bucketX(bins[index]!)" :cy="y(value)" r="2.8" class="timeline-point" /></template></g>
+        <g v-for="row in plottedSeries" :key="row.key" :style="{ color: row.color }"><path :d="path(row.values)" :stroke-dasharray="row.dash" class="timeline-line" /><template v-for="(value, index) in row.values" :key="index"><circle v-if="value !== null" :cx="bucketX(bins[index]!)" :cy="y(value)" r="2.8" class="timeline-point" /></template></g>
         <g v-if="selectedMarker !== null" class="timeline-job-marker"><line :x1="selectedMarker" :x2="selectedMarker" :y1="inset.top" :y2="plotBottom" /><title>{{ text('Selected job added', 'Ausgewählte Stelle hinzugefügt') }}: {{ date(selectedJob!.addedAt!) }}</title></g>
         <rect v-for="(bucket, index) in bins" :key="`inspect-${index}`" class="timeline-inspect" :x="x(Date.parse(bucket.start))" :y="inset.top" :width="Math.max(1, x(Date.parse(bucket.end) + 1) - x(Date.parse(bucket.start)))" :height="plotBottom - inset.top" tabindex="0" role="button" :aria-label="bucketLabel(bucket)" @focus="activeBucket = index" @pointerenter="activeBucket = index" @click="activeBucket = index"><title>{{ bucketLabel(bucket) }}</title></rect>
         <g v-for="(tick, index) in xTicks" :key="index" class="timeline-axis"><text :x="tick.value" :y="height - 8" :text-anchor="index === 0 ? 'start' : index === xTicks.length - 1 ? 'end' : 'middle'">{{ tick.label }}</text></g>
@@ -134,7 +138,7 @@ onBeforeUnmount(() => observer?.disconnect());
       <p v-else-if="!bins.length" class="timeline-empty">{{ text('No jobs with a known Added date in this period.', 'Keine Stellen mit bekanntem Hinzufügedatum in diesem Zeitraum.') }}</p>
       <p v-else-if="view === 'topics' && !chosenTopics.length" class="timeline-empty">{{ text('Select up to five topics in the network to see their high-interest counts over time.', 'Wähle bis zu fünf Themen im Netzwerk, um Stellen mit hohem Interesse im Zeitverlauf zu sehen.') }}</p>
       <p v-else-if="noValues" class="timeline-empty">{{ text('This measure has no comparable values in these periods. Inspect the sample counts or choose a wider grouping.', 'Diese Kennzahl hat in diesen Zeitabschnitten keine vergleichbaren Werte. Prüfe die Stichprobengrößen oder wähle eine größere Gruppierung.') }}</p>
-      <div v-if="currentBucket" class="timeline-readout"><span class="timeline-readout-date">{{ date(currentBucket.start) }} – {{ date(currentBucket.end) }}</span><template v-if="view === 'alignment'"><span>{{ metricLabel(currentBucket) }}</span><span>{{ number(currentBucket.pairedCount) }} {{ text('score pairs', 'Wertepaare') }}</span><span v-if="metric === 'hit' && currentBucket.alignment.highFitHitInterval">95%: {{ number(currentBucket.alignment.highFitHitInterval.lower * 100) }}–{{ number(currentBucket.alignment.highFitHitInterval.upper * 100) }}%</span></template><template v-else-if="view === 'topics'"><span v-for="topic in chosenTopics" :key="topic.id">{{ topic.label }}: {{ number(currentBucket.topicHighCounts[topic.id] ?? 0) }}</span></template><template v-else><span>{{ number(currentBucket.addedCount) }} {{ text('added', 'hinzugefügt') }}</span><span>{{ number(currentBucket.reviewedCount) }} {{ text('reviewed', 'bewertet') }}</span><span>{{ number(currentBucket.highInterestCount) }} {{ text('high interest', 'hohes Interesse') }}</span><span>{{ number(currentBucket.mismatchCount) }} {{ text('misaligned', 'Fehlpassungen') }}</span></template></div>
+      <div v-if="currentBucket" class="timeline-readout"><span class="timeline-readout-date">{{ date(currentBucket.start) }} – {{ date(currentBucket.end) }}</span><template v-if="view === 'alignment'"><span>{{ metricLabel(currentBucket) }}</span><span>{{ number(currentBucket.pairedCount) }} {{ text('score pairs', 'Wertepaare') }}</span><span v-if="metric === 'hit' && currentBucket.alignment.highFitHitInterval">95%: {{ number(currentBucket.alignment.highFitHitInterval.lower * 100) }}–{{ number(currentBucket.alignment.highFitHitInterval.upper * 100) }}%</span></template><template v-else-if="view === 'topics'"><span v-for="topic in chosenTopics" :key="topic.id">{{ topic.label }}: {{ number(currentBucket.topicHighCounts[topic.id] ?? 0) }}</span></template><template v-else><span>{{ number(currentBucket.addedCount) }} {{ text('added', 'hinzugefügt') }}</span><span>{{ number(currentBucket.reviewedCount) }} {{ text('reviewed', 'bewertet') }}</span><span>{{ number(currentBucket.highInterestCount) }} {{ text('high interest', 'hohes Interesse') }}</span><span>{{ number(currentBucket.veryHighInterestCount) }} {{ text('very high interest', 'sehr hohes Interesse') }}</span><span>{{ number(currentBucket.lowInterestCount) }} {{ text('low interest', 'geringes Interesse') }}</span><span>{{ number(currentBucket.mismatchCount) }} {{ text('misaligned', 'Fehlpassungen') }}</span></template></div>
     </div>
   </section>
 </template>
@@ -148,8 +152,8 @@ onBeforeUnmount(() => observer?.disconnect());
 .timeline-aggregation select, .timeline-metric select { width: auto; min-height: 36px; max-width: 100%; padding: 5px 26px 5px 8px; font: 400 12px/1.5 var(--font-ui); }
 .timeline-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; min-height: 36px; margin-bottom: 4px; }
 .timeline-key { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ui-muted); }
-.timeline-key::before { content: ''; width: 14px; height: 2px; background: var(--series-color); }
-.timeline-key.is-added::before { height: 8px; background: var(--ui-divider); }
+.timeline-key::before { content: ''; width: 14px; border-top: 2px var(--series-line-style, solid) var(--series-color); }
+.timeline-key.is-added::before { height: 8px; border: 0; background: var(--ui-divider); }
 .timeline-metric { margin-inline-start: auto; }
 .timeline-plot { display: block; width: 100%; height: 264px; overflow: visible; }
 .timeline-axis { color: var(--ui-muted); font: 11px var(--font-ui); }

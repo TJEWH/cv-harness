@@ -15,6 +15,7 @@ export const OPPORTUNITY_INSIGHTS_MAX_TOPICS = 8;
 export const OPPORTUNITY_INSIGHTS_MAX_GROUPS = 8;
 export const OPPORTUNITY_INSIGHTS_MAX_MISMATCH_EXAMPLES = 8;
 export const OPPORTUNITY_INSIGHTS_HIGH_INTEREST_MIN = 8;
+export const OPPORTUNITY_INSIGHTS_VERY_HIGH_INTEREST_MIN = 9;
 export const POTENTIAL_FALSE_POSITIVE_FIT_MIN = 8;
 export const POTENTIAL_FALSE_POSITIVE_INTEREST_MAX = 4;
 export const OPPORTUNITY_INSIGHTS_WINDOW_DAYS = [7, 14, 30, 60, 90, 180, 365] as const;
@@ -189,6 +190,10 @@ export interface OpportunityInsightTimelineBucket {
   addedCount: number;
   reviewedCount: number;
   highInterestCount: number;
+  /** Explicit interest at least 9; also included in highInterestCount. */
+  veryHighInterestCount: number;
+  /** Explicit interest at most 4, using the shared low-interest band. */
+  lowInterestCount: number;
   mismatchCount: number;
   pairedCount: number;
   alignment: OpportunityAlignmentStats;
@@ -582,16 +587,18 @@ function buildTimeline(rows: readonly Observation[], requested: OpportunityInsig
     const next = nextCalendarBin(cursor, aggregation), group = grouped.get(cursor.getTime()) ?? [];
     const binStart = BigInt(cursor.getTime()) * 1_000n, binEnd = BigInt(next.getTime()) * 1_000n - 1n;
     const alignment = alignmentStats(group), topicHighCounts = new Map<string, number>();
-    let reviewedCount = 0, highInterestCount = 0;
+    let reviewedCount = 0, highInterestCount = 0, veryHighInterestCount = 0, lowInterestCount = 0;
     for (const row of group) if (explicitInterest(row)) {
       reviewedCount++;
+      if (row.outcome.interest_score! >= OPPORTUNITY_INSIGHTS_VERY_HIGH_INTEREST_MIN) veryHighInterestCount++;
+      if (row.outcome.interest_score! <= POTENTIAL_FALSE_POSITIVE_INTEREST_MAX) lowInterestCount++;
       if (row.outcome.interest_score! >= OPPORTUNITY_INSIGHTS_HIGH_INTEREST_MIN) {
         highInterestCount++;
         for (const id of row.topicLabels.keys()) topicHighCounts.set(id, (topicHighCounts.get(id) ?? 0) + 1);
       }
     }
     buckets.push({ start: microsIso(binStart < start ? start : binStart), end: microsIso(binEnd > end ? end : binEnd),
-      addedCount: group.length, reviewedCount, highInterestCount, mismatchCount: alignment.falsePositiveCount,
+      addedCount: group.length, reviewedCount, highInterestCount, veryHighInterestCount, lowInterestCount, mismatchCount: alignment.falsePositiveCount,
       pairedCount: alignment.pairedCount, alignment, topicHighCounts: Object.fromEntries([...topicHighCounts].sort(([a], [b]) => a.localeCompare(b))) });
     cursor = next;
   }
@@ -850,6 +857,7 @@ export async function buildOpportunityInsightsAnalysisPrompt(input: OpportunityI
     interpretation: {
       interest_metric: 'Low interest=2, medium=6, high=8, very high=9. An existing application scores 9 and a confirmed submission scores 9.5, taking precedence over the saved opportunity choice. Missing interest remains unknown.',
       high_interest: 'Recorded review choice or application evidence with interest >=8. Applications and confirmed submissions are included.',
+      outcomes: 'Addition timeline outcomes count explicit recorded review choice or application evidence: high interest >=8, very high interest >=9, and low interest <=4. Very high interest is a subset of high interest, so those series overlap. Applications (9) and confirmed submissions (9.5) enter both high-interest series. Missing or unscored interest enters neither interest band nor the reviewed count; empty periods have zero counts.',
       groups: 'Topic and reason groups overlap; one opportunity counts at most once per group. Topic bars and trends count explicit high interest, not mean scores. Topic shares divide explicit high interest by explicit reviewed members; lift divides that share by the selected cohort global explicit high-interest/reviewed share. Applications and confirmed submissions enter these denominators with their derived scores. The summary shows only topics with high-interest members, while the relationship graph retains all safe topics, including isolated topics and topics with no high-interest examples. Groups with fewer than three explicit reviewed observations are provisional.',
       time_window: 'All ranges, trends and examples use Opportunity.created_at: the shared catalogue Added date. Rating times, submission dates, views and general update timestamps never move a job between addition cohorts. Current feedback for jobs added over time is retrospective, not a historical rating trajectory or original prediction record. Custom ranges include both ISO endpoints [start,end], with an inclusive duration of end-start+1 microsecond; the preceding equal range includes [previousStart,start). Relative windows retain their requested elapsed-day duration. Missing or invalid Added dates are retained only in All history; future dates are after the actual analysis clock, not merely after a selected historical end. Date coverage describes nonexcluded catalogue observations at or before that clock; undatedScoredCount identifies scored feedback whose job lacks an Added date. Counts for undated, outside and future observations describe the loaded catalogue, while charts and examples use only the selected cohort.',
       alignment: 'Paired current catalogue fit and explicit owner interest only. High-fit hit rate is interest>=8 among fit>=8; potential false-positive rate is interest<=4 among the same high-fit members, so middle-band interest is neither. Missed-high-interest rate is fit<8 among paired owner interest>=8. Signed gap is fit minus owner interest; positive means fit is higher. The hit interval is the two-sided Wilson95 score interval. Spearman uses average tied ranks and is shown only for at least five nonconstant pairs; this is a display guard, not significance. No p-values or population/generalization claims are supplied. Deltas compare selected versus preceding addition cohorts using present catalogue scores and latest feedback, not historical prediction snapshots; changes can reflect composition and missing feedback.',

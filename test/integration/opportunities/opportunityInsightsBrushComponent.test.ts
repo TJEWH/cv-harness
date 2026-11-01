@@ -25,7 +25,7 @@ interface HostNode {
   setPointerCapture(id: number): void; hasPointerCapture(id: number): boolean; releasePointerCapture(id: number): void;
 }
 let viewportWidth = 280;
-const left = 37, top = 73, height = 44;
+const left = 37, top = 73, height = 88;
 function node(tag?: string, text?: string): HostNode {
   const captured = new Set<number>();
   return { tag, text, props: {}, children: [], clientWidth: viewportWidth,
@@ -62,7 +62,7 @@ function mount(t: TestContext, selected: Range, width = 280) {
   Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: class { observe() {} disconnect() {} } });
   Object.defineProperty(globalThis, 'requestAnimationFrame', { configurable: true, value: (callback: FrameRequestCallback) => { frames.set(++frameId, callback); return frameId; } });
   Object.defineProperty(globalThis, 'cancelAnimationFrame', { configurable: true, value: (id: number) => { frames.delete(id); } });
-  const props = reactive({ overview: { start: '2026-07-01T00:00:00', end: '2026-10-31T23:59:59.999', buckets: [], unavailableReason: null },
+  const props = reactive({ overview: { start: '2026-07-01T00:00:00', end: '2026-10-31T23:59:59.999', buckets: [] as { start: string; end: string; addedCount: number }[], unavailableReason: null },
     domainStart: '2026-07-01T00:00:00', domainEnd: '2026-10-31T23:59:59.999', rangeStart: selected.start, rangeEnd: selected.end, lang: 'en' });
   const root = node('root'), ranges: (Range | null)[] = [], active: boolean[] = [];
   const app = renderer.createApp({ render: () => h(component, { ...props,
@@ -110,15 +110,39 @@ function mount(t: TestContext, selected: Range, width = 280) {
     current: () => ({ start: props.rangeStart, end: props.rangeEnd }),
     controls: () => descendants(root).filter(item => item.props.role === 'slider'),
     grips: () => descendants(svg).filter(item => item.tag === 'rect' && item.props['pointer-events'] === 'none'),
+    dates: () => descendants(root).filter(item => item.tag === 'time').map(item => ({ datetime: item.props.datetime, label: item.text })),
+    duration: () => descendants(root).find(item => item.props.class === 'timeline-brush-duration')?.text,
   };
 }
+
+test('human-readable dates follow local pointer previews and cancellation without committing or changing ISO endpoints', async t => {
+  const original = range(min + 9, min + 19), view = mount(t, original); await nextTick();
+  assert.deepEqual(view.dates(), [{ datetime: '2026-07-10', label: '10 Jul 2026' }, { datetime: '2026-07-20', label: '20 Jul 2026' }]);
+  assert.equal(view.duration(), '11 days');
+  const origin = view.x(min + 9), destination = view.x(min + 4);
+  view.down(1, origin, 22); view.move(1, destination, 22); await view.flush();
+  assert.deepEqual(view.current(), original); assert.deepEqual(view.ranges, []);
+  assert.deepEqual(view.dates(), [{ datetime: '2026-07-05', label: '5 Jul 2026' }, { datetime: '2026-07-20', label: '20 Jul 2026' }]);
+  assert.equal(view.duration(), '16 days');
+  assert.equal(view.controls()[0]!.props['aria-valuetext'], '5 Jul 2026 – 20 Jul 2026 · 16 days');
+  assert.deepEqual(view.controls().slice(1).map(control => control.props['aria-valuetext']), ['2026-07-05', '2026-07-20']);
+  view.props.lang = 'de'; await nextTick();
+  assert.deepEqual(view.dates(), [{ datetime: '2026-07-05', label: '5. Juli 2026' }, { datetime: '2026-07-20', label: '20. Juli 2026' }]);
+  assert.equal(view.duration(), '16 Tage');
+  view.end(1, destination, 22, 'mouse', 'onPointercancel'); await nextTick();
+  assert.deepEqual(view.current(), original); assert.deepEqual(view.ranges, []);
+  assert.deepEqual(view.dates(), [{ datetime: '2026-07-10', label: '10. Juli 2026' }, { datetime: '2026-07-20', label: '20. Juli 2026' }]);
+  assert.equal(view.duration(), '11 Tage');
+  assert.equal(view.controls()[0]!.props['aria-valuetext'], '10. Juli 2026 – 20. Juli 2026 · 11 Tage');
+  assert.deepEqual(view.controls().slice(1).map(control => control.props['aria-valuetext']), ['2026-07-10', '2026-07-20']);
+});
 
 for (const pointerType of ['mouse', 'touch']) for (const side of ['left', 'right']) for (const days of [1, 2]) for (const action of ['start', 'move', 'end']) {
   test(`${pointerType} can ${action} a ${days}-day selection at the ${side} boundary of a 123-day narrow brush`, async t => {
     const start = side === 'left' ? min : max - days + 1, end = start + days - 1;
     const original = range(start, end), view = mount(t, original);
     await nextTick();
-    const y = action === 'start' ? 11 : action === 'end' ? 33 : 22, origin = view.x(start);
+    const y = action === 'start' ? 22 : action === 'end' ? 66 : 44, origin = view.x(start);
     const target = view.down(1, origin, y, pointerType);
     assert.equal(target.props['aria-label'], 'Brush end date', 'paint order really sends the shared overlapping area to the final endpoint');
     const targetDay = side === 'left' ? min + 7 : max - 7, destination = view.x(targetDay);
@@ -141,32 +165,70 @@ test('compact grips expose distinct upper and lower resize lanes beside the cent
   const view = mount(t, range(max, max), 900); await nextTick();
   const [start, end] = view.grips();
   assert(start && end);
-  assert(Number(start.props.y) + Number(start.props.height) <= 44 / 3);
-  assert(Number(end.props.y) >= 88 / 3);
-  assert(view.controls().slice(1).every(control => control.props.width === '44' && control.props.height === '44'));
-  assert.equal(view.svg.props.viewBox, '0 0 900 44');
-  view.down(1, view.x(max), 11); view.move(1, view.x(max - 4), 11); view.end(1, view.x(max - 4), 11); await nextTick();
+  assert(Number(start.props.y) + Number(start.props.height) <= 88 / 3);
+  assert(Number(end.props.y) >= 176 / 3);
+  assert(view.controls().slice(1).every(control => Number(control.props.width) === 44 && Number(control.props.height) === 88));
+  assert.equal(view.svg.props.viewBox, '0 0 900 88');
+  assert.equal(view.svg.props.height, 88, 'the SVG has an explicit 88px physical height');
+  view.down(1, view.x(max), 22); view.move(1, view.x(max - 4), 22); view.end(1, view.x(max - 4), 22); await nextTick();
   assert.deepEqual(view.current(), range(max - 4, max));
 });
 
+test('the taller chart doubles overview and track geometry while retaining a usable lower creation area', async t => {
+  const view = mount(t, range(min + 30, min + 60), 900);
+  view.props.overview.buckets.push(
+    { start: '2026-07-01T00:00:00', end: '2026-07-01T23:59:59', addedCount: 4 },
+    { start: '2026-07-02T00:00:00', end: '2026-07-02T23:59:59', addedCount: 2 },
+  );
+  await nextTick();
+  assert.equal(view.svg.props.height, 88);
+  assert.equal(view.svg.getBoundingClientRect().height, 88);
+  const ground = descendants(view.svg).find(item => item.props.class === 'timeline-brush-ground')!;
+  const selection = view.controls()[0]!;
+  assert.deepEqual([Number(ground.props.y), Number(ground.props.height)], [15, 58]);
+  assert.deepEqual([Number(selection.props.y), Number(selection.props.height)], [17, 54]);
+  const bars = descendants(view.svg).find(item => item.props.class === 'timeline-overview')!.children.filter(item => item.tag === 'rect');
+  assert.deepEqual(bars.map(bar => [Number(bar.props.y), Number(bar.props.height)]), [[41, 32], [57, 16]]);
+  assert(view.grips().every(grip => Number(grip.props.y) === 26 && Number(grip.props.height) === 36));
+  assert.strictEqual(view.down(1, view.x(min + 10), 72), ground, 'the expanded lower track receives pointer input');
+  view.move(1, view.x(min + 15), 72);
+  assert.deepEqual(view.ranges, [], 'the taller track still previews without committing');
+  view.end(1, view.x(min + 15), 72); await nextTick();
+  assert.deepEqual(view.current(), range(min + 10, min + 15));
+});
+
+for (const { y, action } of [{ y: 2, action: 'start' }, { y: 44, action: 'move' }, { y: 86, action: 'end' }]) {
+  test(`a compact ${action} gesture works at physical y=${y} of the 88px endpoint target`, async t => {
+    const start = min + 60, destination = action === 'end' ? start + 5 : start - 5;
+    const view = mount(t, range(start, start)); await nextTick();
+    const target = view.down(1, view.x(start), y, 'touch');
+    assert.equal(target.props['aria-label'], 'Brush end date', 'paint order hits the overlapping endpoint even at the outer vertical edge');
+    view.move(1, view.x(destination), y, 'touch'); view.end(1, view.x(destination), y, 'touch'); await nextTick();
+    assert.deepEqual(view.current(), action === 'start' ? range(destination, start)
+      : action === 'end' ? range(start, destination) : range(destination, destination));
+    assert.deepEqual(view.active, [true, false]);
+    assert.equal(view.svg.hasPointerCapture(1), false);
+  });
+}
+
 test('wider selections retain normal endpoint actions at every height and center translation', async t => {
   const start = min + 30, end = max - 30, view = mount(t, range(start, end)); await nextTick();
-  view.down(1, view.x(start), 33); view.move(1, view.x(start + 3), 33); view.end(1, view.x(start + 3), 33); await nextTick();
+  view.down(1, view.x(start), 66); view.move(1, view.x(start + 3), 66); view.end(1, view.x(start + 3), 66); await nextTick();
   assert.deepEqual(view.current(), range(start + 3, end), 'a lower start-handle press still adjusts the start when targets are separate');
-  view.down(2, view.x(end), 11); view.move(2, view.x(end - 3), 11); view.end(2, view.x(end - 3), 11); await nextTick();
+  view.down(2, view.x(end), 22); view.move(2, view.x(end - 3), 22); view.end(2, view.x(end - 3), 22); await nextTick();
   assert.deepEqual(view.current(), range(start + 3, end - 3), 'an upper end-handle press still adjusts the end when targets are separate');
   const anchor = start + 20;
-  view.down(3, view.x(anchor), 11); view.move(3, view.x(anchor + 4), 11); view.end(3, view.x(anchor + 4), 11); await nextTick();
+  view.down(3, view.x(anchor), 22); view.move(3, view.x(anchor + 4), 22); view.end(3, view.x(anchor + 4), 22); await nextTick();
   assert.deepEqual(view.current(), range(start + 7, end + 1));
 });
 
 test('compact touch lanes preserve vertical intent cancellation and accept the next horizontal drag', async t => {
   const original = range(max, max), view = mount(t, original); await nextTick();
   const x = view.x(max);
-  view.down(1, x, 11, 'touch'); view.move(1, x - 2, 40, 'touch'); view.end(1, x - 50, 40, 'touch');
+  view.down(1, x, 22, 'touch'); view.move(1, x - 2, 80, 'touch'); view.end(1, x - 50, 80, 'touch');
   assert.deepEqual(view.active, []); assert.deepEqual(view.ranges, []);
   assert.equal(view.svg.hasPointerCapture(1), false);
-  view.down(2, x, 11, 'touch'); view.move(2, view.x(max - 7), 12, 'touch'); view.end(2, view.x(max - 7), 12, 'touch'); await nextTick();
+  view.down(2, x, 22, 'touch'); view.move(2, view.x(max - 7), 23, 'touch'); view.end(2, view.x(max - 7), 23, 'touch'); await nextTick();
   assert.deepEqual(view.current(), range(max - 7, max));
   assert.deepEqual(view.active, [true, false]);
 });
@@ -175,13 +237,13 @@ for (const cancellation of ['onPointercancel', 'onLostpointercapture', 'blur']) 
   test(`${cancellation} restores a compact preview and leaves subsequent gestures usable`, async t => {
     const original = range(min, min), view = mount(t, original); await nextTick();
     const x = view.x(min), destination = view.x(min + 7);
-    view.down(1, x, 33, 'touch'); view.move(1, destination, 34, 'touch'); await view.flush();
+    view.down(1, x, 66, 'touch'); view.move(1, destination, 67, 'touch'); await view.flush();
     if (cancellation === 'blur') view.listeners.get('blur')?.forEach(listener => listener());
-    else view.end(1, destination, 34, 'touch', cancellation);
-    view.end(1, destination, 34, 'touch'); await nextTick();
+    else view.end(1, destination, 67, 'touch', cancellation);
+    view.end(1, destination, 67, 'touch'); await nextTick();
     assert.deepEqual(view.current(), original); assert.deepEqual(view.ranges, []);
     assert.equal(view.frames.size, 0); assert.equal(view.svg.hasPointerCapture(1), false);
-    view.down(2, x, 22, 'touch'); view.move(2, destination, 23, 'touch'); view.end(2, destination, 23, 'touch'); await nextTick();
+    view.down(2, x, 44, 'touch'); view.move(2, destination, 45, 'touch'); view.end(2, destination, 45, 'touch'); await nextTick();
     assert.deepEqual(view.current(), range(min + 7, min + 7));
     assert.deepEqual(view.active, [true, false, true, false]);
   });
@@ -190,10 +252,10 @@ for (const cancellation of ['onPointercancel', 'onLostpointercapture', 'blur']) 
 test('compact translation keeps capture outside the brush and ignores a second pointer', async t => {
   const view = mount(t, range(max, max)); await nextTick();
   const x = view.x(max);
-  view.down(1, x, 22, 'touch'); view.down(2, x, 11, 'touch');
-  view.move(2, view.x(max - 20), 11, 'touch'); view.end(2, view.x(max - 20), 11, 'touch');
+  view.down(1, x, 44, 'touch'); view.down(2, x, 22, 'touch');
+  view.move(2, view.x(max - 20), 22, 'touch'); view.end(2, view.x(max - 20), 22, 'touch');
   assert.deepEqual(view.ranges, []); assert.deepEqual(view.active, []);
-  view.move(1, -50, 23, 'touch'); view.end(1, -50, 23, 'touch'); await nextTick();
+  view.move(1, -50, 45, 'touch'); view.end(1, -50, 45, 'touch'); await nextTick();
   assert.deepEqual(view.current(), range(min, min));
   assert.deepEqual(view.active, [true, false]); assert.equal(view.svg.hasPointerCapture(1), false);
 });
