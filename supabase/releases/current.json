@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "b214cc308ddef7a70478c1c582eef5b9cf43da78d21d3ef5d09500cff2332f94"
+      "sha256": "ccf46960607341671b7e07559a326f355bc8e255e5a525bf175b6722abab642f"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "0e2cd7adc7f92b435b039a377110491720e3d08b8f414066c6988a3477c64fbd"
+        "sha256": "37568cadecebd5d090d9f647be95819476866b72c31ece00f78d340bd43744ed"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -93,6 +93,10 @@
     "batch_diagnostics_upgrade": {
       "path": "supabase/releases/adaptive-search-batch-diagnostics-v1.sql",
       "sha256": "ad8101ea091fa11ba3364e9935d0eae0a40e2e63a205ab29bf4857bc23b422f6"
+    },
+    "evidence_fields_upgrade": {
+      "path": "supabase/releases/adaptive-search-evidence-fields-v1.sql",
+      "sha256": "465f4d558080bee0fca8217f81456eff51c8643940cb35d170f03a10f1a1bea9"
     },
     "lifecycle_contracts": [
       {

@@ -27,7 +27,8 @@ test('targeted brief upgrade matches current definitions and grants no app-role 
   const later = new Map([...definitions(read('supabase/releases/adaptive-search-supersession-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-response-handling-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-incremental-saves-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-batch-diagnostics-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-batch-diagnostics-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-evidence-fields-v1.sql'))]);
   assert.equal(installed.size, 3);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale brief upgrade: ${signature}`);
   assert.match(upgrade, new RegExp(`octet_length\\(brief::text\\)>${ADAPTIVE_BRIEF_MAX_BYTES}`, 'u'));
@@ -44,7 +45,8 @@ test('automatic replacement upgrade installs the same current fences with a defe
   assert.equal(installed.size, 7);
   const later = new Map([...definitions(read('supabase/releases/adaptive-search-response-handling-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-incremental-saves-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-batch-diagnostics-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-batch-diagnostics-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-evidence-fields-v1.sql'))]);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale replacement upgrade: ${signature}`);
   assert.match(upgrade, /ADD COLUMN superseded_by_run_id uuid/u);
   assert.match(upgrade, /FOREIGN KEY \(user_id,search_id,superseded_by_run_id\)[\s\S]*?REFERENCES public\.opportunity_search_runs\(user_id,search_id,id\) DEFERRABLE INITIALLY DEFERRED/u);
@@ -113,5 +115,20 @@ test('batch diagnostics upgrade adds bounded owner-scoped metadata without chang
   assert.doesNotMatch(installation, /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|PERFORM)\b/iu);
   assert.match(installation, /Expected the reviewed incremental-saves predecessor/u);
   assert.match(installation, /Batch diagnostics installation already exists or is partial/u);
+  assert.match(upgrade, /begin;[\s\S]*commit;\s*$/u);
+});
+
+test('evidence guidance upgrade changes only the bounded brief and preserves validation and internal pins', () => {
+  const upgrade = read('supabase/releases/adaptive-search-evidence-fields-v1.sql');
+  const installed = definitions(upgrade), current = definitions(read('supabase/schemas/12_search_support.sql'));
+  assert.deepEqual([...installed.keys()], ['private.begin_adaptive_search_brief(p_search_id uuid, p_run_id uuid) RETURNS jsonb']);
+  for (const [signature, body] of installed) assert.equal(body, current.get(signature));
+  assert.match(upgrade, /EVIDENCE FIELD NAMES/u);
+  assert.match(upgrade, /jsonb_object_keys\(private\.opportunity_storage_schema\(\)->'properties'\)/u);
+  assert.match(upgrade, /octet_length\(brief::text\)>65536/u);
+  assert.doesNotMatch(upgrade, /SECURITY DEFINER|\bGRANT\b|\bREVOKE\b|\bALTER\b|\bDROP\b|CREATE TABLE/u);
+  const installation = upgrade.replace(functionDefinition, '').replace(/^--.*$/gmu, '');
+  assert.doesNotMatch(installation, /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|PERFORM)\b/iu);
+  assert.match(installation, /Expected the reviewed supersession brief predecessor/u);
   assert.match(upgrade, /begin;[\s\S]*commit;\s*$/u);
 });

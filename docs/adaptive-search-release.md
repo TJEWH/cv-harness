@@ -55,6 +55,8 @@ For an existing database, install missing upgrades in order: [lifecycle](../supa
 
 The batch-diagnostics upgrade adds one nullable run metadata column and an internal schema-path locator, and updates batch rejection handling. It retains bounded stage/SQLSTATE and known field paths on authorized active-run validation failures. It stores no rejected payloads, backfills no failures and changes no run status or schedule. Existing owner-read and management-write restrictions remain in force. This server-only upgrade needs no new recurring prompt or extra research request.
 
+The subsequent [evidence-field guidance upgrade](../supabase/releases/adaptive-search-evidence-fields-v1.sql) changes only the hosted brief function. It appends the accepted canonical roots for `sources[].supports`, matching the existing validator, to the returned protocol text. The internal pinned protocol, schema, validation rules, saved recurring prompt and access remain unchanged. Existing tasks need no prompt refresh. The guarded upgrade is tested with a pre-existing active run and identical startup recovery.
+
 After deploying a changed recurring prompt, refresh it once per existing ChatGPT automation through its scoped setup handoff, then confirm the task update and Supabase acknowledgement. Response handling and incremental saves require this refresh even when the task already uses the brief helper. Deployment does not rewrite an already-saved task. Keep the same task binding and cadence. Automatic replacement remains server behavior; capture, decoding, one-opportunity saves and recovery depend on the saved instructions.
 
 ## Verification

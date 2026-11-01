@@ -4084,8 +4084,13 @@ begin
   if bundle#>>'{error,code}'='scope_oversized' then raise exception 'Adaptive scope exceeds its bound' using errcode='54000';end if;
   if bundle->'compatible' is distinct from 'true'::jsonb then return bundle;end if;
   brief:=bundle||jsonb_build_object('brief_version',1,'response_limit_bytes',65536);
+  -- Clarify existing evidence validation in the hosted response without
+  -- changing the pinned internal protocol, schema, receipts or retry identity.
+  brief:=jsonb_set(brief,'{protocol_text}',to_jsonb((bundle->>'protocol_text')||E'\n\nEVIDENCE FIELD NAMES\n'
+    ||E'Each sources[].supports entry identifies a canonical opportunity field actually evidenced by that source. Use an exact name from the following JSON list, or a JSON pointer rooted in one of those names (for example /data/funding). Do not use display labels, prose, source kinds, or an opportunity. prefix. Check every entry locally against this list before submission; no database discovery is needed. Keep only supported claims and never invent a field name.\n'
+    ||(select jsonb_agg(key order by key)::text from jsonb_object_keys(private.opportunity_storage_schema()->'properties') as fields(key))));
   -- Transport projection only: bundle has already passed full startup validation.
-  -- Keep preferences, context, protocol and schema unchanged; retain snapshot statistics.
+  -- Keep preferences, context and schema unchanged; retain snapshot statistics.
   select jsonb_set(brief, '{planning}',
     ((bundle->'planning')-array['approved_rules','approved_preferences']) || jsonb_build_object(
       'priorities',coalesce(jsonb_agg(priority order by position) filter (where keep),'[]'::jsonb),

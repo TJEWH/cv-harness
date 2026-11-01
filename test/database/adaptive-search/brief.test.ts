@@ -71,7 +71,8 @@ test('single startup response preserves the executable contract, 16 feedback exa
     assert.equal(brief.query_plan, null);
     assert.equal(brief.legacy_core_queries, null);
     const original = full(f); // Test oracle only; the runtime consumes the one brief above.
-    for (const field of ['scope', 'release', 'base', 'protocol_text', 'result_schema', 'query_plan', 'legacy_core_queries',
+    assert.ok(brief.protocol_text.startsWith(original.protocol_text + '\n\nEVIDENCE FIELD NAMES\n'));
+    for (const field of ['scope', 'release', 'base', 'result_schema', 'query_plan', 'legacy_core_queries',
       'due_sources', 'source_context', 'preferences', 'refresh', 'lease', 'execution_contract']) {
       assert.deepEqual(brief[field], original[field], `${field} changed at the response boundary`);
     }
@@ -261,6 +262,76 @@ test('single response startup feeds one batch and independent completion in thre
     assert.equal(result.current_verification.all_saved_items_verified, true);
     assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_batches where run_id='${f.run}';`), '1');
   } finally { cleanup(f); }
+});
+
+test('hosted evidence guidance exposes accepted fields and a corrected support name saves and verifies', () => {
+  const f = fixture(), query = randomUUID(), batch = randomUUID(), completion = randomUUID();
+  try {
+    const startup = begin(f);
+    const fields: string[] = JSON.parse(startup.protocol_text.split('\n').at(-1));
+    assert.deepEqual([...fields].sort(), Object.keys(startup.result_schema.properties).filter(key => key !== 'merge_control').sort());
+    assert.equal(sql(`select bool_and(private.opportunity_search_support_field(value) is not null)
+      from jsonb_array_elements_text(${json(fields)});`), 't');
+    assert.match(startup.protocol_text, /sources\[\]\.supports[\s\S]*exact name[\s\S]*JSON pointer[\s\S]*no database discovery/u);
+    assert.equal(sql("select private.opportunity_search_support_field('/data/funding');"), '/data/funding');
+    const now = new Date().toISOString(), url = `https://example.invalid/evidence/${f.run}`;
+    const opportunity = { opportunity_key: `evidence-${f.run}`, title: 'Synthetic verified sensing role', official_url: url,
+      last_checked_at: now, sources: [{ url, kind: 'official', checked_at: now, precision: 'instant', supports: ['opportunity.title'] }] };
+    assert.equal(sql(`select private.opportunity_search_schema_valid(${json(opportunity)},private.opportunity_search_result_schema());`), 't',
+      'The historical string-only schema does not communicate the semantic support-name restriction');
+    assert.throws(() => sql(`select private.validate_opportunity_search_result(${json(opportunity)});`), /Unknown evidence field/u);
+    opportunity.sources[0]!.supports = ['title', 'official_url'];
+    assert.ok(opportunity.sources[0]!.supports.every(field => fields.includes(field)));
+    const receipt = JSON.parse(sql(buildAdaptiveSearchSqlCall({ action: 'batch', scope: f.scope, batch_id: batch,
+      payload: { schema_version: 1, query_plan: { schema_version: 2,
+        queries: [{ query_id: query, query: 'synthetic acoustic sensing research', role: 'core', manual: false }] },
+      opportunities: [{ item_id: randomUUID(), opportunity }], execution: { checks: [
+        { check_id: randomUUID(), kind: 'query', query_id: query, attempted_at: now, status: 'complete', results_count: 1 },
+        ...startup.due_sources.map((source: { registry_id: string }) => ({ check_id: randomUUID(), kind: 'source',
+          source_registry_id: source.registry_id, attempted_at: now, status: 'complete', results_count: 0 })),
+      ], backlog: [], complete: true } } }).sql));
+    assert.equal(receipt.items?.[0]?.outcome, 'saved', JSON.stringify(receipt));
+    const result = JSON.parse(sql(buildAdaptiveSearchSqlCall({ action: 'complete', scope: f.scope,
+      payload: { schema_version: 1, completion_id: completion, batch_ids: [batch], manifest_hash: receipt.manifest_hash, status: 'complete' } }).sql));
+    assert.equal(result.historical_summary.status, 'complete', JSON.stringify(result));
+    assert.equal(result.current_verification.saved_items, 1);
+    assert.equal(result.current_verification.all_saved_items_verified, true);
+  } finally { cleanup(f); }
+});
+
+test('evidence guidance upgrade preserves pre-existing pinned runs, schema, prompt and access', () => {
+  const signature = 'private.begin_adaptive_search_brief(uuid,uuid)';
+  const currentDefinition = sql(`select pg_get_functiondef('${signature}'::regprocedure);`);
+  const previous = [...file('supabase/releases/adaptive-search-supersession-v1.sql').matchAll(
+    /^CREATE OR REPLACE FUNCTION ([^\n]+)\n[\s\S]*?\bAS\s+(\$[A-Za-z0-9_]*\$)[\s\S]*?\2;/gmu,
+  )].find(match => match[1]!.startsWith('private.begin_adaptive_search_brief('));
+  assert.ok(previous);
+  const f = fixture();
+  const snapshot = () => sql(`select jsonb_build_object(
+    'run',(select to_jsonb(r) from public.opportunity_search_runs r where id='${f.run}'),
+    'context',(select to_jsonb(c) from private.opportunity_search_adaptive_contexts c where run_id='${f.run}'),
+    'template',(select to_jsonb(t) from public.opportunity_search_templates t where id='${f.search}'),
+    'prompt',private.adaptive_search_recurring_prompt('${f.search}','${project}'),
+    'schema',private.opportunity_search_result_schema(),
+    'properties',(select to_jsonb(p)-'prosrc' from pg_proc p where oid='${signature}'::regprocedure));`);
+  try {
+    sql(previous[0]);
+    const old = begin(f), before = snapshot();
+    assert.equal(old.compatible, true);
+    assert.doesNotMatch(old.protocol_text, /EVIDENCE FIELD NAMES/u);
+    const upgrade = file('supabase/releases/adaptive-search-evidence-fields-v1.sql');
+    sql(upgrade);
+    assert.equal(sql(`select pg_get_functiondef('${signature}'::regprocedure);`), currentDefinition);
+    assert.equal(snapshot(), before, 'Installation changed a historical pin, run, schema, recurring prompt or access');
+    const refreshed = begin(f);
+    assert.equal(refreshed.compatible, true, JSON.stringify(refreshed));
+    assert.equal(refreshed.scope.run_id, f.run);
+    assert.ok(refreshed.protocol_text.startsWith(old.protocol_text + '\n\nEVIDENCE FIELD NAMES\n'));
+    assert.equal(snapshot(), before, 'Re-reading the same run changed its pinned contract or lease');
+    assert.throws(() => sql(upgrade), /Expected the reviewed/iu);
+  } finally {
+    try { cleanup(f); } finally { reset(); }
+  }
 });
 
 test('targeted brief upgrade preserves active runs and schedules and revokes broad inherited function grants', () => {
