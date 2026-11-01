@@ -199,3 +199,29 @@ test('worker partitions keep excluded topics and previous accounts out of curren
   assert.equal(next.hierarchy![0]!.affinity, 0);
   assert(!next.positions.some(point => point.id === 'job:old-account'));
 });
+
+test('bundling worker shares the balanced hierarchy and connects only retained exact topics', async () => {
+  const { runOpportunityGraphTask } = await import('../../../src/features/opportunities/domain/opportunityGraphTask');
+  const jobs = [job('a', ['common', 'acoustics']), job('b', ['common', 'acoustic sensing']),
+    job('c', ['common', 'acoustics']), job('isolated', []), job('below', ['acoustics'], { interestScore: 7 })];
+  const request = { generation: 21, nodes: [], links: [], jobs, jobClusterCount: 2, jobMinimumInterest: 8,
+    jobExcludedTopicIds: ['common'], dimensions: 2 as const, entityKind: 'job' as const };
+  const hierarchy = runOpportunityGraphTask({ ...request, view: 'hierarchy' });
+  const result = runOpportunityGraphTask({ ...request, view: 'bundling' });
+  assert(!('error' in hierarchy) && !('error' in result));
+  assert.deepEqual(result.positions, [], 'bundling avoids the force-directed layout');
+  assert.deepEqual(result.hierarchy, hierarchy.hierarchy, 'the radial routing uses the same balanced job groups');
+  assert.deepEqual(result.bundling!.leaves.map(leaf => leaf.id).sort(), ['job:a', 'job:b', 'job:c', 'job:isolated']);
+  assert.equal(result.bundling!.groups.length, 2);
+  assert.equal(result.bundling!.relationshipCount, 1);
+  assert.deepEqual(result.bundling!.edges.map(edge => [edge.source, edge.target, edge.sharedTopicIds]),
+    [['job:a', 'job:c', ['acoustics']]], 'inferred related wording never becomes a shared-topic bundle');
+  const excluded = runOpportunityGraphTask({ ...request, view: 'bundling', jobExcludedTopicIds: ['common', 'acoustics'] });
+  assert(!('error' in excluded));
+  assert.equal(excluded.bundling!.relationshipCount, 0);
+  assert.equal(excluded.bundling!.leaves.length, 4, 'excluding all shared topics preserves eligible isolated jobs');
+  const lowerInterest = runOpportunityGraphTask({ ...request, view: 'bundling', jobMinimumInterest: 7 });
+  assert(!('error' in lowerInterest));
+  assert.equal(lowerInterest.bundling!.leaves.length, 5);
+  assert.equal(lowerInterest.bundling!.relationshipCount, 3, 'the committed interest threshold determines the shared-topic cohort');
+});

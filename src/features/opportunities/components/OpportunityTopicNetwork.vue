@@ -5,7 +5,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { OpportunityInsightGraph } from '../domain/opportunityInsights';
 import { opportunityGraphPreference, opportunityGraphSemanticLinks, type OpportunityGraphLayoutResponse, type OpportunityGraphRenderData, type OpportunityGraphLink, type OpportunityGraphNode, type OpportunityGraphPosition } from '../domain/opportunityGraphLayout';
 import type { OpportunityTopicHierarchyNode } from '../domain/opportunityTopicHierarchy';
+import type { OpportunityJobBundlingDiagram } from '../domain/opportunityJobBundling';
 import OpportunityTopicHierarchy from './OpportunityTopicHierarchy.vue';
+import OpportunityJobBundling from './OpportunityJobBundling.vue';
 import { JOB_CLUSTER_COLORS, TOPIC_CLUSTER_COLORS } from './opportunityClusterColors';
 import { createOpportunityNetworkSelection } from '../domain/opportunityNetworkSelection';
 import { opportunityTopicFocus } from '../domain/opportunityTopicFocus';
@@ -35,8 +37,11 @@ const emit = defineEmits<{ selectTopic: [id: string]; selectJob: [id: string]; a
 const text = (en: string, de: string) => props.lang === 'de' ? de : en;
 const viewport = ref<HTMLDivElement | null>(null);
 const dimensions = ref<2 | 3>(2);
-const presentation = ref<'network' | 'hierarchy'>('network');
+const presentation = ref<'network' | 'hierarchy' | 'bundling'>('network');
 const hierarchy = shallowRef<OpportunityTopicHierarchyNode[]>([]);
+const bundling = shallowRef<OpportunityJobBundlingDiagram | null>(null);
+const retryLabel = computed(() => presentation.value === 'bundling' ? text('Retry edge bundling', 'Kantenbündelung erneut laden')
+  : presentation.value === 'hierarchy' ? text('Retry hierarchy', 'Hierarchie erneut laden') : text('Retry map', 'Karte erneut laden'));
 const jobEvidence = shallowRef<{ source: OpportunityInsightGraph; minimumInterest: number; excludedKey: string; graph: OpportunityGraphRenderData } | null>(null);
 const jobExcludedKey = computed(() => JSON.stringify([...new Set(props.jobExcludedTopicIds)].sort()));
 const currentJobEvidence = computed(() => jobEvidence.value?.source === props.graph && jobEvidence.value.minimumInterest === props.jobMinimumInterest && jobEvidence.value.excludedKey === jobExcludedKey.value ? jobEvidence.value.graph : null);
@@ -60,6 +65,8 @@ let worker: Worker | null = null;
 let labelProbe: HTMLButtonElement | null = null;
 const labelMeasurements = new Map<string, { width: number; height: number }>();
 let generation = 0;
+let presentationGeneration = 0;
+let changingPresentation = false;
 let mounted = false;
 let disposed = false;
 let frame = 0;
@@ -447,10 +454,12 @@ function announceFailure() {
   emit('availability', false);
   stopRenderer();
   const owner = props.ownerId, token = generation;
-  failureToast = notify({ tone: 'error', message: presentation.value === 'hierarchy'
+  failureToast = notify({ tone: 'error', message: presentation.value === 'bundling'
+    ? text('The shared-topic connections could not be computed. The job list remains available.', 'Die Verbindungen gemeinsamer Themen konnten nicht berechnet werden. Die Stellenliste bleibt verfügbar.')
+    : presentation.value === 'hierarchy'
     ? text('The relationship hierarchy could not be computed. The topic and job lists remain available.', 'Die Beziehungshierarchie konnte nicht berechnet werden. Themen- und Stellenlisten bleiben verfügbar.')
     : text('The relationship map could not be displayed. The topic and job lists remain available.', 'Die Beziehungskarte konnte nicht angezeigt werden. Themen- und Stellenlisten bleiben verfügbar.'),
-    action: { label: presentation.value === 'hierarchy' ? text('Retry hierarchy', 'Hierarchie erneut laden') : text('Retry map', 'Karte erneut laden'), run: () => !disposed && props.ownerId === owner && generation === token ? retry() : undefined } });
+    action: { label: retryLabel.value, run: () => !disposed && props.ownerId === owner && generation === token ? retry() : undefined } });
 }
 function onContextLost(event: Event) { event.preventDefault(); announceFailure(); }
 function stopRenderer() {
@@ -472,7 +481,7 @@ function initialize() {
   if (!viewport.value || disposed) return;
   stopRenderer(); failed.value = false;
   if (!model.value.nodes.length) { busy.value = false; emit('availability', false); return; }
-  if (presentation.value === 'hierarchy') { emit('availability', true); arrange(); return; }
+  if (presentation.value !== 'network') { emit('availability', true); arrange(); return; }
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -508,6 +517,7 @@ function arrange() {
       if ('error' in data) { announceFailure(); return; }
       if (data.graph) jobEvidence.value = { source, minimumInterest, excludedKey, graph: data.graph };
       if (data.hierarchy) hierarchy.value = data.hierarchy;
+      if (data.bundling) bundling.value = data.bundling;
       if (presentation.value === 'network') {
         for (const point of data.positions) positions.set(point.id, point);
         buildScene();
@@ -529,27 +539,35 @@ const evidenceSources = [() => props.graph, () => props.viewMode, () => props.jo
   () => props.viewMode === 'jobs' ? props.jobClusterCount : null,
   () => props.visibleTopicIds, () => props.matchingJobCounts, () => props.interestMode, () => props.interestThreshold];
 watch([...evidenceSources, () => props.layoutPaused], () => {
-  if (!mounted) return;
-  if (!model.value.nodes.length) { generation++; stopWorker(); busy.value = false; hierarchy.value = []; stopRenderer(); emit('availability', false); return; }
-  if (presentation.value === 'hierarchy') { arrange(); return; }
+  if (!mounted || changingPresentation) return;
+  if (!model.value.nodes.length) { generation++; stopWorker(); busy.value = false; hierarchy.value = []; bundling.value = null; stopRenderer(); emit('availability', false); return; }
+  if (presentation.value !== 'network') { arrange(); return; }
   if (!renderer && !failed.value) initialize(); else arrange();
 });
-watch(evidenceSources, () => { hierarchy.value = []; hoveredEdge.value = null; }, { flush: 'sync' });
+watch(evidenceSources, () => { hierarchy.value = []; bundling.value = null; hoveredEdge.value = null; }, { flush: 'sync' });
 watch([() => props.selectedTopicIds, () => props.selectedJobId], () => { buildScene(); }, { deep: true });
-watch(() => props.viewMode, () => { frameFit = true; hoveredId.value = null; focusedId.value = null; hoveredEdge.value = null; });
+watch(() => props.viewMode, mode => {
+  frameFit = true; hoveredId.value = null; focusedId.value = null; hoveredEdge.value = null;
+  if (mode !== 'jobs' && presentation.value === 'bundling') presentation.value = 'network';
+}, { flush: 'sync' });
 watch(dimensions, () => { if (presentation.value === 'network') { configureCamera(); arrange(); } });
 watch(presentation, async () => {
+  const transition = ++presentationGeneration;
+  changingPresentation = true;
   generation++; stopWorker(); busy.value = false;
+  bundling.value = null;
   if (failureToast) dismiss(failureToast); failureToast = 0;
   stopRenderer(); failed.value = false;
   await nextTick();
-  if (!disposed) initialize();
-});
+  if (disposed || transition !== presentationGeneration) return;
+  changingPresentation = false;
+  initialize();
+}, { flush: 'sync' });
 watch(() => props.ownerId, () => {
-  generation++; stopWorker(); positions.clear(); hierarchy.value = []; jobEvidence.value = null;
+  generation++; stopWorker(); positions.clear(); hierarchy.value = []; bundling.value = null; jobEvidence.value = null;
   dimensions.value = 2; hoveredId.value = null; focusedId.value = null; hoveredEdge.value = null;
   if (failureToast) dismiss(failureToast); failureToast = 0;
-  if (mounted) { frameFit = true; initialize(); }
+  if (mounted) { frameFit = true; if (!changingPresentation) initialize(); }
 }, { flush: 'sync' });
 onMounted(() => { mounted = true; initialize(); document.addEventListener('visibilitychange', visibility); document.fonts?.addEventListener('loadingdone', onFontsLoaded); });
 onBeforeUnmount(() => { disposed = true; generation++; stopWorker(); busy.value = false; stopRenderer(); document.removeEventListener('visibilitychange', visibility); document.fonts?.removeEventListener('loadingdone', onFontsLoaded); if (failureToast) dismiss(failureToast); });
@@ -559,7 +577,7 @@ onBeforeUnmount(() => { disposed = true; generation++; stopWorker(); busy.value 
   <section class="topic-network" :aria-busy="busy">
     <div class="network-toolbar">
       <Teleport defer :to="presentationControlsTarget || 'body'" :disabled="!presentationControlsTarget">
-        <div class="network-view-controls network-presentation" role="group" :aria-label="viewMode === 'jobs' ? text('Job cluster view', 'Ansicht der Stellengruppen') : text('Topic relationship view', 'Ansicht der Themenbeziehungen')"><button type="button" :aria-pressed="presentation === 'network'" @click="presentation = 'network'">{{ text('Network', 'Netzwerk') }}</button><button type="button" :aria-pressed="presentation === 'hierarchy'" @click="presentation = 'hierarchy'">{{ text('Hierarchy', 'Hierarchie') }}</button></div>
+        <div class="network-view-controls network-presentation" role="group" :aria-label="viewMode === 'jobs' ? text('Job cluster view', 'Ansicht der Stellengruppen') : text('Topic relationship view', 'Ansicht der Themenbeziehungen')"><button type="button" :aria-pressed="presentation === 'network'" @click="presentation = 'network'">{{ text('Network', 'Netzwerk') }}</button><button type="button" :aria-pressed="presentation === 'hierarchy'" @click="presentation = 'hierarchy'">{{ text('Hierarchy', 'Hierarchie') }}</button><button v-if="viewMode === 'jobs'" type="button" :aria-pressed="presentation === 'bundling'" @click="presentation = 'bundling'">{{ text('Hierarchical edge bundling', 'Hierarchische Kantenbündelung') }}</button></div>
       </Teleport>
       <Teleport defer :to="cameraControlsTarget || 'body'" :disabled="!cameraControlsTarget">
         <div v-if="presentation === 'network'" class="network-view-controls" role="group" :aria-label="text('Network view', 'Netzwerkansicht')">
@@ -568,9 +586,10 @@ onBeforeUnmount(() => { disposed = true; generation++; stopWorker(); busy.value 
         <InfoHint :lang="lang" :label="viewMode === 'jobs' ? text('Job network controls', 'Steuerung des Stellennetzwerks') : text('Topic network controls', 'Steuerung des Themennetzwerks')" :text="viewMode === 'jobs' ? text('Drag to pan in 2D or rotate in 3D; scroll to zoom. Read size as topic groups per job, links as shared or related topics, and colors as clusters.', 'Ziehe zum Verschieben in 2D oder Drehen in 3D; scrolle zum Zoomen. Lies die Größe als Themengruppen pro Stelle, Linien als gemeinsame oder verwandte Themen und Farben als Gruppen.') : text('Drag to pan in 2D or rotate in 3D; scroll to zoom. Size counts matching jobs. Solid links show shared jobs, dashed links suggest related names, and colors show groups. Pink outlines mark your topic-specific avoid reasons.', 'Ziehe zum Verschieben in 2D oder Drehen in 3D; scrolle zum Zoomen. Die Größe zählt passende Stellen. Durchgezogene Linien zeigen gemeinsame Stellen, gestrichelte ähnliche Bezeichnungen und Farben die Gruppen. Rosa Umrisse markieren deine themenbezogenen Vermeidungsgründe.')" />
         </div>
       </Teleport>
-      <button v-if="failed" class="network-retry" type="button" @click="retry">{{ presentation === 'hierarchy' ? text('Retry hierarchy', 'Hierarchie erneut laden') : text('Retry map', 'Karte erneut laden') }}</button>
+      <button v-if="failed" class="network-retry" type="button" @click="retry">{{ retryLabel }}</button>
     </div>
     <OpportunityTopicHierarchy v-if="presentation === 'hierarchy' && !failed && model.nodes.length" :forest="hierarchy" :nodes="model.nodes" :selected-ids="selectedIds" :related-ids="relatedIds" :entity-kind="viewMode === 'jobs' ? 'job' : 'topic'" :lang="lang" :busy="busy" @select="select" />
+    <OpportunityJobBundling v-if="presentation === 'bundling' && viewMode === 'jobs' && !failed && model.nodes.length" :diagram="bundling" :nodes="model.nodes" :topics="graph.topics" :selected-id="selectedJobId ? jobId(selectedJobId) : null" :lang="lang" :busy="busy" @select="select" />
     <div v-show="presentation === 'network' && !failed && model.nodes.length" ref="viewport" class="network-canvas">
       <svg class="network-leaders" :viewBox="`0 0 ${viewSize.width} ${viewSize.height}`" aria-hidden="true"><line v-for="label in labels" :key="label.id" :class="{ 'is-muted': label.muted }" :x1="label.anchorX" :y1="label.anchorY" :x2="label.leaderX" :y2="label.leaderY" /></svg>
       <div class="network-labels">

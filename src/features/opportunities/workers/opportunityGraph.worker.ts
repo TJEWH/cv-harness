@@ -8,7 +8,10 @@ const scope = self as unknown as {
 scope.onmessage = ({ data }) => {
   try {
     const result = runOpportunityGraphTask(data);
-    scope.postMessage(result, 'graph' in result && result.graph ? [result.graph.adjacency.bits.buffer] : []);
+    const transfer: Transferable[] = [];
+    if ('graph' in result && result.graph) transfer.push(result.graph.adjacency.bits.buffer);
+    if ('bundling' in result && result.bundling) transfer.push(result.bundling.adjacency.bits.buffer);
+    scope.postMessage(result, transfer);
   }
   catch { scope.postMessage({ generation: data.generation, error: true }); }
 };

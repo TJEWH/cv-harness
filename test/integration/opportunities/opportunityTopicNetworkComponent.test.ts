@@ -88,9 +88,12 @@ test('job network worker requests clone reactive exclusion drafts on initial and
   const controlInstances: Controls[] = [];
   const Empty = defineComponent({ setup: () => () => h('span') });
   const Hierarchy = defineComponent({ props: ['forest', 'busy'], setup: props => () => h('hierarchy', { forest: props.forest, busy: props.busy }) });
+  const Bundling = defineComponent({ props: ['diagram', 'nodes', 'topics', 'selectedId', 'lang', 'busy'], emits: ['select'],
+    setup: (props, { emit }) => () => h('bundling', { ...props, onSelect: () => emit('select', 'job:a') }) });
   const module = (path: string) => path === 'three' ? { ...three, WebGLRenderer: Renderer }
     : path === 'three/addons/controls/OrbitControls.js' ? { OrbitControls: Controls }
       : path.endsWith('OpportunityTopicHierarchy.vue') ? { default: Hierarchy }
+      : path.endsWith('OpportunityJobBundling.vue') ? { default: Bundling }
       : path.endsWith('.vue') ? { default: Empty } : requireComponent(path);
   const componentExports: { default?: Component } = {}, renderExports: { render?: () => unknown } = {};
   new Function('require', 'exports', transpile(script.content))(module, componentExports);
@@ -145,7 +148,7 @@ test('job network worker requests clone reactive exclusion drafts on initial and
     assert.equal(cameraControls.parent, cameraTarget);
     assert(!walk(root).includes(presentationControls));
     assert(!walk(root).includes(cameraControls));
-    assert.equal(walk(presentationTarget).filter(target => target.tag === 'button').length, 2);
+    assert.equal(walk(presentationTarget).filter(target => target.tag === 'button').length, 3);
     assert.equal(walk(cameraTarget).filter(target => target.tag === 'button').length, 3);
     // The parent's desktop/mobile portals move these hosts as a unit.
     const inlineControls = node('inline-controls');
@@ -220,6 +223,44 @@ test('job network worker requests clone reactive exclusion drafts on initial and
     assert.equal(requests.at(-1)!.dimensions, 2);
     assert.equal(button(cameraTarget, '2D').props['aria-pressed'], true);
     assert.equal(controlInstances.at(-1)!.mouseButtons.LEFT, three.MOUSE.PAN);
+  });
+  await t.test('job edge bundling uses the worker without WebGL and invalidates filtered evidence', async () => {
+    const presentationTarget = teleportTargets.get('#presentation')!, cameraTarget = teleportTargets.get('#camera')!;
+    const button = walk(presentationTarget).find(target => target.tag === 'button' && content(target) === 'Hierarchical edge bundling');
+    assert(button);
+    const rendererCount = rendererInstances.length, activeRenderer = rendererInstances.at(-1)!;
+    button.props.onClick(); await nextTick(); await nextTick(); await nextTick();
+    assert.equal(requests.at(-1)!.view, 'bundling');
+    assert.equal(requests.at(-1)!.jobClusterCount, props.jobClusterCount);
+    assert.deepEqual(requests.at(-1)!.jobExcludedTopicIds, props.jobExcludedTopicIds);
+    assert.equal(rendererInstances.length, rendererCount, 'the SVG presentation creates no WebGL renderer');
+    assert.equal(activeRenderer.disposed, true);
+    assert(!walk(cameraTarget).some(target => target.tag === 'button'), 'network camera controls stay hidden');
+    const pending = walk(root).find(target => target.tag === 'bundling')!;
+    assert.equal(pending.props.busy, true);
+    assert.equal(pending.props.diagram, null);
+    const oldWorker = workers.at(-1)!, oldGeneration = requests.at(-1)!.generation;
+    const oldDiagram = { radius: 240, leaves: [{ id: 'job:a' }], edges: [], groups: [], relationshipCount: 0 };
+    oldWorker.onmessage?.({ data: { generation: oldGeneration, positions: [], bundling: oldDiagram } });
+    await nextTick();
+    assert.deepEqual(walk(root).find(target => target.tag === 'bundling')!.props.diagram, oldDiagram);
+    props.jobMinimumInterest = 7; await nextTick();
+    assert.equal(requests.at(-1)!.jobMinimumInterest, 7);
+    assert.equal(walk(root).find(target => target.tag === 'bundling')!.props.diagram, null, 'changed filters clear old curves immediately');
+    oldWorker.onmessage?.({ data: { generation: oldGeneration, positions: [], bundling: oldDiagram } });
+    await nextTick();
+    assert.equal(walk(root).find(target => target.tag === 'bundling')!.props.diagram, null, 'stale worker curves cannot overwrite the new cohort');
+    const workerBeforeOwner = workers.at(-1)!, generationBeforeOwner = requests.at(-1)!.generation;
+    props.ownerId = 'next-owner'; await nextTick();
+    workerBeforeOwner.onmessage?.({ data: { generation: generationBeforeOwner, positions: [], bundling: oldDiagram } });
+    await nextTick();
+    assert.equal(walk(root).find(target => target.tag === 'bundling')!.props.diagram, null, 'previous-account curves remain discarded');
+    props.viewMode = 'topics'; await nextTick(); await nextTick();
+    assert.equal(requests.at(-1)!.view, 'network', 'topic mode recovers its supported presentation');
+    assert.equal(requests.at(-1)!.jobs, undefined, 'topic layout never receives a job bundling request');
+    assert(!walk(presentationTarget).some(target => target.tag === 'button' && content(target) === 'Hierarchical edge bundling'));
+    assert(!walk(root).some(target => target.tag === 'bundling'));
+    assert.equal(rendererInstances.length, rendererCount + 1, 'topic mode restores the network canvas');
   });
   assert(!useToasts().toasts.value.some(toast => toast.tone === 'error'), 'serialization must not fail the map');
 });
