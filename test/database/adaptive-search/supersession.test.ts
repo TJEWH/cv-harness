@@ -298,7 +298,7 @@ for (const failure of ['typed_inner_rejection', 'brief_overflow'] as const) {
       // conversion before the adaptive runner can consume it.
       const criteria = failure === 'typed_inner_rejection' ? { topicsAndMethods: 'CV Harness meta-search context v1: synthetic legacy scope' }
         : Object.fromEntries(['opportunityTypes', 'topicsAndMethods', 'locationsAndLanguages', 'fundingAndConditions',
-          'fitAndExclusions', 'sourcesAndQueries', 'researchAndReporting'].map(key => [key, 'Synthetic scope '.repeat(740)]));
+          'fitAndExclusions', 'sourcesAndQueries', 'researchAndReporting'].map(key => [key, 'Synthetic scope 音響🧠 '.repeat(500)]));
       sql('update public.opportunity_search_templates set criteria=' + json(criteria) + ',revision=revision+1 where id=' + uuid(f.search) + ';');
       const before = snapshot(f.run);
       const reply = begin(f.search, f.next);

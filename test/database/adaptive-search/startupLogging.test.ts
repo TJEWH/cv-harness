@@ -3,6 +3,7 @@ import { before, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { file, reset, sql, sqlWithMessages } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral as json } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
+import { ADAPTIVE_BRIEF_MAX_BYTES } from '../../../src/features/meta-search/domain/adaptiveSearchBrief';
 
 before(() => reset());
 const project = 'abcdefghijklmnopqrst';
@@ -66,7 +67,8 @@ test('oversize diagnostics survive startup rollback and retain only section size
   try {
     const criteria = Object.fromEntries(['opportunityTypes', 'topicsAndMethods', 'locationsAndLanguages',
       'fundingAndConditions', 'fitAndExclusions', 'sourcesAndQueries', 'researchAndReporting']
-      .map(key => [key, `${marker} `.repeat(400)]));
+      .map(key => [key, `${marker} 音響🧠 `.repeat(350)]));
+    assert.ok(Object.values(criteria).every(value => Array.from(value).length <= 12_000));
     sql(`update public.opportunity_search_templates set criteria=${json(criteria)},revision=revision+1 where id='${f.search}';`);
     const observed = capture(start(f.search, f.run));
     assert.equal(JSON.parse(observed.output).error.code, 'scope_oversized');
@@ -74,7 +76,7 @@ test('oversize diagnostics survive startup rollback and retain only section size
     assert.equal(returned.error_code, 'scope_oversized');
     assert.equal(returned.sqlstate, '54000');
     assert.equal(returned.stage, 'response_bound');
-    assert.ok(returned.size_diagnostics.response_bytes > 65536);
+    assert.ok(returned.size_diagnostics.response_bytes > ADAPTIVE_BRIEF_MAX_BYTES);
     assert.equal(sql(`select count(*) from public.opportunity_search_runs where id='${f.run}';`), '0');
     assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_contexts where run_id='${f.run}';`), '0');
   } finally { cleanup(f); }
@@ -131,7 +133,12 @@ test('logging upgrade preserves pinned response, function privileges, all unrela
     assert.equal(properties(), access);
     assert.equal(untouched(), others);
     assert.equal(sql(start(f.search, f.run)), response);
-    assert.equal(sql("select md5(prosrc) from pg_proc where oid='private.begin_adaptive_search_brief(uuid,uuid)'::regprocedure;"),
-      sql(current + "select md5(prosrc) from pg_proc where oid='private.begin_adaptive_search_brief(uuid,uuid)'::regprocedure;"));
+    // This immutable logging upgrade predates the larger brief limit. Verify
+    // its exact historical bodies; the limit upgrade is tested separately.
+    for (const match of definitions(file('supabase/releases/adaptive-search-startup-logging-v1.sql'))) {
+      const name = match[1]!.split('(')[0]!;
+      const expected = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(match[0])![2]!.trim();
+      assert.equal(sql(`select prosrc from pg_proc where oid='${name}(uuid,uuid)'::regprocedure;`), expected);
+    }
   } finally { sql(current); cleanup(f); }
 });

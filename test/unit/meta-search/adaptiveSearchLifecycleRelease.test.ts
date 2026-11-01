@@ -21,7 +21,8 @@ test('the versioned lifecycle upgrade contains the reviewed current fencing and 
     ...definitions(read('supabase/releases/adaptive-search-batch-diagnostics-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-evidence-fields-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-startup-logging-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql'))]);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale upgrade definition: ${signature}`);
   for (const name of ['begin_adaptive_opportunity_search', 'begin_opportunity_search', 'complete_opportunity_search',
     'opportunity_search_adaptive_error', 'opportunity_search_adaptive_completion_error', 'verify_and_complete_adaptive_search',

@@ -3,7 +3,7 @@
  * This SQL template is not a connector, approval mechanism or automatic retry runner.
  */
 export const ADAPTIVE_BRIEF_VERSION = 1;
-export const ADAPTIVE_BRIEF_MAX_BYTES = 65_536;
+export const ADAPTIVE_BRIEF_MAX_BYTES = 98_304;
 export const ADAPTIVE_BRIEF_HELPER = 'private.begin_adaptive_search_brief(uuid,uuid)';
 export const ADAPTIVE_STARTUP_BRIEF_SQL_TEMPLATE = "SELECT private.begin_adaptive_search_brief('{{search_id}}'::uuid,'<run-uuid>'::uuid) AS startup;";
 

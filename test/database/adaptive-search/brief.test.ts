@@ -3,6 +3,7 @@ import { before, test } from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { file, reset, sql } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
+import { ADAPTIVE_BRIEF_MAX_BYTES } from '../../../src/features/meta-search/domain/adaptiveSearchBrief';
 
 before(() => reset());
 
@@ -64,7 +65,7 @@ test('single startup response preserves the executable contract, 16 feedback exa
     const brief = begin(f);
     assert.equal(brief.compatible, true, JSON.stringify(brief));
     assert.equal(brief.brief_version, 1);
-    assert.equal(brief.response_limit_bytes, 65_536);
+    assert.equal(brief.response_limit_bytes, ADAPTIVE_BRIEF_MAX_BYTES);
     assert.ok(Buffer.byteLength(JSON.stringify(brief)) <= brief.response_limit_bytes);
     context.diagnostic(`Populated 16-example response: ${Buffer.byteLength(JSON.stringify(brief))} compact JSON bytes; server limit ${brief.response_limit_bytes}.`);
     assert.deepEqual(brief.base, { revision: 1, criteria: f.criteria });
@@ -184,10 +185,33 @@ test('brief retains protected manual queries and explicit blocked-source skips w
   } finally { cleanup(f); }
 });
 
+test('a UTF-8 startup larger than the old 64 KiB cap is retained intact under 96 KiB', () => {
+  const f = fixture();
+  try {
+    const criteria = Object.fromEntries(Object.keys(f.criteria).map(key => [key, '音響🧠 '.repeat(550)]));
+    assert.ok(Object.values(criteria).every(value => Array.from(value).length <= 12_000));
+    sql(`update public.opportunity_search_templates set criteria=${json(criteria)},revision=revision+1 where id='${f.search}';`);
+    const raw = sql(`select private.begin_adaptive_search_brief('${f.search}','${f.run}');`);
+    const brief = JSON.parse(raw);
+    assert.equal(brief.compatible, true, raw);
+    assert.equal(brief.response_limit_bytes, 98_304);
+    assert.ok(Buffer.byteLength(raw) > 65_536, 'The fixture must exercise the formerly rejected range');
+    assert.ok(Buffer.byteLength(raw) <= ADAPTIVE_BRIEF_MAX_BYTES);
+    assert.deepEqual(brief.base.criteria, criteria, 'The larger response must not trim or rewrite any criterion');
+    const internal = full(f);
+    for (const key of ['base', 'result_schema', 'query_plan', 'legacy_core_queries', 'due_sources', 'source_context', 'preferences']) {
+      assert.deepEqual(brief[key], internal[key], `Increasing the byte limit changed ${key}`);
+    }
+    assert.deepEqual(begin(f), brief, 'An identical retry must preserve the complete accepted response and lease');
+    assert.equal(sql(`select count(*) from public.opportunity_search_runs where id='${f.run}';`), '1');
+  } finally { cleanup(f); }
+});
+
 test('oversized required criteria fail atomically without creating a run, lease or context', () => {
   const f = fixture();
   try {
-    const oversized = Object.fromEntries(Object.keys(f.criteria).map(key => [key, 'Synthetic scope '.repeat(740)]));
+    const oversized = Object.fromEntries(Object.keys(f.criteria).map(key => [key, 'Synthetic scope 音響🧠 '.repeat(500)]));
+    assert.ok(Object.values(oversized).every(value => Array.from(value).length <= 12_000));
     sql(`update public.opportunity_search_templates set criteria=${json(oversized)},revision=revision+1 where id='${f.search}';`);
     const rejected = begin(f);
     assert.equal(rejected.compatible, false);
@@ -197,7 +221,8 @@ test('oversized required criteria fail atomically without creating a run, lease 
     for (const bytes of Object.values(rejected.size_diagnostics)) {
       assert.ok(Number.isSafeInteger(bytes) && Number(bytes) >= 0, 'Size diagnostics must contain only bounded numeric metadata');
     }
-    assert.ok(rejected.size_diagnostics.response_bytes > 65_536);
+    assert.equal(rejected.response_limit_bytes, ADAPTIVE_BRIEF_MAX_BYTES);
+    assert.ok(rejected.size_diagnostics.response_bytes > ADAPTIVE_BRIEF_MAX_BYTES);
     assert.doesNotMatch(JSON.stringify(rejected), /Synthetic scope|topicsAndMethods|opportunityTypes/u);
     assert.equal(sql(`select count(*) from public.opportunity_search_runs where id='${f.run}';`), '0');
     assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_contexts where run_id='${f.run}';`), '0');

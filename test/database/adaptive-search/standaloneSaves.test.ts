@@ -83,10 +83,10 @@ function assertSaved(value: any, f: Fixture, item: string) {
 }
 
 test('saving one found opportunity preserves the established startup and research-building functions', () => {
-  // The two startup helpers include the separately reviewed logging upgrade.
+  // The startup helpers include the reviewed logging and 96-KiB bound upgrades.
   // startupLogging.test.ts verifies unchanged payloads across that upgrade.
   const expected = {
-    'private.begin_adaptive_search_brief(uuid,uuid)': '6038c5a429dbc0899fa7a1f44ac43157',
+    'private.begin_adaptive_search_brief(uuid,uuid)': '68bcf3497ae0cc3517bf42f80568c0ac',
     'private.begin_adaptive_opportunity_search(uuid,uuid)': '2cdc9a739ca6a529dc86ab19562c31f9',
     'private.begin_opportunity_search(uuid,uuid)': '779fef6e8213a1081e786459e079875d',
     'private.compile_opportunity_feedback_snapshot(uuid,uuid)': '7083bc7b1f8abe99256c41b20ae6d2c2',

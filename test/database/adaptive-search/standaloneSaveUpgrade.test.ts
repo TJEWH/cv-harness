@@ -42,6 +42,10 @@ test('targeted standalone-save upgrade preserves a pinned run, its old batch and
   const expectedSources = sources([...changed, ...added]);
   const expectedProperties = properties();
   const upgrade = file('supabase/releases/adaptive-search-standalone-saves-v1.sql');
+  // This historical save upgrade still advertises the original brief bound.
+  // The later brief-limit upgrade independently checks the 96-KiB requirement.
+  const historicalPrompt = definitions(upgrade).find(match => match[1]!.startsWith('private.adaptive_search_recurring_prompt('))!;
+  expectedSources['private.adaptive_search_recurring_prompt(uuid,text)'] = createHash('md5').update(historicalPrompt[3]!).digest('hex');
   const predecessor = file('test/fixtures/meta-search/standalone-saves-predecessor.sql');
   const snapshot = () => sql(`select jsonb_build_object(
     'run',(select to_jsonb(r) from public.opportunity_search_runs r where id='${run}'),
