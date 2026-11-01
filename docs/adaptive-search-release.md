@@ -22,7 +22,7 @@ The current manifest is [`supabase/releases/current.json`](../supabase/releases/
 - Canonical opportunity schema: 6; protocol: `opportunity-search-v1-canonical-6`.
 - Shared meta-search document: 1; adaptive capability: `adaptive-batch-v1`.
 - Current interest metric: `opportunity-interest-v2`.
-- Current feedback selection: `opportunity-feedback-selection-v2`; query policy: `adaptive-query-v3`.
+- Current feedback selection: `opportunity-feedback-selection-v3`; query policy: `adaptive-query-v3`.
 
 Current stored search revisions, verified receipts, immutable packets and application research snapshots remain independent historical records. Their retained readers protect data that exists in the current workspace; they do not enable installing obsolete database layouts.
 

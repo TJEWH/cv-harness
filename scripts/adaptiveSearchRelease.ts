@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { DATABASE_MODULE_MANIFEST, DATABASE_SCHEMA_PATH, databaseSchemaFiles, checkDatabaseSchema } from './databaseSchema';
+import { ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION } from '../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
 
 export const ADAPTIVE_RELEASE_ID = 'adaptive-search-inclusion-v1';
 export const ADAPTIVE_RELEASE_MANIFEST = 'supabase/releases/current.json';
@@ -26,7 +27,7 @@ export function buildAdaptiveSearchReleaseManifest() {
     },
     versions: { canonical_schema: 6, canonical_protocol: 'opportunity-search-v1-canonical-6',
       meta_search: 1, adaptive_contract: 1, capability: 'adaptive-batch-v1', metric: 'opportunity-interest-v2',
-      selection_policy: 'opportunity-feedback-selection-v2', query_policy: 'adaptive-query-v3', summary_inclusion: 'included-unless-excluded-v1', setup_contract: 1, rollback_contract: 1 },
+      selection_policy: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION, query_policy: 'adaptive-query-v3', summary_inclusion: 'included-unless-excluded-v1', setup_contract: 1, rollback_contract: 1 },
     defaults: { adaptive_release_enabled: false, owner_runner_authorized: false, feedback_excluded: false,
       adaptation_enabled: false, adaptation_paused: false, successful_source_reuse_enabled: false, search_breadth_percent: 20, scheduler_operations: false },
     execution_contract: { maximum_queries:30, maximum_sources:64, maximum_checks:128, maximum_backlog:64,

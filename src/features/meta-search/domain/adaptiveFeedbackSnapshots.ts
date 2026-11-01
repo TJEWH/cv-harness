@@ -2,7 +2,11 @@ import { OPPORTUNITY_INTEREST_REASON_CATEGORIES, OPPORTUNITY_REVIEW_STATES, type
 import { OPPORTUNITY_INTEREST_METRIC_VERSION, isOpportunityInterestRating, normalizeOpportunityInterestReasons, opportunityFeedbackTimestamp } from '../../opportunities/domain/opportunityFeedback';
 import { opportunityFeedbackTextHash, opportunityFeedbackTextIsSafe, sanitizeOpportunityFeedbackUrl, validateAdaptiveSummaryInclusion, type SafeOpportunityFeedbackExample } from '../../opportunities/domain/opportunityFeedbackPrivacy';
 
-export const ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION = 'opportunity-feedback-selection-v2';
+export const ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION = 'opportunity-feedback-selection-v3';
+export const ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION = 'opportunity-feedback-selection-v2';
+export type AdaptiveFeedbackSelectionPolicyVersion = typeof ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION | typeof ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION;
+export const isSupportedAdaptiveFeedbackSelectionPolicy = (value: unknown): value is AdaptiveFeedbackSelectionPolicyVersion =>
+  value === ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION || value === ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION;
 export const ADAPTIVE_FEEDBACK_SOURCE_POLICY_VERSION = 'institution-aggregates-omitted-v1';
 export const ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING = 'sha256-canonical-json-v1';
 export const ADAPTIVE_FEEDBACK_MAX_EXAMPLES = 16;
@@ -50,7 +54,7 @@ export function validOpportunityInterestEvidence(value: Pick<AdaptiveFeedbackExa
 
 export interface AdaptiveFeedbackSnapshot {
   metric_version: OpportunityInterestMetricVersion;
-  selection_policy_version: typeof ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION;
+  selection_policy_version: AdaptiveFeedbackSelectionPolicyVersion;
   fingerprint_encoding: typeof ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING;
   feedback_revision: number;
   input_fingerprint: string;
@@ -72,6 +76,8 @@ export interface CompileAdaptiveFeedbackInput {
   feedback_revision: number;
   /** Set only when reproducing a historical packet; new snapshots use the current metric. */
   metric_version?: OpportunityInterestMetricVersion;
+  /** Set only when reproducing a historical example-selection policy. */
+  selection_policy_version?: AdaptiveFeedbackSelectionPolicyVersion;
   preference_revision?: number;
   /** Owner-filtered, authorized AF-02 projections only, never raw catalogue or application records. */
   examples: readonly (AdaptiveFeedbackExample | null)[];
@@ -221,7 +227,7 @@ function groups(examples: readonly AdaptiveFeedbackExample[], historicalInstitut
     .sort((a, b) => compare(a.kind, b.kind) || compare(a.key, b.key) || compare(a.polarity ?? '', b.polarity ?? ''));
 }
 
-function selectExamples(examples: readonly AdaptiveFeedbackExample[]): AdaptiveFeedbackExample[] {
+function selectLegacyExamples(examples: readonly AdaptiveFeedbackExample[]): AdaptiveFeedbackExample[] {
   const selected: AdaptiveFeedbackExample[] = [], ids = new Set<string>(), institutions = new Set<string>(), topics = new Set<string>();
   const rank = (example: AdaptiveFeedbackExample) => ({ explicit_rating: 0, categorical_review: 1, application: 2, confirmed_submission: 3, none: 4, excluded: 5 })[example.interest_origin];
   const best = (candidates: readonly AdaptiveFeedbackExample[]) => candidates.filter(example => !ids.has(example.opportunity_id)).sort((a, b) => rank(a) - rank(b)
@@ -249,6 +255,56 @@ function selectExamples(examples: readonly AdaptiveFeedbackExample[]): AdaptiveF
   return selected;
 }
 
+/** Fixed learning allocation. Historical packets keep their original selector. */
+function selectExamples(examples: readonly AdaptiveFeedbackExample[]): AdaptiveFeedbackExample[] {
+  type Bucket = 'positive' | 'negative' | 'contrast';
+  const selected: AdaptiveFeedbackExample[] = [], ids = new Set<string>(), institutions = new Set<string>(), topics = new Set<string>();
+  const hasSummary = (example: AdaptiveFeedbackExample) => Boolean(example.search_feedback_summary?.trim());
+  const positive = (example: AdaptiveFeedbackExample) => example.interest_score !== null && example.interest_score >= 8
+    && ['explicit_rating', 'categorical_review', 'application', 'confirmed_submission'].includes(example.interest_origin);
+  const negative = (example: AdaptiveFeedbackExample) => example.interest_score !== null && example.interest_score <= 4
+    && ['explicit_rating', 'categorical_review'].includes(example.interest_origin)
+    && (hasSummary(example) || example.reasons.some(reason => reason.polarity === 'negative'));
+  const gap = (example: AdaptiveFeedbackExample) => Math.abs(example.interest_gap ?? 0);
+  const contrastClass = (example: AdaptiveFeedbackExample) => gap(example) >= 2 ? 0
+    : example.interest_score !== null && example.interest_score > 4 && example.interest_score < 8 ? 1 : 2;
+  const compareRecency = (a: AdaptiveFeedbackExample, b: AdaptiveFeedbackExample) => {
+    const left = opportunityFeedbackTimestamp(a.feedback_updated_at), right = opportunityFeedbackTimestamp(b.feedback_updated_at);
+    return left === right ? 0 : left === null ? 1 : right === null ? -1 : left > right ? -1 : 1;
+  };
+  const unseenTopic = (example: AdaptiveFeedbackExample) => example.topics.some(topic => !topics.has(textKey(topic)));
+  const unseenInstitution = (example: AdaptiveFeedbackExample) => Boolean(example.institution && !institutions.has(textKey(example.institution)));
+  const best = (bucket: Bucket) => examples.filter(example => !ids.has(example.opportunity_id)
+    && (bucket === 'positive' ? positive(example) : bucket === 'negative' ? negative(example) : true))
+    .sort((a, b) => (bucket === 'contrast' ? contrastClass(a) - contrastClass(b) : 0)
+      || Number(hasSummary(b)) - Number(hasSummary(a))
+      || b.reasons.length - a.reasons.length
+      || (bucket === 'positive' ? (b.interest_score ?? -1) - (a.interest_score ?? -1)
+        : bucket === 'negative' ? (a.interest_score ?? 11) - (b.interest_score ?? 11) : gap(b) - gap(a))
+      || compareRecency(a, b)
+      || Number(unseenTopic(b)) - Number(unseenTopic(a))
+      || Number(unseenInstitution(b)) - Number(unseenInstitution(a))
+      || compare(a.opportunity_id, b.opportunity_id))[0];
+  const add = (example: AdaptiveFeedbackExample) => {
+    selected.push(example); ids.add(example.opportunity_id);
+    if (example.institution) institutions.add(textKey(example.institution));
+    for (const topic of example.topics) topics.add(textKey(topic));
+  };
+  const buckets: readonly Bucket[] = ['positive', 'negative', 'contrast'];
+  for (const [bucket, quota] of [['positive', 6], ['negative', 6], ['contrast', 4]] as const) {
+    for (let slot = 0; slot < quota; slot++) { const next = best(bucket); if (!next) break; add(next); }
+  }
+  while (selected.length < ADAPTIVE_FEEDBACK_MAX_EXAMPLES) {
+    let found = false;
+    for (const bucket of buckets) {
+      if (selected.length >= ADAPTIVE_FEEDBACK_MAX_EXAMPLES) break;
+      const next = best(bucket); if (next) { add(next); found = true; }
+    }
+    if (!found) break;
+  }
+  return selected;
+}
+
 /** Pure, deterministic reference compiler. Authorization and immutable persistence remain server-side. */
 export async function compileAdaptiveFeedbackSnapshot(input: CompileAdaptiveFeedbackInput): Promise<AdaptiveFeedbackSnapshot> {
   if (!uuid.test(input.user_id) || !uuid.test(input.search_id)
@@ -257,6 +313,9 @@ export async function compileAdaptiveFeedbackSnapshot(input: CompileAdaptiveFeed
   const assignedRevision = input.feedback_revision;
   const metricVersion = input.metric_version ?? OPPORTUNITY_INTEREST_METRIC_VERSION;
   if (!isSupportedOpportunityInterestMetric(metricVersion)) throw new TypeError('Unsupported feedback metric version.');
+  const selectionPolicyVersion = input.selection_policy_version ?? (metricVersion === 'opportunity-interest-v1'
+    ? ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION : ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION);
+  if (!isSupportedAdaptiveFeedbackSelectionPolicy(selectionPolicyVersion)) throw new TypeError('Unsupported feedback selection policy.');
   const approved = preferences(input.approved_preferences ?? []);
   const safe = await Promise.all(input.examples.map(example => safeExample(example, owner, search)));
   const unique = new Map<string, AdaptiveFeedbackExample>();
@@ -268,15 +327,15 @@ export async function compileAdaptiveFeedbackSnapshot(input: CompileAdaptiveFeed
   }
   const eligible = [...unique.values()].sort((a, b) => compare(a.opportunity_id, b.opportunity_id));
   const allGroups = groups(eligible, metricVersion === 'opportunity-interest-v1');
-  const selected = selectExamples(eligible);
+  const selected = selectionPolicyVersion === ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION ? selectLegacyExamples(eligible) : selectExamples(eligible);
   const inputFingerprint = await opportunityFeedbackTextHash(canonicalJson({ user_id: owner, search_id: search,
-    metric_version: metricVersion, selection_policy_version: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
+    metric_version: metricVersion, selection_policy_version: selectionPolicyVersion,
     ...(metricVersion === 'opportunity-interest-v2' ? { source_policy_version: ADAPTIVE_FEEDBACK_SOURCE_POLICY_VERSION } : {}),
     fingerprint_encoding: ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING,
     preference_revision: preferenceRevision, examples: eligible, approved_preferences: approved }));
   const total = statistics(eligible.flatMap(example => example.interest_score === null ? [] : [example.interest_score]));
   const packet: AdaptiveFeedbackSnapshot = {
-    metric_version: metricVersion, selection_policy_version: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
+    metric_version: metricVersion, selection_policy_version: selectionPolicyVersion,
     fingerprint_encoding: ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING, feedback_revision: assignedRevision, input_fingerprint: inputFingerprint,
     preference_revision: preferenceRevision,
     counts: { eligible: eligible.length, scored: total.scored, confirmed_submissions: eligible.filter(example => example.confirmed_submission).length,

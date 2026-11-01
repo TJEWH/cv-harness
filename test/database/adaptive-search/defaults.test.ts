@@ -38,7 +38,7 @@ test('fresh, disabled and paused searches include current owner feedback by defa
   for (const search of searches) {
     const feedback = packet(search);
     assert.equal(feedback.metric_version, 'opportunity-interest-v2');
-    assert.equal(feedback.selection_policy_version, 'opportunity-feedback-selection-v2');
+    assert.equal(feedback.selection_policy_version, 'opportunity-feedback-selection-v3');
     assert.deepEqual(feedback.examples.map((row: any) => row.opportunity_id).sort(), [included, submitted].sort());
     assert.equal(feedback.examples.find((row: any) => row.opportunity_id === included).interest_score, 6);
     assert.equal(feedback.examples.find((row: any) => row.opportunity_id === included).search_feedback_summary, 'Complete saved evaluation.');

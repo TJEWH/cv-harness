@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "a9f14de8b692d267b0da889fcaa479253463ca32f454c19e74acd3b3627daaf5"
+      "sha256": "07ba7a5550e56294c4ea0db547c07ff1f06550a0811ecd07c64f8d9d83fad17b"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "2cfe56459e8618358b660dedb002a1e86636f3b0e04a8705a8d775460046fbae"
+        "sha256": "ea33072e8e249bbe863fcad87ba97a6d3b92f729963816ca3bfcd74888633c6a"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -78,7 +78,7 @@
     "adaptive_contract": 1,
     "capability": "adaptive-batch-v1",
     "metric": "opportunity-interest-v2",
-    "selection_policy": "opportunity-feedback-selection-v2",
+    "selection_policy": "opportunity-feedback-selection-v3",
     "query_policy": "adaptive-query-v3",
     "summary_inclusion": "included-unless-excluded-v1",
     "setup_contract": 1,
@@ -119,7 +119,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchStartup.ts",
-      "sha256": "8c99c44ad97be071c9ca35dc29617e22758f22f3927b45320dcdf7398d511e4e"
+      "sha256": "67995cf87ae3a7f872a86c2520306245c005e5120d97b781c4d49c20c6d8d545"
     },
     {
       "path": "src/features/meta-search/domain/searchSchedule.ts",
@@ -159,7 +159,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveFeedbackSnapshots.ts",
-      "sha256": "644b122784a1a4fcd50b0e43cfb4c72e6e1313ea9075e8c5555d646e90f180a0"
+      "sha256": "3629f8b2dcfa85dbca7f2a4c0107900047e4fc4df7507c47d7029c37881fd14f"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchPlans.ts",

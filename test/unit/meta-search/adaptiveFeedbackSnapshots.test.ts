@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { opportunityFeedbackTextHash } from '../../../src/features/opportunities/domain/opportunityFeedbackPrivacy';
 import {
-  ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING, ADAPTIVE_FEEDBACK_MAX_BYTES, ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
+  ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING, ADAPTIVE_FEEDBACK_MAX_BYTES, ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION, ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION,
   compileAdaptiveFeedbackSnapshot, type AdaptiveFeedbackExample, type ApprovedAdaptivePreference, type CompileAdaptiveFeedbackInput,
 } from '../../../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
 
@@ -35,6 +35,13 @@ async function includedExample(index: number, source = 'Prefer acoustic sensing 
     search_feedback_summary: text, summary_inclusion: { policy_version: 'included-unless-excluded-v1',
       summary_hash: await opportunityFeedbackTextHash(text), source_hash: await opportunityFeedbackTextHash(source),
       summary_revision: 1, truncated: Array.from(source).length > 600, source_length: Array.from(source).length } });
+}
+function currentExample(index: number, score: 2 | 6 | 8 | 9, patch: Partial<AdaptiveFeedbackExample> = {}): AdaptiveFeedbackExample {
+  return example(index, { metric_version: 'opportunity-interest-v2', interest_origin: 'categorical_review', interest_score: score,
+    review_state: { 2: 'not_interested', 6: 'interested', 8: 'strong_interest', 9: 'very_high_interest' }[score] as AdaptiveFeedbackExample['review_state'], ...patch });
+}
+async function currentSummary(index: number, score: 2 | 6 | 8 | 9, patch: Partial<AdaptiveFeedbackExample> = {}): Promise<AdaptiveFeedbackExample> {
+  return { ...await includedExample(index), ...currentExample(index, score, patch) };
 }
 
 test('default-included text is eligible without legacy approval and never invents interest', async () => {
@@ -82,7 +89,7 @@ test('technical past metadata survives without turning closure or requirements i
 test('AF-03 cold start is bounded and feedback examples are included by default without a sharing toggle', async () => {
   const cold = await compileAdaptiveFeedbackSnapshot(input());
   assert.equal(cold.metric_version, 'opportunity-interest-v1');
-  assert.equal(cold.selection_policy_version, ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION);
+  assert.equal(cold.selection_policy_version, ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION);
   assert.equal(cold.fingerprint_encoding, ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING);
   assert.deepEqual(cold.examples, []);
   assert.equal(cold.counts.eligible, 0);
@@ -133,6 +140,83 @@ test('AF-03 selection prefers explicit evidence and then unseen institutions/top
     example(9, { interest_score: 2, confirmed_submission: true }),
   ]));
   assert.equal(submitted.examples[0]!.opportunity_id, id(9), 'explicit low interest outranks a weak submission preference proxy');
+});
+
+test('current allocation reserves six strong matches, six explained rejections and four informative contrasts without baselines', async () => {
+  const positives = Array.from({ length: 10 }, (_, index) => currentExample(index + 1, 9, { institution: `Positive ${index}` }));
+  const negatives = Array.from({ length: 10 }, (_, index) => currentExample(index + 101, 2, {
+    institution: `Negative ${index}`, reasons: [{ category: 'topic', polarity: 'negative', target: 'Unwanted direction' }],
+  }));
+  const contrasts = await Promise.all(Array.from({ length: 6 }, (_, index) => currentSummary(index + 201, 6)));
+  const packet = await compileAdaptiveFeedbackSnapshot(input([...contrasts, ...negatives, ...positives], { metric_version: 'opportunity-interest-v2' }));
+  assert.equal(packet.selection_policy_version, ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION);
+  assert.equal(packet.examples.length, 16);
+  assert.ok(packet.examples.slice(0, 6).every(item => item.interest_score === 9));
+  assert.ok(packet.examples.slice(6, 12).every(item => item.interest_score === 2 && item.reasons.some(reason => reason.polarity === 'negative')));
+  assert.ok(packet.examples.slice(12).every(item => item.interest_score === 6));
+  assert.equal(new Set(packet.examples.map(item => item.opportunity_id)).size, 16);
+  assert.equal(packet.counts.baseline_available, 0); assert.equal(packet.counts.eligible, 26);
+  assert.equal(packet.aggregates.score_sum, 146, 'sampling leaves whole-set score statistics intact');
+});
+
+test('current false positives need low-interest feedback with an explanation; technical status alone does not consume their quota', async () => {
+  const technical = currentExample(1, 2, { manually_archived: true, technical_issue_category: 'closed' });
+  const summaryOnly = await currentSummary(2, 2);
+  const reasonOnly = currentExample(3, 2, { reasons: [{ category: 'background_fit', polarity: 'negative' }] });
+  const negatives = Array.from({ length: 7 }, (_, index) => currentExample(index + 10, 2, {
+    reasons: [{ category: 'method', polarity: 'negative', target: 'Unwanted method' }],
+  }));
+  const positives = Array.from({ length: 8 }, (_, index) => currentExample(index + 100, 8));
+  const packet = await compileAdaptiveFeedbackSnapshot(input([technical, summaryOnly, reasonOnly, ...negatives, ...positives], { metric_version: 'opportunity-interest-v2' }));
+  const selectedNegatives = packet.examples.slice(6, 12);
+  assert.equal(selectedNegatives.length, 6);
+  assert.equal(selectedNegatives[0]?.opportunity_id, id(2), 'shared explanation has priority');
+  assert.equal(selectedNegatives.some(item => item.opportunity_id === id(1)), false);
+  assert.ok(selectedNegatives.every(item => item.search_feedback_summary || item.reasons.some(reason => reason.polarity === 'negative')));
+});
+
+test('current allocation favors written reasons, score strength, recency and topic diversity with stable ties', async () => {
+  const reason = { category: 'topic', polarity: 'positive', target: 'Sensing' } as const;
+  const samples = [currentExample(1, 9), await currentSummary(2, 8),
+    await currentSummary(3, 9, { reasons: [reason], feedback_updated_at: earlier }),
+    await currentSummary(4, 8, { reasons: [reason], feedback_updated_at: now }),
+    await currentSummary(5, 9, { reasons: [reason], feedback_updated_at: now }),
+    await currentSummary(6, 9, { reasons: [reason], feedback_updated_at: now, topics: ['New topic'] }),
+    await currentSummary(7, 9, { reasons: [reason], feedback_updated_at: now, institution: 'New institute' }),
+  ];
+  const packet = await compileAdaptiveFeedbackSnapshot(input(samples.toReversed(), { metric_version: 'opportunity-interest-v2' }));
+  assert.deepEqual(packet.examples.slice(0, 6).map(item => item.opportunity_id), [5, 6, 7, 3, 4, 2].map(id));
+  const reordered = await compileAdaptiveFeedbackSnapshot(input(samples, { metric_version: 'opportunity-interest-v2' }));
+  assert.deepEqual(packet.examples, reordered.examples);
+});
+
+test('current contrasts reserve prediction disagreements before borderline and remaining examples', async () => {
+  const positives = Array.from({ length: 6 }, (_, index) => currentExample(index + 100, 8));
+  const negatives = Array.from({ length: 6 }, (_, index) => currentExample(index + 200, 2, { reasons: [{ category: 'topic', polarity: 'negative' }] }));
+  const gap = currentExample(1, 6, { interest_gap: -3, baseline_status: 'available',
+    original_prediction: discrepancy(1, 6, 9).original_prediction });
+  const borderline = currentExample(2, 6);
+  const summaryHigh = await currentSummary(3, 9);
+  // Six stronger explained positives occupy the positive quota, keeping summaryHigh for contrast.
+  for (let index = 0; index < positives.length; index++) positives[index] = await currentSummary(index + 100, 9, { reasons: [{ category: 'topic', polarity: 'positive' }] });
+  const remaining = [currentExample(4, 8), currentExample(5, 8), currentExample(6, 8)];
+  const packet = await compileAdaptiveFeedbackSnapshot(input([...positives, ...negatives, gap, borderline, summaryHigh, ...remaining], { metric_version: 'opportunity-interest-v2' }));
+  assert.deepEqual(packet.examples.slice(12, 15).map(item => item.opportunity_id), [1, 2, 3].map(id));
+});
+
+test('current allocation redistributes sparse quotas without duplicates and preserves historical v2 selection', async () => {
+  const positives = Array.from({ length: 20 }, (_, index) => currentExample(index + 1, 8));
+  const current = await compileAdaptiveFeedbackSnapshot(input(positives, { metric_version: 'opportunity-interest-v2' }));
+  assert.equal(current.examples.length, 16); assert.equal(new Set(current.examples.map(item => item.opportunity_id)).size, 16);
+  const tiny = await compileAdaptiveFeedbackSnapshot(input(positives.slice(0, 3), { metric_version: 'opportunity-interest-v2' }));
+  assert.equal(tiny.examples.length, 3);
+  const mixed = [...positives, ...Array.from({ length: 8 }, (_, index) => currentExample(index + 100, 2, { reasons: [{ category: 'topic', polarity: 'negative' }] }))];
+  const historical = await compileAdaptiveFeedbackSnapshot(input(mixed, { metric_version: 'opportunity-interest-v2', selection_policy_version: ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION }));
+  assert.equal(historical.selection_policy_version, ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION);
+  assert.ok(historical.examples.every(item => item.interest_score === 8));
+  const balanced = await compileAdaptiveFeedbackSnapshot(input(mixed, { metric_version: 'opportunity-interest-v2' }));
+  assert.ok(balanced.examples.some(item => item.interest_score === 2));
+  assert.notEqual(historical.input_fingerprint, balanced.input_fingerprint);
 });
 
 test('current feedback omits institution cohorts without changing project examples, diversity or topic statistics', async () => {

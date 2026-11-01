@@ -5116,7 +5116,7 @@ begin
       if entry.key='policy_version' and entry.value#>>'{}'<>(case when p_kind='summary_inclusion' then 'included-unless-excluded-v1' else 'adaptive-query-v1' end) then return false;end if;
       if entry.key='technical_issue_category' and entry.value#>>'{}' not in('closed','requirements','application_problem','other') then return false;end if;
       if entry.key='metric_version' and entry.value#>>'{}' not in('opportunity-interest-v1','opportunity-interest-v2') then return false;end if;
-      if entry.key='selection_policy_version' and entry.value#>>'{}'<>'opportunity-feedback-selection-v2' then return false;end if;
+      if entry.key='selection_policy_version' and entry.value#>>'{}' not in('opportunity-feedback-selection-v2','opportunity-feedback-selection-v3') then return false;end if;
       if entry.key='fingerprint_encoding' and entry.value#>>'{}' not in('sha256-pg-jsonb-v1','sha256-canonical-json-v1') then return false;end if;
       if entry.key in('category') or p_kind='group' and entry.key='kind' then
         if entry.value#>>'{}' not in('topic','method','hardware','location','funding','timing','background_fit','project_context','requirements','availability','other') and not(p_kind in('group','priority') and entry.value#>>'{}'='institution') then return false;end if;
@@ -7441,7 +7441,7 @@ begin
       ) candidate
     ) e where e.example is not null;
   preferences:=public.opportunity_search_preference_document(p_user_id,p_search_id); preference_version:=(preferences->>'preference_revision')::bigint; approved:=preferences->'approved_preferences'; fingerprint:=encode(sha256(convert_to(jsonb_build_object('metric_version','opportunity-interest-v2',
-    'selection_policy_version','opportunity-feedback-selection-v2','text_policy_version','included-unless-excluded-v1','source_policy_version','institution-aggregates-omitted-v1','user_id',p_user_id,'search_id',p_search_id,
+    'selection_policy_version','opportunity-feedback-selection-v3','text_policy_version','included-unless-excluded-v1','source_policy_version','institution-aggregates-omitted-v1','user_id',p_user_id,'search_id',p_search_id,
     'preference_revision',preference_version,'approved_preferences',approved,'examples',rows)::text,'UTF8')),'hex');
   select * into prior from public.opportunity_search_feedback_snapshots where user_id=p_user_id and search_id=p_search_id and input_fingerprint=fingerprint;
   if found then
@@ -7480,42 +7480,41 @@ begin
     into groups from grouped g;
   group_total:=jsonb_array_length(groups);
   select coalesce(jsonb_agg(g.value order by g.ordinality),'[]'::jsonb) into groups from jsonb_array_elements(groups) with ordinality g(value,ordinality) where g.ordinality<=64;
-  -- Round-robin categories, with explicit evidence then institution/topic spread.
-  for round in 1..16 loop
-    changed:=false;
-    for bucket in 1..4 loop
-      exit when cardinality(seen_ids)>=16;
-      select e.value into picked from jsonb_array_elements(rows) e
-        where not (e.value->>'opportunity_id'=any(seen_ids)) and case bucket
-          when 1 then coalesce((e.value->>'confirmed_submission')::boolean,false)
-          when 2 then e.value->>'interest_origin' in ('explicit_rating','categorical_review','application','confirmed_submission') and (e.value->>'interest_score')::numeric>=8
-          when 3 then (e.value->>'interest_gap')::numeric<=-2
-          else (e.value->>'interest_gap')::numeric>=2 end
-        order by case e.value->>'interest_origin' when 'explicit_rating' then 0 when 'categorical_review' then 1 when 'application' then 2 when 'confirmed_submission' then 3 else 4 end,
-          case when e.value->>'institution' is not null and not(translate(btrim(e.value->>'institution'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')=any(seen_institutions)) then 0 else 1 end,
-          case when exists(select 1 from jsonb_array_elements_text(e.value->'topics') t where not(translate(btrim(t),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')=any(seen_topics))) then 0 else 1 end,
-          e.value->>'opportunity_id' collate "C" limit 1;
-      if found then
-        selected:=selected||jsonb_build_array(picked); seen_ids:=array_append(seen_ids,picked->>'opportunity_id');
-        if picked->>'institution' is not null then seen_institutions:=array_append(seen_institutions,translate(btrim(picked->>'institution'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')); end if;
-        for picked_id in select translate(btrim(t),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz') from jsonb_array_elements_text(picked->'topics') t loop seen_topics:=array_append(seen_topics,picked_id); end loop;
-        changed:=true;
-      end if;
-    end loop;
-    exit when not changed or cardinality(seen_ids)>=16;
+  -- Reserve six strong matches, six explained low-interest results and four
+  -- informative contrasts. These classifications stay internal to selection.
+  select coalesce(jsonb_agg(jsonb_build_object('example',e.value,
+    'positive',coalesce((e.value->>'interest_score')::numeric>=8 and e.value->>'interest_origin' in('explicit_rating','categorical_review','application','confirmed_submission'),false),
+    'negative',coalesce((e.value->>'interest_score')::numeric<=4 and e.value->>'interest_origin' in('explicit_rating','categorical_review')
+      and(nullif(btrim(e.value->>'search_feedback_summary'),'') is not null
+        or exists(select 1 from jsonb_array_elements(e.value->'reasons') r where r->>'polarity'='negative')),false))),'[]')
+    into remaining from jsonb_array_elements(rows) e;
+  -- After the reserved slots, redistribute shortages one positive, negative,
+  -- contrast at a time. At most sixteen three-bucket cycles can be needed.
+  for round in 1..64 loop
+    exit when cardinality(seen_ids)>=16;
+    bucket:=case when round<=6 then 1 when round<=12 then 2 when round<=16 then 3 else (round-17)%3+1 end;
+    if round>16 and bucket=1 then changed:=false;end if;
+    select e.example into picked from jsonb_to_recordset(remaining) e(example jsonb,positive boolean,negative boolean)
+      where not(e.example->>'opportunity_id'=any(seen_ids)) and case bucket when 1 then e.positive when 2 then e.negative else true end
+      order by case when bucket=3 then case when abs((e.example->>'interest_gap')::numeric)>=2 then 0
+        when (e.example->>'interest_score')::numeric>4 and (e.example->>'interest_score')::numeric<8 then 1 else 2 end else 0 end,
+        case when nullif(btrim(e.example->>'search_feedback_summary'),'') is not null then 0 else 1 end,
+        jsonb_array_length(e.example->'reasons') desc,
+        case bucket when 1 then -coalesce((e.example->>'interest_score')::numeric,-1)
+          when 2 then coalesce((e.example->>'interest_score')::numeric,11) else -coalesce(abs((e.example->>'interest_gap')::numeric),0) end,
+        (e.example->>'feedback_updated_at')::timestamptz desc nulls last,
+        case when exists(select 1 from jsonb_array_elements_text(e.example->'topics') t where not(translate(btrim(t),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')=any(seen_topics))) then 0 else 1 end,
+        case when e.example->>'institution' is not null and not(translate(btrim(e.example->>'institution'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')=any(seen_institutions)) then 0 else 1 end,
+        e.example->>'opportunity_id' collate "C" limit 1;
+    if found then
+      selected:=selected||jsonb_build_array(picked);seen_ids:=array_append(seen_ids,picked->>'opportunity_id');
+      if picked->>'institution' is not null then seen_institutions:=array_append(seen_institutions,translate(btrim(picked->>'institution'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')); end if;
+      for picked_id in select translate(btrim(t),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz') from jsonb_array_elements_text(picked->'topics') t loop seen_topics:=array_append(seen_topics,picked_id); end loop;
+      changed:=true;
+    end if;
+    exit when round>16 and bucket=3 and not changed;
   end loop;
-  while cardinality(seen_ids)<16 loop
-    select e.value into picked from jsonb_array_elements(rows) e where not(e.value->>'opportunity_id'=any(seen_ids))
-      order by case e.value->>'interest_origin' when 'explicit_rating' then 0 when 'categorical_review' then 1 when 'application' then 2 when 'confirmed_submission' then 3 else 4 end,
-        case when e.value->>'institution' is not null and not(translate(btrim(e.value->>'institution'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')=any(seen_institutions)) then 0 else 1 end,
-        case when exists(select 1 from jsonb_array_elements_text(e.value->'topics') t where not(translate(btrim(t),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')=any(seen_topics))) then 0 else 1 end,
-        e.value->>'opportunity_id' collate "C" limit 1;
-    exit when not found;
-    selected:=selected||jsonb_build_array(picked);seen_ids:=array_append(seen_ids,picked->>'opportunity_id');
-    if picked->>'institution' is not null then seen_institutions:=array_append(seen_institutions,translate(btrim(picked->>'institution'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')); end if;
-    for picked_id in select translate(btrim(t),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz') from jsonb_array_elements_text(picked->'topics') t loop seen_topics:=array_append(seen_topics,picked_id); end loop;
-  end loop;
-  packet:=jsonb_build_object('metric_version','opportunity-interest-v2','selection_policy_version','opportunity-feedback-selection-v2',
+  packet:=jsonb_build_object('metric_version','opportunity-interest-v2','selection_policy_version','opportunity-feedback-selection-v3',
     'fingerprint_encoding','sha256-pg-jsonb-v1','feedback_revision',revision,'input_fingerprint',fingerprint,
     'preference_revision',preference_version,'approved_preferences',approved,'privacy_scope_changed',false,
     'counts',counts||jsonb_build_object('selected',jsonb_array_length(selected),'omitted_limit',jsonb_array_length(rows)-jsonb_array_length(selected),'omitted_bytes',0,'omitted_groups',group_total-jsonb_array_length(groups)),

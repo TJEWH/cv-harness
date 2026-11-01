@@ -85,3 +85,47 @@ test('current SQL and TypeScript compile the same whole-set statistics and deter
   assert.deepEqual(packet.examples.map((example: { opportunity_id: string }) => example.opportunity_id), reference.examples.map(example => example.opportunity_id));
   assert.notEqual(packet.fingerprint_encoding, reference.fingerprint_encoding, 'Each deterministic hash encoding is explicitly versioned');
 });
+
+test('balanced SQL and TypeScript selection agree on ordered six strong, six rejected and four borderline examples', async () => {
+  reset();
+  const owner = '74000000-0000-4000-8000-000000000001';
+  const search = '74000000-0000-4000-8000-000000000002';
+  sql(`insert into auth.users(id) values('${owner}');
+    insert into public.opportunity_search_templates(id,user_id,name,criteria,schedule) values('${search}','${owner}',
+      'Synthetic balanced allocation parity','{"topicsAndMethods":"Physical sensing; Robotics"}',
+      '{"frequency":"daily","intervalHours":24,"weekdays":[],"time":"08:00","timezone":"UTC","runImmediately":false}');
+    insert into public.opportunities(id,opportunity_key,title,institution,topics,research_summary)
+      select ('75000000-0000-4000-8000-'||lpad(i::text,12,'0'))::uuid,'balanced-parity-'||i,'Synthetic sensing researcher',
+        'Institute '||(i%4),array['Sensing','Technique '||(i%5)],'Evaluate physical sensing methods using real prototypes.'
+      from generate_series(1,30) i;
+    insert into public.opportunity_reviews(user_id,opportunity_id,state,interest_reasons,comment)
+      select '${owner}',('75000000-0000-4000-8000-'||lpad(i::text,12,'0'))::uuid,
+        case when i<=12 then case when i%2=0 then 'very_high_interest' else 'strong_interest' end
+          when i<=24 then 'not_interested' else 'interested' end,
+        case when i<=12 then '[{"category":"topic","polarity":"positive","target":"Sensing"}]'::jsonb
+          when i<=24 then '[{"category":"method","polarity":"negative","target":"Benchmarking"}]'::jsonb
+          else '[]'::jsonb end,
+        case when i%3=0 then null when i<=12 then 'Prefer direct physical sensing experiments and prototypes.'
+          when i<=24 then 'The work benchmarks models without building sensing systems.'
+          else 'Interesting adjacent research with an uncertain physical sensing component.' end
+      from generate_series(1,30) i;`);
+  const packet = JSON.parse(sql(`select private.compile_opportunity_feedback_snapshot('${owner}','${search}');`));
+  const examples = JSON.parse(sql(`select jsonb_agg(private.project_opportunity_feedback('${owner}',opportunity_id) order by opportunity_id)
+    from public.opportunity_reviews where user_id='${owner}';`));
+  const reference = await compileAdaptiveFeedbackSnapshot({ user_id: owner, search_id: search,
+    feedback_revision: packet.feedback_revision, examples });
+  const ids = (values: { opportunity_id: string }[]) => values.map(example => example.opportunity_id);
+  assert.equal(packet.selection_policy_version, 'opportunity-feedback-selection-v3');
+  assert.equal(reference.selection_policy_version, packet.selection_policy_version);
+  assert.equal(packet.examples.length, 16);
+  assert.equal(new Set(ids(packet.examples)).size, 16);
+  assert.ok(packet.examples.slice(0, 6).every((example: { interest_score: number }) => example.interest_score >= 8));
+  assert.ok(packet.examples.slice(6, 12).every((example: { interest_score: number }) => example.interest_score === 2));
+  assert.ok(packet.examples.slice(12).every((example: { interest_score: number }) => example.interest_score === 6));
+  assert.deepEqual(ids(packet.examples), ids(reference.examples), 'Detailed signals, timestamp recency and diversity use the same ordering');
+  assert.deepEqual(packet.counts, reference.counts);
+  assert.deepEqual(packet.aggregates, reference.aggregates);
+  assert.equal(packet.counts.eligible, 30);
+  assert.equal(packet.counts.baseline_available, 0);
+  assert.equal(packet.counts.omitted_bytes, 0);
+});

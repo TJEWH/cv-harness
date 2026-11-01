@@ -3,7 +3,7 @@ import { SEARCH_CRITERIA_KEYS, type SearchCriteria } from '../searchTypes';
 import { OPPORTUNITY_INTEREST_REASON_CATEGORIES } from '../../../app/cloudTypes';
 import { opportunityFeedbackTimestamp } from '../../opportunities/domain/opportunityFeedback';
 import {
-  ADAPTIVE_FEEDBACK_MAX_BYTES, ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION, projectSafeAdaptiveFeedbackExample, isSupportedOpportunityInterestMetric,
+  ADAPTIVE_FEEDBACK_MAX_BYTES, isSupportedAdaptiveFeedbackSelectionPolicy, projectSafeAdaptiveFeedbackExample, isSupportedOpportunityInterestMetric,
   type AdaptiveFeedbackSnapshot, type AdaptiveFeedbackGroup, type ApprovedAdaptivePreference,
 } from './adaptiveFeedbackSnapshots';
 import { opportunityFeedbackTextIsSafe, sanitizeOpportunityFeedbackUrl, validateAdaptiveSummaryInclusion, type AdaptiveSummaryInclusion } from '../../opportunities/domain/opportunityFeedbackPrivacy';
@@ -195,7 +195,7 @@ function nullableScore(value: unknown): number | null {
 function sum(value: unknown): number { return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fail('invalid_bundle'); }
 async function feedback(value: unknown, owner: string, search: string): Promise<AdaptiveStartupFeedback> {
   const raw = object(value), counts = object(raw.counts), aggregates = object(raw.aggregates);
-  if (!isSupportedOpportunityInterestMetric(raw.metric_version) || raw.selection_policy_version !== ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION
+  if (!isSupportedOpportunityInterestMetric(raw.metric_version) || !isSupportedAdaptiveFeedbackSelectionPolicy(raw.selection_policy_version)
     || !['sha256-canonical-json-v1', 'sha256-pg-jsonb-v1'].includes(raw.fingerprint_encoding as string)) fail('incompatible_release');
   if (!Array.isArray(raw.examples) || raw.examples.length > 16 || !Array.isArray(aggregates.groups) || aggregates.groups.length > 64) fail('scope_oversized');
   const cleanCounts = Object.fromEntries(countFields.map(field => [field, integer(counts[field])])) as AdaptiveStartupFeedback['counts'];
@@ -208,7 +208,7 @@ async function feedback(value: unknown, owner: string, search: string): Promise<
     return { kind: row.kind as AdaptiveFeedbackGroup['kind'], key: row.key, count, scored, score_sum: sum(row.score_sum), mean_interest: nullableScore(row.mean_interest),
       ...(row.polarity === undefined ? {} : { polarity: row.polarity as 'positive' | 'negative' }) };
   });
-  const result: AdaptiveStartupFeedback = { metric_version: raw.metric_version, selection_policy_version: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
+  const result: AdaptiveStartupFeedback = { metric_version: raw.metric_version, selection_policy_version: raw.selection_policy_version,
     fingerprint_encoding: raw.fingerprint_encoding as AdaptiveStartupFeedback['fingerprint_encoding'], feedback_revision: integer(raw.feedback_revision),
     input_fingerprint: digest(raw.input_fingerprint), preference_revision: integer(raw.preference_revision),
     counts: cleanCounts, aggregates: { score_sum: sum(aggregates.score_sum), mean_interest: nullableScore(aggregates.mean_interest), groups },

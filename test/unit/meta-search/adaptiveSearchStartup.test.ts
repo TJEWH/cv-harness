@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createOpportunityResultSchema } from '../../../src/features/opportunities/domain/opportunityResultSchema';
-import { compileAdaptiveFeedbackSnapshot, type AdaptiveFeedbackExample } from '../../../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
+import { compileAdaptiveFeedbackSnapshot, ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION, ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION, type AdaptiveFeedbackExample } from '../../../src/features/meta-search/domain/adaptiveFeedbackSnapshots';
 import { createAdaptiveSearchPlan } from '../../../src/features/meta-search/domain/adaptiveSearchPlans';
 import { buildAdaptiveSearchPlanningContext, DEFAULT_ADAPTIVE_SEARCH_POLICY, LEGACY_ADAPTIVE_SEARCH_POLICY, createSearchBreadthPolicy, createLegacySearchBreadthPolicy } from '../../../src/features/meta-search/domain/adaptiveSearchPlanner';
 import { opportunityFeedbackTextHash, includedOpportunitySearchSummary } from '../../../src/features/opportunities/domain/opportunityFeedbackPrivacy';
@@ -70,6 +70,20 @@ async function fixture(withSummary = true): Promise<{ bundle: AdaptiveSearchStar
 function success(value: Awaited<ReturnType<typeof projectAdaptiveSearchStartup>>): asserts value is AdaptiveSearchStartupBundle {
   assert.equal(value.compatible, true, JSON.stringify(value));
 }
+
+test('startup preserves current and historical feedback selection policies and rejects an unknown policy', async () => {
+  for (const version of [ADAPTIVE_FEEDBACK_LEGACY_SELECTION_POLICY_VERSION, ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION] as const) {
+    const { bundle, context } = await fixture();
+    bundle.feedback.selection_policy_version = version;
+    const projected = await projectAdaptiveSearchStartup(bundle, context);
+    success(projected);
+    assert.equal(projected.feedback.selection_policy_version, version);
+  }
+  const { bundle, context } = await fixture();
+  Object.assign(bundle.feedback, { selection_policy_version: 'opportunity-feedback-selection-unknown' });
+  const projected = await projectAdaptiveSearchStartup(bundle, context);
+  assert.equal(projected.compatible, false);
+});
 
 test('AF-07 complete startup projection is one fixed scope, bounded and startup-only, with no runtime calls', async () => {
   const { bundle, context } = await fixture();
