@@ -29,7 +29,8 @@ test('targeted brief upgrade matches current definitions and grants no app-role 
     ...definitions(read('supabase/releases/adaptive-search-incremental-saves-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-batch-diagnostics-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-evidence-fields-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-startup-logging-v1.sql'))]);
   assert.equal(installed.size, 3);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale brief upgrade: ${signature}`);
   assert.match(upgrade, new RegExp(`octet_length\\(brief::text\\)>${ADAPTIVE_BRIEF_MAX_BYTES}`, 'u'));
@@ -48,7 +49,8 @@ test('automatic replacement upgrade installs the same current fences with a defe
     ...definitions(read('supabase/releases/adaptive-search-incremental-saves-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-batch-diagnostics-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-evidence-fields-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-startup-logging-v1.sql'))]);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale replacement upgrade: ${signature}`);
   assert.match(upgrade, /ADD COLUMN superseded_by_run_id uuid/u);
   assert.match(upgrade, /FOREIGN KEY \(user_id,search_id,superseded_by_run_id\)[\s\S]*?REFERENCES public\.opportunity_search_runs\(user_id,search_id,id\) DEFERRABLE INITIALLY DEFERRED/u);
@@ -128,7 +130,7 @@ test('evidence guidance upgrade changes only the bounded brief and preserves val
   const upgrade = read('supabase/releases/adaptive-search-evidence-fields-v1.sql');
   const installed = definitions(upgrade), current = definitions(read('supabase/schemas/12_search_support.sql'));
   assert.deepEqual([...installed.keys()], ['private.begin_adaptive_search_brief(p_search_id uuid, p_run_id uuid) RETURNS jsonb']);
-  for (const [signature, body] of installed) assert.equal(body, current.get(signature));
+  for (const [signature, body] of installed) assert.equal(definitions(read('supabase/releases/adaptive-search-startup-logging-v1.sql')).get(signature) ?? body, current.get(signature));
   assert.match(upgrade, /EVIDENCE FIELD NAMES/u);
   assert.match(upgrade, /jsonb_object_keys\(private\.opportunity_storage_schema\(\)->'properties'\)/u);
   assert.match(upgrade, /octet_length\(brief::text\)>65536/u);

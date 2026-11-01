@@ -392,7 +392,8 @@ test('targeted supersession upgrade preserves active state and installs its hist
     const upgrade = file('supabase/releases/adaptive-search-supersession-v1.sql');
     sql(upgrade);
     const installedSupersession = catalog(), promptSignature = signatures[0]!, briefSignature = signatures[1]!, completionSignature = signatures[4]!;
-    const laterReplaced = [promptSignature, briefSignature, completionSignature];
+    const bootstrapSignature = signatures[2]!;
+    const laterReplaced = [promptSignature, briefSignature, bootstrapSignature, completionSignature];
     const historicalBodies = new Map(laterReplaced.map(signature => {
       const body = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(
         definitions(upgrade).get(signature.split('(')[0]!)!)?.[2];
@@ -400,7 +401,7 @@ test('targeted supersession upgrade preserves active state and installs its hist
       assert.equal(sql(`select prosrc from pg_proc where oid='${signature}'::regprocedure;`), body.trim());
       return [signature, body.trim()] as const;
     }));
-    // Later prompt, evidence-guidance and standalone-save upgrades deliberately
+    // Later prompt, evidence-guidance, standalone-save and startup-logging upgrades deliberately
     // replace these bodies. Check their immutable historical definitions above;
     // exclude only the bodies from the current comparison, retaining every ACL.
     const withoutLaterBodies = (value: typeof freshCatalog) => {
@@ -417,7 +418,7 @@ test('targeted supersession upgrade preserves active state and installs its hist
     const responseUpgrade = file('supabase/releases/adaptive-search-response-handling-v1.sql');
     sql(responseUpgrade);
     assert.deepEqual(withoutLaterBodies(catalog()), withoutLaterBodies(freshCatalog), 'Historical upgrades changed current helper or privilege definitions');
-    for (const signature of [briefSignature, completionSignature]) {
+    for (const signature of [briefSignature, bootstrapSignature, completionSignature]) {
       assert.equal(sql(`select prosrc from pg_proc where oid='${signature}'::regprocedure;`), historicalBodies.get(signature));
     }
     const expectedPromptBody = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(

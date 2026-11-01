@@ -4058,10 +4058,16 @@ CREATE FUNCTION private.begin_adaptive_search_brief(p_search_id uuid, p_run_id u
     SET search_path TO ''
     AS $$
 declare bundle jsonb;brief jsonb;owner_id uuid;previous_run record;
+  log_scope jsonb:=jsonb_build_object('diagnostic_version',1,'search_id',p_search_id,'run_id',p_run_id);
+  log_stage text:='authorization';
 begin
+  -- Server logs survive a local connector-decoding failure and transaction
+  -- rollback. A returned event describes this function, not client receipt or commit.
+  raise log 'CV_HARNESS_STARTUP %',log_scope||jsonb_build_object('event','entered','stage',log_stage);
   if current_user<>'postgres' then raise exception 'Management startup access is required' using errcode='42501';end if;
   -- Keep all authorization, pinning, lease and privacy checks in the existing
   -- implementation. Batch verification continues to use its full internal DTO.
+  log_stage:='bootstrap';
   bundle:=private.begin_adaptive_opportunity_search(p_search_id,p_run_id);
   if bundle#>>'{error,code}'='run_in_progress'
     and not exists(select 1 from public.opportunity_search_runs where id=p_run_id)
@@ -4069,6 +4075,7 @@ begin
     -- The inner startup validated authorization and holds the owner/search
     -- advisory lock until this transaction ends. Replace only for a fresh UUID;
     -- a retry, stale worker or older reserved restart must never evict a new run.
+    log_stage:='supersession';
     select user_id into owner_id from public.opportunity_search_templates where id=p_search_id;
     for previous_run in select id from public.opportunity_search_runs
       where user_id=owner_id and search_id=p_search_id and status='running' order by id for update loop
@@ -4078,13 +4085,19 @@ begin
         where id=previous_run.id;
       update private.opportunity_search_adaptive_contexts set lease_expires_at=least(lease_expires_at,clock_timestamp()) where run_id=previous_run.id;
     end loop;
+    log_stage:='replacement_startup';
     bundle:=private.begin_adaptive_opportunity_search(p_search_id,p_run_id);
     -- The inner helper returns typed errors rather than throwing. Raise here so
     -- those errors also roll back replacement and retain the previous execution.
     if bundle->'compatible' is distinct from 'true'::jsonb then raise exception 'Replacement startup was rejected' using errcode='PZ005';end if;
   end if;
   if bundle#>>'{error,code}'='scope_oversized' then raise exception 'Adaptive scope exceeds its bound' using errcode='54000';end if;
-  if bundle->'compatible' is distinct from 'true'::jsonb then return bundle;end if;
+  if bundle->'compatible' is distinct from 'true'::jsonb then
+    raise log 'CV_HARNESS_STARTUP %',log_scope||jsonb_build_object('event','returned','stage',log_stage,'compatible',false,
+      'error_code',bundle#>>'{error,code}','response_bytes',octet_length(bundle::text));
+    return bundle;
+  end if;
+  log_stage:='projection';
   brief:=bundle||jsonb_build_object('brief_version',1,'response_limit_bytes',65536);
   -- Clarify existing evidence validation in the hosted response without
   -- changing the pinned internal protocol, schema, receipts or retry identity.
@@ -4128,17 +4141,35 @@ begin
   -- Never trim authoritative scope, selected example identities, shared feedback, schema or protocol to make it fit.
   -- Raising here rolls back every nested startup write before returning the
   -- bounded error, so a rejected first start leaves no running lease behind.
+  log_stage:='response_bound';
   if octet_length(brief::text)>65536 then raise exception 'Adaptive brief exceeds its response bound' using errcode='54000';end if;
+  raise log 'CV_HARNESS_STARTUP %',log_scope||jsonb_build_object('event','returned','stage',log_stage,
+    'compatible',true,'response_bytes',octet_length(brief::text));
   return brief;
-exception when sqlstate 'PZ005' then return bundle;
+exception when sqlstate 'PZ005' then
+  raise log 'CV_HARNESS_STARTUP %',log_scope||jsonb_build_object('event','returned','stage',log_stage,'compatible',false,
+    'error_code',bundle#>>'{error,code}','sqlstate',SQLSTATE,'response_bytes',octet_length(bundle::text));
+  return bundle;
   when program_limit_exceeded then
   -- Numeric diagnostics survive the rollback; never return the oversized data
   -- or require another database read merely to identify which section grew.
-  return private.opportunity_search_adaptive_error('scope_oversized')||jsonb_build_object('brief_version',1,'response_limit_bytes',65536,
+  bundle:=private.opportunity_search_adaptive_error('scope_oversized')||jsonb_build_object('brief_version',1,'response_limit_bytes',65536,
     'size_diagnostics',case when brief is null then null else jsonb_build_object('response_bytes',octet_length(brief::text),
       'context_bytes',octet_length((brief-array['planning','protocol_text','result_schema','feedback'])::text),
       'planning_bytes',octet_length((brief->'planning')::text),'protocol_bytes',octet_length((brief->'protocol_text')::text),
       'schema_bytes',octet_length((brief->'result_schema')::text),'feedback_bytes',octet_length((brief->'feedback')::text)) end);
+  raise log 'CV_HARNESS_STARTUP %',log_scope||jsonb_build_object('event','returned','stage',log_stage,'compatible',false,
+    'error_code','scope_oversized','sqlstate',SQLSTATE,'response_bytes',octet_length(bundle::text),
+    'size_diagnostics',bundle->'size_diagnostics');
+  return bundle;
+  when query_canceled then
+    raise log 'CV_HARNESS_STARTUP %',log_scope||jsonb_build_object('event','exception','stage',log_stage,'sqlstate',SQLSTATE);
+    raise;
+  when others then
+    -- Never log SQLERRM, exception detail/context, or the response payload: all
+    -- can contain criteria, feedback, URLs or credentials. Preserve the exception.
+    raise log 'CV_HARNESS_STARTUP %',log_scope||jsonb_build_object('event','exception','stage',log_stage,'sqlstate',SQLSTATE);
+    raise;
 end;
 $$;
 
@@ -4152,6 +4183,7 @@ declare release public.opportunity_search_adaptive_release;runner_authorization 
   packet jsonb;preferences jsonb;planning jsonb;plan jsonb;document jsonb;legacy jsonb;due jsonb;source_context jsonb;current_rules jsonb;bundle jsonb;stored jsonb;expectations jsonb;legacy_bootstrap jsonb;
   criteria jsonb:='{}';entry record;query jsonb;filtered jsonb;capabilities jsonb:=private.opportunity_search_adaptive_capabilities();ids text[];allowed_ids text[];
   privacy_changed boolean;is_retry boolean:=false;lease timestamptz:=clock_timestamp()+interval '2 hours';lease_status text:='active';core_count integer;discretionary integer;exploration integer;signature text;
+  log_context text;log_location text[];log_code text;
 begin
   if current_user<>'postgres' then raise exception 'Management startup access is required' using errcode='42501';end if;
   if p_search_id is null or p_run_id is null then return private.opportunity_search_adaptive_error('scope_unavailable');end if;
@@ -4339,12 +4371,20 @@ begin
   else insert into private.opportunity_search_adaptive_contexts(run_id,user_id,search_id,project_ref,authorization_epoch,authorization_revision,preference_revision,lease_expires_at,bundle,bundle_hash)
     values(p_run_id,runner_authorization.user_id,p_search_id,release.project_ref,runner_authorization.authorization_epoch,runner_authorization.authorization_revision,(preferences->>'preference_revision')::bigint,lease,stored,encode(sha256(convert_to(stored::text,'UTF8')),'hex'));end if;
   return bundle;
-exception when program_limit_exceeded then return private.opportunity_search_adaptive_error('scope_oversized');
-  when feature_not_supported then return private.opportunity_search_adaptive_error('incompatible_release');
-  when object_not_in_prerequisite_state then return private.opportunity_search_adaptive_error('restart_unavailable');
-  when deadlock_detected then raise;
-  when insufficient_privilege then return private.opportunity_search_adaptive_error('authorization_revoked');
-  when others then return private.opportunity_search_adaptive_error('invalid_bundle');
+exception when deadlock_detected then raise;
+  when others then
+    -- Preserve the existing error mapping while retaining the SQLSTATE which
+    -- would otherwise disappear behind invalid_bundle. Never emit exception prose.
+    -- The original class conditions also catch subclasses (for example 54001
+    -- and 55P03); retain that behavior as well as the exact code in the log.
+    log_code:=case when left(SQLSTATE,2)='54' then 'scope_oversized' when left(SQLSTATE,2)='0A' then 'incompatible_release'
+      when left(SQLSTATE,2)='55' then 'restart_unavailable' when SQLSTATE='42501' then 'authorization_revoked' else 'invalid_bundle' end;
+    get stacked diagnostics log_context=PG_EXCEPTION_CONTEXT;
+    log_location:=regexp_match(log_context,E'^PL/pgSQL function ((?:private|public)\\.[a-z_]{1,100})\\([^\\n]*\\) line ([0-9]{1,6})');
+    raise log 'CV_HARNESS_STARTUP %',jsonb_build_object('diagnostic_version',1,'event','caught_exception','stage','bootstrap',
+      'search_id',p_search_id,'run_id',p_run_id,'error_code',log_code,'sqlstate',SQLSTATE,
+      'function',log_location[1],'line',log_location[2]::integer);
+    return private.opportunity_search_adaptive_error(log_code);
 end;
 $$;
 

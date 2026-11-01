@@ -29,9 +29,13 @@ catch (error) {
 process.once('exit', () => { try { unlinkSync(lock); } catch { /* already cleaned */ } });
 const args = ['exec', '-i', container, 'psql', '-X', '-qAt', '-U', 'postgres', '-d', database, '-v', 'ON_ERROR_STOP=1'];
 export function sql(statement: string): string {
+  return sqlWithMessages(statement).output;
+}
+/** Capture RAISE LOG from the isolated fixture with client_min_messages=log. */
+export function sqlWithMessages(statement: string): { output: string; messages: string } {
   const result = spawnSync('docker', args, { input: statement, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(result.stderr || result.error?.message || 'Isolated AF-01 SQL failed.');
-  return result.stdout.trim();
+  return { output: result.stdout.trim(), messages: result.stderr };
 }
 export function sqlAsync(statement: string, onOutput?: (chunk: string) => void): Promise<string> {
   return new Promise((resolve, reject) => {

@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "f4bbbbd1854d3bfb3bd31b559e2217320daace803d59ae0d44a58689b5e89842"
+      "sha256": "55f2a81cd09aea8a651f3177a1d52be4101c23effe22eb5b22f5e63fce044b7a"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "793290c163851cdc6528533d978b28d3e17b80787aee33dfbb84c79b03f35c51"
+        "sha256": "8b768bd8a57fdb7f3fad1b94af48e40b550daa9e792925cf7246daf929631310"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -102,6 +102,10 @@
       "path": "supabase/releases/adaptive-search-standalone-saves-v1.sql",
       "sha256": "6709435fe0d82465d1a6a6f5f4e2b434b36974291bfbe3cd44bc1fcfa5b66258"
     },
+    "startup_logging_upgrade": {
+      "path": "supabase/releases/adaptive-search-startup-logging-v1.sql",
+      "sha256": "527446dcbdbaf044bf84d704a77250ceabaeeb69724b720a327fe2e8e55ab6e2"
+    },
     "lifecycle_contracts": [
       {
         "path": "supabase/contracts/adaptive-search-lifecycle.request.schema.json",
@@ -168,7 +172,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTransport.ts",
-      "sha256": "3bbddf63b514e3116d9ca73e291c3a90814b14b8ec5585aa96bf4811c88c00a0"
+      "sha256": "342910e47ae1de8989ab8163d7afcdec301649d66fb22c76bcb476152c61cf72"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchCheckpoint.ts",

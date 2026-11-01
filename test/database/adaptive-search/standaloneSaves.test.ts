@@ -83,9 +83,11 @@ function assertSaved(value: any, f: Fixture, item: string) {
 }
 
 test('saving one found opportunity preserves the established startup and research-building functions', () => {
+  // The two startup helpers include the separately reviewed logging upgrade.
+  // startupLogging.test.ts verifies unchanged payloads across that upgrade.
   const expected = {
-    'private.begin_adaptive_search_brief(uuid,uuid)': 'b6de86d0ba66fc0cbe6ec5910b49a970',
-    'private.begin_adaptive_opportunity_search(uuid,uuid)': '395f824960b57f5bd0757b4ac041cd99',
+    'private.begin_adaptive_search_brief(uuid,uuid)': '6038c5a429dbc0899fa7a1f44ac43157',
+    'private.begin_adaptive_opportunity_search(uuid,uuid)': '2cdc9a739ca6a529dc86ab19562c31f9',
     'private.begin_opportunity_search(uuid,uuid)': '779fef6e8213a1081e786459e079875d',
     'private.compile_opportunity_feedback_snapshot(uuid,uuid)': '7083bc7b1f8abe99256c41b20ae6d2c2',
     'private.opportunity_search_planning_context(uuid,uuid,jsonb,uuid)': '2972f9fb39ad268660ecdf03dae4ffb2',
@@ -95,7 +97,7 @@ test('saving one found opportunity preserves the established startup and researc
   };
   const actual = query(`select jsonb_object_agg(signature,md5(prosrc)) from jsonb_object_keys(${json(expected)}) signatures(signature)
     join pg_proc on oid=signature::regprocedure;`);
-  assert.deepEqual(actual, expected, 'This change is restricted to found-opportunity saving and subsequent verification');
+  assert.deepEqual(actual, expected, 'Saving must preserve the reviewed startup and research definitions');
 });
 
 test('cold startup saves canonical data without plan, checks, attribution or synthetic research state', () => {

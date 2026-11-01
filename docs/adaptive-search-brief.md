@@ -70,6 +70,28 @@ Check the complete contract and exact project/search/run scope before research, 
 
 Batch failures may include the additive safe fields `diagnostics.stage` and `diagnostics.sqlstate`. Report them exactly alongside `error.code` to identify the failing operation and SQL error class. These fields contain a fixed stage label and SQLSTATE, not payload contents or full database error text, and do not authorize recovery after a rejection.
 
+### Startup logs
+
+The [startup logging upgrade](../supabase/releases/adaptive-search-startup-logging-v1.sql) adds `CV_HARNESS_STARTUP` JSON messages to PostgreSQL logs. Each message carries the search/run UUIDs and a fixed stage. `entered` records helper entry; `returned` records compatibility, response bytes and a rejection code when present; `exception` records an error rethrown to the connector. `caught_exception` preserves the original SQLSTATE and available function/line before the existing bootstrap error mapping converts it to a contract rejection. Oversize responses include numeric section sizes. No criteria, feedback, opportunity data, SQL text or exception prose are logged.
+
+These messages survive transaction rollback. A `returned` event proves neither transaction commit nor connector receipt. Absence of a log is inconclusive: access checks may reject the call before helper entry, and log collection, filters and retention can affect availability. The logs cannot reconstruct the connector's outer envelope or an earlier discarded response. Startup payloads, adaptive selection, recurring instructions and retry rules are unchanged; existing tasks need no prompt update for server logging.
+
+In Supabase Logs Explorer, select the failed attempt's time window and query the `logs` source with its exact UUID:
+
+```sql
+select timestamp, event_message
+from logs
+where source = 'postgres_logs'
+  and event_message like 'CV_HARNESS_STARTUP %'
+  and event_message like '%<run-uuid>%'
+order by timestamp asc
+limit 30;
+```
+
+This is an operator diagnostic query, not an additional research-run request. See [Supabase's bounded log-query guidance](https://supabase.com/docs/guides/observability/advanced-log-filtering).
+
+The repository SQL/MCP decoder emits one `[CV Harness] response_decode_failed` console record on failure, with the wrapper path, failure reason, optional JSON error position, UTF-8 size of the serialized input, classification and recognized error code. Raw response contents and error messages are excluded. Console failures cannot mask the original exception; decoding success is silent. The caller must retain the original input for private inspection. These console records exist only where that TypeScript decoder actually executes. A pasted ChatGPT task does not automatically execute it, so server logs remain the available independent evidence for hosted runs.
+
 The [batch-diagnostics upgrade](../supabase/releases/adaptive-search-batch-diagnostics-v1.sql) also retains the latest `invalid_batch` or `scope_oversized` failure in the run's `last_batch_rejection`. It records the batch UUID (or null when omitted), server timestamp, error code and diagnostics after the failed intake transaction has rolled back and active authorization has been checked again. A schema mismatch can include `diagnostics.field_path`; it names only declared schema fields and numeric array positions. An unexpected submitted key is represented by `<unknown>`. Semantic or internal failures may have no field path. When the first PostgreSQL stack line identifies a known function, `diagnostics.function`, `line` and `source_hash` identify its exact definition and failing line. The rest of the stack and the error message are discarded; the stage and SQLSTATE remain available when a location cannot be identified safely.
 
 The [evidence-field guidance upgrade](../supabase/releases/adaptive-search-evidence-fields-v1.sql) addresses the semantic `Unknown evidence field` rejection. The canonical schema describes `sources[].supports` as strings, while the validator also requires each string's root to name a canonical storage field. The hosted brief appends the exact accepted root names, generated from that same storage schema, and explains canonical names and nested JSON pointers. For example, use `title` or `/data/funding` when supported; `opportunity.title` is not a canonical field. This clarification adds no call and changes no validator, internal pinned bundle, result schema or recurring prompt. Existing task prompts receive it on their next startup; an already rejected execution is not automatically retried. Passing the synthetic save-and-verification test does not establish that the hosted model will produce valid evidence in its next run.

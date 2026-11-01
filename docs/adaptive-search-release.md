@@ -65,6 +65,8 @@ The subsequent [evidence-field guidance upgrade](../supabase/releases/adaptive-s
 
 The [standalone-save upgrade](../supabase/releases/adaptive-search-standalone-saves-v1.sql) follows evidence-field guidance. It changes only opportunity intake, receipt verification, completion and the technical save instructions. Its guarded schema change allows adaptive items without an execution batch and adds a direct cascading run foreign key. Immutable accepted items, old batch receipts and historical manifest hashes remain valid. It adds private internal helpers without granting them to application roles, triggers no research and changes no schedule.
 
+The [startup logging upgrade](../supabase/releases/adaptive-search-startup-logging-v1.sql) adds bounded server diagnostics to the brief and bootstrap helpers. It preserves their returned payloads, error mappings, privileges and all prompt construction. Existing tasks receive the logging automatically without repasting. [Startup logs](adaptive-search-brief.md#startup-logs) explains how to correlate a run UUID, distinguish a returned result from a commit, and inspect local decoder console records when that decoder actually executes.
+
 After deploying a changed recurring prompt, refresh it once per existing ChatGPT automation through its scoped setup handoff, then confirm the task update and Supabase acknowledgement. Response handling, incremental saves and standalone saves require this refresh even when the task already uses the brief helper. Deployment does not rewrite an already-saved task. Keep the same task binding and cadence. Automatic replacement remains server behavior; capture, decoding, one-opportunity saves and recovery depend on the saved instructions.
 
 ## Verification

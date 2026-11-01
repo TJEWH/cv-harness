@@ -236,21 +236,48 @@ function page(value: unknown): AdaptiveStartupPage {
     || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(h.row.data_base64)) failure('invalid_page');
   return { transport_version: 1, compatible: true, scope: h.scope, bundle_hash: h.bundle_hash, ...d, index: h.row.index, data_base64: h.row.data_base64 };
 }
-function parseString(value: string, maximumCharacters: number): unknown {
-  if (value.length > maximumCharacters) failure('response_oversized');
-  try { return JSON.parse(value); } catch { /* Connector warnings surround the actual SQL JSON. */ }
+interface DecodeTrace {
+  path: string[];
+  reason: 'envelope' | 'json_or_boundary' | 'invalid_json' | 'missing_boundary' | 'ambiguous_boundary' | 'boundary_json' | 'contract';
+  json_error_position: number | null;
+}
+function jsonErrorPosition(error: unknown): number | null {
+  // Match the engine's position suffix, never numbers inside quoted payload text.
+  const position = error instanceof SyntaxError ? /\bat position (\d+)(?: \(line \d+ column \d+\))?$/u.exec(error.message)?.[1] : undefined;
+  return position === undefined ? null : Number(position);
+}
+function parseString(value: string, decoder: SqlResponseDecoder<unknown>): unknown {
+  decoder.trace.reason = 'json_or_boundary';
+  decoder.trace.json_error_position = null;
+  if (value.length > decoder.maximumCharacters) failure('response_oversized');
+  try { return JSON.parse(value); } catch (error) {
+    decoder.trace.json_error_position = jsonErrorPosition(error);
+  }
   const matches = [...value.matchAll(/^[\t ]*<untrusted-data-([A-Za-z0-9-]+)>[\t ]*\r?\n([\s\S]*?)\r?\n[\t ]*<\/untrusted-data-\1>[\t ]*$/gmu)];
   const boundaries = [...value.matchAll(/^[\t ]*<\/?untrusted-data-[A-Za-z0-9-]+>[\t ]*\r?$/gmu)];
-  if (matches.length !== 1 || boundaries.length !== 2) failure('invalid_response');
-  try { return JSON.parse(matches[0]![2]!); } catch { return failure('invalid_response'); }
+  if (matches.length !== 1 || boundaries.length !== 2) {
+    decoder.trace.reason = boundaries.length === 0
+      ? ['[', '{', '"'].some(prefix => value.trimStart().startsWith(prefix)) ? 'invalid_json' : 'missing_boundary' : 'ambiguous_boundary';
+    if (decoder.trace.reason !== 'invalid_json') decoder.trace.json_error_position = null;
+    failure('invalid_response');
+  }
+  decoder.trace.reason = 'boundary_json';
+  decoder.trace.json_error_position = null;
+  try { return JSON.parse(matches[0]![2]!); } catch (error) {
+    // SyntaxError.message can contain private response text. Retain only the
+    // numeric position when the engine supplies one, never its message/stack.
+    decoder.trace.json_error_position = jsonErrorPosition(error);
+    return failure('invalid_response');
+  }
 }
-interface SqlResponseDecoder<T> { column: string; normalize: (row: unknown) => T; maximumCharacters: number }
+interface SqlResponseDecoder<T> { column: string; normalize: (row: unknown) => T; maximumCharacters: number; trace: DecodeTrace }
 function decodedRow<T>(value: unknown, decoder: SqlResponseDecoder<T>): T {
   let decoded = value, depth = 0;
   while (typeof decoded === 'string') {
     if (++depth > 16) failure('response_nesting');
-    decoded = parseString(decoded, decoder.maximumCharacters);
+    decoded = parseString(decoded, decoder);
   }
+  decoder.trace.reason = 'contract';
   return decoder.normalize(decoded);
 }
 function mirroredRows<T>(representations: unknown[][], decoder: SqlResponseDecoder<T>): unknown[] {
@@ -267,13 +294,15 @@ function mirroredRows<T>(representations: unknown[][], decoder: SqlResponseDecod
   if (rows.some(row => canonical(row) !== first)) failure('ambiguous_rows');
   return [rows[0]];
 }
-function sqlRows<T>(value: unknown, decoder: SqlResponseDecoder<T>, depth = 0): unknown[] {
+function sqlRows<T>(value: unknown, decoder: SqlResponseDecoder<T>, depth = 0, path: string[] = []): unknown[] {
+  decoder.trace.path = path;
+  decoder.trace.reason = 'envelope';
   const column = decoder.column;
   if (depth > 16) failure('response_nesting');
-  if (typeof value === 'string') return sqlRows(parseString(value, decoder.maximumCharacters), decoder, depth + 1);
+  if (typeof value === 'string') return sqlRows(parseString(value, decoder), decoder, depth + 1, path);
   if (Array.isArray(value)) {
     if (value.length > 1) failure('ambiguous_rows');
-    return value.flatMap(row => sqlRows(row, decoder, depth + 1));
+    return value.flatMap(row => sqlRows(row, decoder, depth + 1, [...path, 'row']));
   }
   if (!record(value)) failure('invalid_response');
   if (value.isError === true || hasFailureMetadata(value) || hasFailureMetadata(value.structuredContent)) connectorFailure(value);
@@ -291,31 +320,57 @@ function sqlRows<T>(value: unknown, decoder: SqlResponseDecoder<T>, depth = 0): 
       return ['[', '{', '"'].some(prefix => text.trimStart().startsWith(prefix))
         || /^[\t ]*<\/?untrusted-data-[A-Za-z0-9-]+>[\t ]*\r?$/mu.test(text);
     });
-    if (candidates.length) representations.push(candidates.flatMap(block => sqlRows((block as { text: string }).text, decoder, depth + 1)));
+    if (candidates.length) representations.push(candidates.flatMap(block => sqlRows((block as { text: string }).text, decoder, depth + 1, [...path, 'content[].text'])));
   }
   // Some connector hosts return a text envelope without the MCP type marker.
   // Compare it with every other representation; never select a convenient one.
   if (Object.hasOwn(value, 'text')) {
     if (typeof value.text !== 'string' || value.type !== undefined && value.type !== 'text') failure('invalid_response');
-    representations.push(sqlRows(value.text, decoder, depth + 1));
+    representations.push(sqlRows(value.text, decoder, depth + 1, [...path, 'text']));
   }
-  if (value.structuredContent !== undefined && value.structuredContent !== null) representations.push(sqlRows(value.structuredContent, decoder, depth + 1));
-  if (Object.hasOwn(value, 'result')) representations.push(sqlRows(value.result, decoder, depth + 1));
-  if (Object.hasOwn(value, 'data')) representations.push(sqlRows(value.data, decoder, depth + 1));
+  if (value.structuredContent !== undefined && value.structuredContent !== null) representations.push(sqlRows(value.structuredContent, decoder, depth + 1, [...path, 'structuredContent']));
+  if (Object.hasOwn(value, 'result')) representations.push(sqlRows(value.result, decoder, depth + 1, [...path, 'result']));
+  if (Object.hasOwn(value, 'data')) representations.push(sqlRows(value.data, decoder, depth + 1, [...path, 'data']));
   return mirroredRows(representations, decoder);
 }
 /** Shared bounded SQL/MCP decoder. normalize must validate and project a closed DTO; no returned text is executed. */
 export function decodeAdaptiveSearchSqlResponse<T>(value: unknown, column: string, normalize: (row: unknown) => T,
   maximumCharacters = 2 * 1024 * 1024): T {
-  if (!/^[a-z_]{1,64}$/u.test(column) || !Number.isSafeInteger(maximumCharacters) || maximumCharacters < 1
-    || maximumCharacters > 2 * 1024 * 1024) failure('invalid_row');
+  const trace: DecodeTrace = { path: [], reason: 'envelope', json_error_position: null };
   let serialized: string | undefined;
-  try { serialized = JSON.stringify(value); } catch { return failure('invalid_response'); }
-  if (serialized === undefined) failure('invalid_response');
-  if (serialized.length > maximumCharacters) failure('response_oversized');
-  const decoder = { column, normalize, maximumCharacters }, rows = sqlRows(value, decoder);
-  if (rows.length !== 1) failure('ambiguous_rows');
-  return decodedRow(rows[0], decoder);
+  try {
+    if (!/^[a-z_]{1,64}$/u.test(column) || !Number.isSafeInteger(maximumCharacters) || maximumCharacters < 1
+      || maximumCharacters > 2 * 1024 * 1024) failure('invalid_row');
+    try { serialized = JSON.stringify(value); } catch { return failure('invalid_response'); }
+    if (serialized === undefined) failure('invalid_response');
+    if (serialized.length > maximumCharacters) failure('response_oversized');
+    const decoder = { column, normalize, maximumCharacters, trace }, rows = sqlRows(value, decoder);
+    if (rows.length !== 1) failure('ambiguous_rows');
+    return decodedRow(rows[0], decoder);
+  } catch (error) {
+    const typed = error instanceof AdaptiveStartupTransportError ? error : null;
+    const knownCode = typed && (Object.hasOwn(denialCodes, typed.code.toLowerCase())
+      || /^[0-9A-Z]{5}$/u.test(typed.code) && /[0-9]/u.test(typed.code)
+      || ['invalid_response', 'response_oversized', 'response_nesting', 'ambiguous_rows', 'invalid_row',
+        'invalid_server_error', 'invalid_header', 'invalid_manifest', 'invalid_page', 'invalid_section', 'invalid_scope',
+        'runner_disabled', 'scope_unavailable', 'incompatible_release', 'invalid_bundle', 'scope_oversized',
+        'setup_conversion_required', 'run_in_progress', 'lease_expired', 'run_aborted', 'connector_error'].includes(typed.code));
+    // A console record is intentionally payload-free. Keep the original input
+    // in the calling runtime for private inspection; this function never mutates it.
+    try {
+      console.error('[CV Harness] response_decode_failed', {
+        diagnostic_version: 1,
+        column: ['startup', 'startup_manifest', 'startup_page', 'lifecycle', 'submit_adaptive_search_batch',
+          'verify_and_complete_adaptive_search'].includes(column) ? column : 'unrecognized',
+        wrapper_path: trace.path, reason: trace.reason, json_error_position: trace.json_error_position,
+        serialized_response_bytes: serialized === undefined || serialized.length > 2 * 1024 * 1024
+          ? null : new TextEncoder().encode(serialized).byteLength,
+        input_present: value !== undefined, category: typed?.category ?? 'local_processing',
+        code: knownCode ? typed!.code : null, evidence: typed?.evidence ?? 'decoder',
+      });
+    } catch { /* A failed console sink must never mask the original failure. */ }
+    throw error;
+  }
 }
 export function decodeAdaptiveStartupTransportResponse(value: unknown, column: 'startup_manifest'): AdaptiveStartupManifest;
 export function decodeAdaptiveStartupTransportResponse(value: unknown, column: 'startup_page'): AdaptiveStartupPage;

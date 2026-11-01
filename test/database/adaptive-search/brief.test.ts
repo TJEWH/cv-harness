@@ -301,7 +301,6 @@ test('hosted evidence guidance exposes accepted fields and a corrected support n
 
 test('evidence guidance upgrade preserves pre-existing pinned runs, schema, prompt and access', () => {
   const signature = 'private.begin_adaptive_search_brief(uuid,uuid)';
-  const currentDefinition = sql(`select pg_get_functiondef('${signature}'::regprocedure);`);
   const previous = [...file('supabase/releases/adaptive-search-supersession-v1.sql').matchAll(
     /^CREATE OR REPLACE FUNCTION ([^\n]+)\n[\s\S]*?\bAS\s+(\$[A-Za-z0-9_]*\$)[\s\S]*?\2;/gmu,
   )].find(match => match[1]!.startsWith('private.begin_adaptive_search_brief('));
@@ -321,7 +320,10 @@ test('evidence guidance upgrade preserves pre-existing pinned runs, schema, prom
     assert.doesNotMatch(old.protocol_text, /EVIDENCE FIELD NAMES/u);
     const upgrade = file('supabase/releases/adaptive-search-evidence-fields-v1.sql');
     sql(upgrade);
-    assert.equal(sql(`select pg_get_functiondef('${signature}'::regprocedure);`), currentDefinition);
+    // This immutable historical upgrade predates startup logging. Verify its
+    // exact reviewed body; the logging upgrade has its own ordered-upgrade test.
+    const expectedBody = /AS \$\$([\s\S]*?)\$\$;/u.exec(upgrade)![1]!.trim();
+    assert.equal(sql(`select prosrc from pg_proc where oid='${signature}'::regprocedure;`), expectedBody);
     assert.equal(snapshot(), before, 'Installation changed a historical pin, run, schema, recurring prompt or access');
     const refreshed = begin(f);
     assert.equal(refreshed.compatible, true, JSON.stringify(refreshed));
