@@ -1198,7 +1198,11 @@ test('hierarchy copy applies addition range, current-only, active owner and expl
   const packet = evidence((await buildOpportunityInsightsAnalysisPrompt(options)).text), copy = packet.job_clustering;
   assert.equal(copy.totalJobCount, 3);
   assert.equal(copy.clusterCount, 3);
-  assert.deepEqual(copy.jobs.map((job: any) => job.title), ['Submission fallback role', 'Eligible research role', 'Unknown deadline research role']);
+  const eligibleTitles = new Set(['Submission fallback role', 'Eligible research role', 'Unknown deadline research role']);
+  assert.deepEqual(new Set(copy.jobs.map((job: any) => job.title)), eligibleTitles);
+  assert.deepEqual(copy.jobs.map((job: any) => job.title), packet.qualitative_sample.examples
+    .filter((example: any) => eligibleTitles.has(example.title)).map((example: any) => example.title),
+    'hierarchy details retain the selected safe sample order after filtering');
   assert(copy.jobs.every((job: any) => job.interestScore >= 8));
   assert.equal(packet.quantitative_summary.highInterestCount, 5, 'the hierarchy filter retains full selected-time aggregate statistics');
   const otherCopy = evidence((await buildOpportunityInsightsAnalysisPrompt({ ...options, ownerId: other })).text).job_clustering;

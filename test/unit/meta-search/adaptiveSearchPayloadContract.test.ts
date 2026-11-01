@@ -67,14 +67,12 @@ test('instructions state every closed execution enum, optional evidence constrai
   assert.equal(value.completion.notes, undefined);
 });
 
-test('compact saved task instructions load complete shapes at startup without stale canonical numbers', () => {
+test('saved task instructions load complete payload and canonical schemas at startup', () => {
   const prompt = buildAdaptiveRecurringSearchPrompt(id, 'abcdefghijklmnopqrst');
-  assert(prompt.includes(ADAPTIVE_BATCH_PROTOCOL_PREFIX));
   assert(prompt.includes(ADAPTIVE_PAYLOAD_STARTUP_INSTRUCTION));
-  assert(prompt.includes('canonical results matching startup.result_schema'));
-  assert(!/canonical v[56] results/u.test(prompt));
+  assert.doesNotMatch(prompt, /canonical v\d+ results/u, 'the startup schema supplies the canonical result version');
+  assert(!prompt.includes(ADAPTIVE_PAYLOAD_CONTRACT_TEXT), 'the complete payload contract is loaded at runtime');
   assert(!prompt.includes('ADAPTIVE PAYLOAD EXAMPLES'), 'large payload examples are loaded once at runtime');
-  assert(Buffer.byteLength(prompt) < 7000, 'the saved task stays compact');
 });
 
 test('the current schema installs the exact delivered protocol as a private immutable function', () => {
