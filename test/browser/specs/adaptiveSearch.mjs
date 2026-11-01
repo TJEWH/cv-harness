@@ -24,7 +24,7 @@ try {
     try {
       await page.waitForFunction(() => {
         const { row } = window.adaptiveFixture.snapshot();
-        return row.criteria.topicsAndMethods.includes('NEW DURING SETUP') && row.meta_search.recurringPrompt.includes('private.begin_adaptive_opportunity_search');
+        return row.criteria.topicsAndMethods.includes('NEW DURING SETUP') && row.meta_search.recurringPrompt.includes('private.begin_adaptive_search_brief');
       });
     } catch (error) {
       console.error(await page.evaluate(() => ({ errors: [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent),

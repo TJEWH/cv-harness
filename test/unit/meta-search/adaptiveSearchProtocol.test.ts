@@ -27,7 +27,7 @@ test('AF-08 reviewed capabilities enumerate only three helpers and explicit requ
 
 test('AF-08 transport prepares one fixed helper call in the exact project without executing anything', () => {
   assert.deepEqual(buildAdaptiveSearchSqlCall({ action: 'startup', scope }), { project_ref: scope.project_ref,
-    sql: `SELECT private.begin_adaptive_opportunity_search('${scope.search_id}'::uuid, '${scope.run_id}'::uuid);` });
+    sql: `SELECT private.begin_adaptive_search_brief('${scope.search_id}'::uuid,'${scope.run_id}'::uuid) AS startup;` });
   const batch = buildAdaptiveSearchSqlCall({ action: 'batch', scope, batch_id: id(5), payload: payload() });
   assert.match(batch.sql, /^SELECT private\.submit_adaptive_search_batch\('/u);
   assert.equal(batch.project_ref, scope.project_ref);

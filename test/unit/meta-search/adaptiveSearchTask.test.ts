@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { reactive } from 'vue';
 import { ADAPTIVE_BATCH_CAPABILITIES } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
-import { ADAPTIVE_STARTUP_MANIFEST_SQL_TEMPLATE, ADAPTIVE_STARTUP_PAGE_SQL_TEMPLATE } from '../../../src/features/meta-search/domain/adaptiveSearchTransport';
+import { ADAPTIVE_STARTUP_BRIEF_SQL_TEMPLATE } from '../../../src/features/meta-search/domain/adaptiveSearchBrief';
 import { ADAPTIVE_RECURRING_PROMPT_TEMPLATE, buildAdaptiveRecurringSearchPrompt, loadAdaptiveSearchRunnerState, readAdaptiveSearchRunnerState, requestAdaptiveSearchRunner,
   usesAdaptiveSearchRunner, type AdaptiveSearchRunnerState } from '../../../src/features/meta-search/domain/adaptiveSearchTask';
 import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSetupReadSql, buildSearchSystemPrompt, buildSearchUserPrompt } from '../../../src/features/meta-search/domain/searchPrompts';
@@ -43,7 +43,7 @@ test('AF09 adaptive daily task text is byte-stable across current data revisions
   assert.equal(buildRecurringSearchPrompt(next, { projectId: project, runner: revisedState }), expected);
   assert.equal(buildSearchSystemPrompt(next, { projectId: project, runner: revisedState }), `${expected}\n\n${OPPORTUNITY_TOPIC_FORMAT_RULE}`);
   assert.ok(buildSearchUserPrompt(next, { projectId: project, runner: revisedState }).includes('PRIVATE_CANARY'));
-  for (const required of ['private.begin_adaptive_opportunity_search', 'private.submit_adaptive_search_batch', 'private.verify_and_complete_adaptive_search',
+  for (const required of ['private.begin_adaptive_search_brief', 'private.submit_adaptive_search_batch', 'private.verify_and_complete_adaptive_search',
     '72 hours', 'unchanged or empty runs stay quiet', 'at most once', 'full sorted batch manifest', 'Notification delivery remains unknown']) assert.ok(expected.includes(required), required);
   for (const forbidden of ['PRIVATE_CANARY', owner, setup, binding.task_id, 'private.begin_opportunity_search(', 'private.read_adaptive_search_setup', 'private.ack_adaptive_search_setup']) assert.ok(!expected.includes(forbidden), forbidden);
   assert.ok(expected.includes(search) && expected.includes(project));
@@ -62,23 +62,26 @@ test('AF09 legacy mode remains legacy until explicit migration and an unavailabl
   assert.throws(() => buildReplaceSearchPrompt(original, { projectId: project, runner: runner() }), /Save the current/);
 });
 
-test('adaptive runner uses bounded fixed startup projections within the existing helper allowlist', () => {
+test('manual and scheduled adaptive instructions use one bounded startup call without a retrieval chain', () => {
   const value = buildAdaptiveRecurringSearchPrompt(search, project);
-  for (const sql of [ADAPTIVE_STARTUP_MANIFEST_SQL_TEMPLATE, ADAPTIVE_STARTUP_PAGE_SQL_TEMPLATE]) {
-    assert.ok(value.includes(sql.replaceAll('{{search_id}}', search)), 'the exact reviewed transport SQL must reach the task');
-    assert.equal((sql.match(/private\.begin_adaptive_opportunity_search\(/gu) || []).length, 1, 'one helper invocation per startup statement');
-    assert.match(sql, /MATERIALIZED/u);
+  assert.ok(value.includes(ADAPTIVE_STARTUP_BRIEF_SQL_TEMPLATE.replaceAll('{{search_id}}', search)));
+  assert.equal((value.match(/SELECT private\.begin_adaptive_search_brief\(/gu) || []).length, 1);
+  for (const obsolete of ['startup_manifest', 'startup_page', 'MATERIALIZED', 'Base64', 'PAGES:', 'ASSEMBLY:', 'begin_adaptive_opportunity_search']) {
+    assert.ok(!value.includes(obsolete), obsolete);
   }
   assert.deepEqual([...new Set([...value.matchAll(/private\.([a-z_]+)\(/gu)].map(match => match[1]))].sort(),
-    ['begin_adaptive_opportunity_search', 'submit_adaptive_search_batch', 'verify_and_complete_adaptive_search']);
-  assert.ok(value.length <= 9_500, 'keep the recurring handoff within its local prompt budget');
-  assert.ok(value.indexOf('LOCAL PREFLIGHT:') < value.indexOf('MANIFEST:'), 'persistent local storage is checked before a run is claimed');
+    ['begin_adaptive_search_brief', 'submit_adaptive_search_batch', 'verify_and_complete_adaptive_search']);
+  assert.ok(value.length <= 7_000, 'keep the recurring handoff within its local prompt budget');
+  assert.ok(value.indexOf('RUN CONTEXT:') < value.indexOf('STARTUP:'), 'stable run identity is retained before startup');
+  assert.ok(value.includes('Local persistent capture is optional when supported'));
+  assert.ok(!value.includes('nonce') && !value.includes('separate action'));
   assert.ok(value.includes('never print the whole bundle'), 'local inspection must stay bounded after truncation');
   assert.ok(value.includes('run_in_progress and abandoned research do not authorize cancellation or restart'));
   assert.ok(!value.includes('FAILED-RUN CLEANUP'), 'owner cancellation uses the separate pinned lifecycle operation');
-  assert.ok(value.includes('2+N+B calls'), 'ordinary page reads are part of the stated budget');
-  assert.ok(!value.includes('three calls for one batch'));
-  assert.ok(!value.includes('private.read_opportunity_search_run'), 'paging must not add an unrelated read helper');
+  assert.ok(value.includes('2+B calls') && value.includes('three calls for one batch'));
+  assert.ok(value.includes('do not fetch pages, split the query or use another startup helper'));
+  assert.ok(value.includes('safety, permission or approval denial stops all further database calls'));
+  assert.ok(!value.includes('private.read_opportunity_search_run'), 'completion reads its summary internally');
 });
 
 test('database setup and frontend generate the same reviewed adaptive recurring prompt', () => {

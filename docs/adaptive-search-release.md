@@ -21,6 +21,7 @@ The current manifest is [`supabase/releases/current.json`](../supabase/releases/
 
 - Canonical opportunity schema: 6; protocol: `opportunity-search-v1-canonical-6`.
 - Shared meta-search document: 1; adaptive capability: `adaptive-batch-v1`.
+- Hosted startup brief: 1, bounded to 65,536 UTF-8 bytes.
 - Current interest metric: `opportunity-interest-v2`.
 - Current feedback selection: `opportunity-feedback-selection-v3`; query policy: `adaptive-query-v3`.
 
@@ -28,17 +29,19 @@ Current stored search revisions, verified receipts, immutable packets and applic
 
 ## Runner and setup
 
-The daily adaptive runner uses three management helpers: `private.begin_adaptive_opportunity_search`, `private.submit_adaptive_search_batch`, and `private.verify_and_complete_adaptive_search`. Fixed projections of the startup helper return a manifest and bounded pages of the complete current bundle under one run UUID. The context section is assembled first and includes current criteria, protected queries and source obligations. Planning, protocol, schema and feedback follow. Each page contains at most 4,096 UTF-8 bytes encoded as Base64, and all pages carry the same bundle hash plus their section hash, byte length and page identity. The caller verifies and retains all five sections before research. A missing, corrupt or changed page cannot silently become a partial startup.
+Manual and scheduled adaptive executions use three management helpers: `private.begin_adaptive_search_brief`, `private.submit_adaptive_search_batch`, and `private.verify_and_complete_adaptive_search`. The [startup brief](adaptive-search-brief.md) returns current criteria, protected queries, source obligations, planning, selected feedback examples, complete protocol and canonical schema in one response. It removes duplicate preferences and raw aggregate groups already reflected in planning. The full internal bundle remains available to server-side validation. If the brief cannot fit its 64-KiB bound, the helper rolls back that request's startup writes and returns `scope_oversized` without a paging fallback.
 
-Batch acknowledgement is pending verification; completion independently verifies the sorted full manifest and reads the persisted summary. One run uses `2 + N + B` calls for N startup pages and B batches: manifest, pages, batches and completion. Startup permits at most 70 pages, and execution permits at most 32 batches and 10 opportunities per batch. Ordinary page reads remain separate from the one identical retry allowed after a genuinely lost response. Local checkpoint preflight happens before creating a run. Owner cancellation uses the separate [versioned lifecycle operation](adaptive-search-lifecycle.md); research does not invent empty manifests or invoke cancellation automatically.
+Batch acknowledgement is pending verification; completion independently verifies the sorted full manifest and reads the persisted summary. One run uses `2 + B` calls for B batches: startup, batches and completion. Execution permits at most 32 batches and 10 opportunities per batch. The runner keeps its stable run UUID, complete response and accepted receipts in the execution context; local persistent capture is optional. Only runtime-confirmed dispatch with no received response permits one identical retry. Owner cancellation uses the separate [versioned lifecycle operation](adaptive-search-lifecycle.md); research does not invent empty manifests or invoke cancellation automatically.
 
-Limits remain 30 queries, 64 sources, 128 checks, 64 backlog entries, a 512-KiB report, a 256-KiB bundle and 64-KiB feedback packet. New recommendations require at least 72 hours before the verified deadline. Query/source execution claims need actual checks; saved plans do not provide execution credit. Delivery remains unknown. Unchanged or empty runs stay quiet.
+Internal limits remain 30 queries, 64 sources, 128 checks, 64 backlog entries, a 512-KiB report, a 256-KiB bundle and 64-KiB feedback packet. The outward brief has its own 64-KiB bound. New recommendations require at least 72 hours before the verified deadline. Query/source execution claims need actual checks; saved plans do not provide execution credit. Delivery remains unknown. Unchanged or empty runs stay quiet.
 
-Startup recovery has a separately testable [offline reference implementation and diagnosis](adaptive-search-startup-diagnostics.md). The hosted task receives instructions and SQL templates; it does not automatically execute the repository's TypeScript collector or checkpoint adapter. Source fingerprints and offline tests cannot confirm hosted checkpoint retention or resolve an approval, permission or safety denial.
+The historical paging transport has a separately testable [offline reference implementation and diagnosis](adaptive-search-startup-diagnostics.md). Current hosted instructions do not use its collector, checkpoint adapter or nonce preflight. Source fingerprints and offline tests cannot confirm hosted response retention or resolve an approval, permission or safety denial.
 
 Setup is separate from daily execution. The owner-checked readiness API and exact setup UUID identify the current operation. `private.read_adaptive_search_setup` returns the safe handoff; `private.ack_adaptive_search_setup` records an actual successful task-tool receipt. A lost response may retry the exact acknowledgement. Neither helper belongs to the daily runner allowlist.
 
 Current explicit runner modes and feature rollback remain supported. Changing mode requires the appropriate owner action and a real task acknowledgement. Release enablement, owner runner authorization, adaptation, pause and source reuse are independent controls. Saving intent, generating prompts and installing schema do not acknowledge a task change or enable a run.
+
+For an existing database, review the [lifecycle upgrade](../supabase/releases/adaptive-search-lifecycle-v1.sql) first, then the [brief upgrade](../supabase/releases/adaptive-search-brief-v1.sql), which requires that baseline. Deploy only under deployment authorization. After deployment, replace the saved recurring prompt once per existing automation through its scoped setup handoff. Keep its task binding and cadence. This implementation task applied neither production upgrade nor task update.
 
 ## Verification
 
@@ -48,4 +51,4 @@ npm test
 npm run build
 ```
 
-Database tests install the current schema directly into a labelled, network-disabled disposable PostgreSQL 17 container. Fixtures contain synthetic users and research. Verification covers current canonical intake, ownership/RLS, private feedback projection, scoped application/refinement actions, scheduling, interest scoring and adaptive execution. There is no historical bootstrap or migration-prefix test matrix.
+Database tests install the current schema directly into a labelled, network-disabled disposable PostgreSQL 17 container. Fixtures contain synthetic users and research. Verification covers current canonical intake, ownership/RLS, private feedback projection, scoped application/refinement actions, scheduling, interest scoring and adaptive execution. Targeted lifecycle and brief upgrade tests cover their supported preceding baseline, retained records and role restrictions; this is not a general historical migration matrix.

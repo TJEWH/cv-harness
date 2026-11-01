@@ -493,6 +493,9 @@ REVOKE ALL ON FUNCTION private.adaptive_setup_handoff(p_setup_id uuid) FROM PUBL
 -- private.FUNCTION adaptive_source_basis(p_user_id uuid, p_search_id uuid)
 REVOKE ALL ON FUNCTION private.adaptive_source_basis(p_user_id uuid, p_search_id uuid) FROM PUBLIC;
 
+-- The brief is management-only even under broad owner default privileges.
+REVOKE ALL ON FUNCTION private.begin_adaptive_search_brief(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+
 -- private.FUNCTION begin_adaptive_opportunity_search(p_search_id uuid, p_run_id uuid)
 REVOKE ALL ON FUNCTION private.begin_adaptive_opportunity_search(p_search_id uuid, p_run_id uuid) FROM PUBLIC;
 

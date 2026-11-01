@@ -70,7 +70,7 @@ for (const batches of [1, 2]) test(`AF-08 ${batches} batch run uses exactly ${2 
     const finished = api(buildAdaptiveSearchSqlCall({ action: 'complete', scope, payload: { schema_version: 1, completion_id: completion,
       batch_ids: [...batchIds].sort(), manifest_hash: receipt.manifest_hash, status: 'complete' } }));
     assert.equal(calls.length, 2 + batches);
-    assert.ok(calls.every(call => /^SELECT private\.(begin_adaptive_opportunity_search|submit_adaptive_search_batch|verify_and_complete_adaptive_search)\(/u.test(call)));
+    assert.ok(calls.every(call => /^SELECT private\.(begin_adaptive_search_brief|submit_adaptive_search_batch|verify_and_complete_adaptive_search)\(/u.test(call)));
     assert.equal(finished.compatible, true, JSON.stringify(finished));
     assert.equal(finished.persisted_summary_read, true); assert.equal(finished.historical_summary.status, 'complete');
     assert.equal(finished.historical_summary.incomplete, false); assert.equal(finished.current_verification.all_saved_items_verified, true);

@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "4123148988a2e7bc0158fae1e830b9ac3ab11ea699dc12cfafd9828d1dbedf80"
+      "sha256": "84ec32c4136228cf8c040fbdaa48815537b4997d650a0e014062045125086dc9"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "f96ecfe6cba28ef656a912dca6cb5af6318430dcaaa94844d0c36a1fecfa405a"
+        "sha256": "e7f18a031e96f2e2f516595e55ffa87bf9494b7062fafb5749a5b952bad6b2e9"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -59,7 +59,7 @@
       },
       {
         "path": "supabase/schemas/60_security.sql",
-        "sha256": "3a412d80322322519a214bb8654e81fe6dc7bc9d28077d8191a5636c021a4a9d"
+        "sha256": "634159eeb20c9f408aa4403b29b3cc63161163882efa19bb8f24528abea7dbca"
       },
       {
         "path": "supabase/schemas/70_reference_data.sql",
@@ -73,6 +73,10 @@
     "lifecycle_upgrade": {
       "path": "supabase/releases/adaptive-search-lifecycle-v1.sql",
       "sha256": "1c3ca24926c2dbf98039c3cba490488db6bf4836390ac4a2e29f2856c8f62d00"
+    },
+    "brief_upgrade": {
+      "path": "supabase/releases/adaptive-search-brief-v1.sql",
+      "sha256": "e0bf8d42852422235c2cc44ab79a77a86c90b2f3e0b6123a58c0cace3f43bcac"
     },
     "lifecycle_contracts": [
       {
@@ -97,7 +101,8 @@
     "summary_inclusion": "included-unless-excluded-v1",
     "setup_contract": 1,
     "rollback_contract": 1,
-    "lifecycle_contract": 1
+    "lifecycle_contract": 1,
+    "brief_contract": 1
   },
   "defaults": {
     "adaptive_release_enabled": false,
@@ -123,10 +128,18 @@
     "maximum_opportunity_bytes": 262144,
     "maximum_run_batches": 32
   },
+  "startup_brief": {
+    "version": 1,
+    "maximum_response_bytes": 65536
+  },
   "runner_artifacts": [
     {
       "path": "src/features/meta-search/domain/adaptiveSearchProtocol.ts",
-      "sha256": "86c38223950cdbf0bdb73f02e9a1a88e071f1bf55740d43f9355012729fa8128"
+      "sha256": "bc22603f4d911ca0445a267f9798a22879894aead8ad6e533bbaffc1970ba680"
+    },
+    {
+      "path": "src/features/meta-search/domain/adaptiveSearchBrief.ts",
+      "sha256": "3ddb5d67e0563f9b195cc0845fa24f486c1faf7a32bcb55753147919fc187442"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTransport.ts",
@@ -146,7 +159,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
-      "sha256": "47ed168828c8c3f4d1a8e1759874c84b5d5b39b3290d21374bd6d14cd6928088"
+      "sha256": "d59c69c541c081a4d15b8c0d30741bd1be06928b83e9b688fff46af0a4f5a78a"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchLifecycle.ts",

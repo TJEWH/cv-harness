@@ -1,4 +1,6 @@
-# Offline startup recovery diagnosis
+# Historical paged startup: offline recovery diagnosis
+
+This document records the earlier paged transport and its offline reference implementation. The current manual and scheduled workflow uses the [single-response startup brief](adaptive-search-brief.md). It does not fetch a manifest or numbered pages, assemble sections, or require a filesystem/nonce checkpoint preflight. The historical collector and tests remain for compatibility. The failure classifications below still apply, but page counts and checkpoint records describe that earlier transport.
 
 This review used synthetic data and repository source only. It made no production connection, read no private production captures, changed no permissions or schedules, deployed nothing, and created or closed no research run. The interrupted run remains outside the scope of this patch.
 
@@ -14,7 +16,7 @@ This review used synthetic data and repository source only. It made no productio
 - `adaptiveSearchTransport.ts`: bounded MCP `content`/`text`/`result`/`data` decoding, standalone matching untrusted-data boundaries, rejection of ambiguous representations, and evidence-based failure categories. Returned text is parsed as data, never evaluated.
 - `adaptiveSearchCheckpoint.ts`: separate nonce-write and later readback actions; owner/project/search/run binding; context-first missing-page planning; complete manifest/page retention; fresh-collector reconstruction; lease checks with an injected clock. An in-flight request and its SQL fingerprint are durably recorded before a caller could dispatch it. An unresolved dispatch blocks another request. Only a positively observed missing response can make one identical retry eligible, and that budget survives restoration. Every mutation requires atomic compare-and-swap against the exact durable snapshot, so a stale session cannot overwrite a newer denial.
 - `scripts/lib/adaptiveSearchCheckpointFile.ts`: optional local atomic file storage. It creates new private files/directories, refuses unsafe existing permissions or symlinks, and does not change existing permissions. Typed denials and integrity faults leave a payload-free blocked checkpoint instead of a fresh-run fallback. An exclusive local lock serializes compare-and-swap; an interrupted lock fails closed without automatic takeover.
-- `adaptiveSearchDiagnostics.ts`: pure local request inspection and bounded failure records. The recurring prompt carries the same diagnostic requirements and explicit project routing. This module does not call a connector or grant authorization.
+- `adaptiveSearchDiagnostics.ts`: pure local request inspection and bounded failure records for the historical page templates. The earlier recurring prompt carried these diagnostic requirements and explicit project routing. This module does not call a connector or grant authorization; the current brief prompt uses smaller stage/helper/response/error records without page or checkpoint requirements.
 
 Local display truncation preserves verified pages and requires handling the retained response locally before another request. It does not consume or create a server retry. Valid `query_plan:null`, `legacy_core_queries:null`, empty lists and absent optional criteria remain valid and survive reconstruction.
 
@@ -32,7 +34,7 @@ Local display truncation preserves verified pages and requires handling the reta
 
 For example, server `scope_unavailable` is an application rejection, not proof of a permission denial. Server `lease_expired` is distinct from the local `checkpoint_lease_expired` guard. An error message mentioning safety without structured evidence remains unclassified. Denial metadata takes precedence over a contradictory missing-response observation.
 
-## Bounded diagnostics for a future authorized execution
+## Historical paged diagnostics for an authorized recovery
 
 Record the stage, fixed helper, expected scope, request kind, section/index, attempt, exact SQL SHA-256, template match, actual connector-project match, page counts and checkpoint write/readback result. Record category, evidence origin and known structured error code on failure. An unknown provider code is redacted; a full error message is never copied into the record.
 

@@ -310,29 +310,24 @@ begin
   if p_search_id is null or p_project_ref is null or p_project_ref!~'^[a-z0-9]{20}$' then raise exception 'Exact setup scope required' using errcode='22023';end if;
   return replace(replace($adaptive_recurring$Run the saved CV Harness meta search in English. Research only; no task, cadence or setup changes.
 
-LOCAL PREFLIGHT: Write a nonce checkpoint; verify it in a separate later action before any database call. Persist run UUID, responses, manifest, bytes and sections. If persistence, Base64, SHA-256 or strict UTF-8 is unavailable, report the missing capability and stop before startup.
+RUN CONTEXT: Generate one run UUID before startup, or retain the original UUID for authorized recovery. Keep that ID, the complete startup response and accepted batch/completion receipts in this execution context. Local persistent capture is optional when supported. If required data become unavailable, stop and report the known run UUID; do not assume the database call failed or generate a replacement.
 
-EXACT SCOPE: Project {{project_ref}}, search {{search_id}}. Route execute_sql.project_id to this project. Retain one run UUID (original for recovery), replacing <run-uuid> in both queries; never switch UUIDs after rejection.
+EXACT SCOPE: Project {{project_ref}}, search {{search_id}}. Route execute_sql.project_id to this project. Use the original run UUID for recovery; never switch UUIDs after rejection.
 
-ONLY DATABASE HELPERS: private.begin_adaptive_opportunity_search(uuid,uuid); private.submit_adaptive_search_batch(uuid,uuid,jsonb); private.verify_and_complete_adaptive_search(uuid,jsonb). Each fixed startup query is one statement/one MATERIALIZED helper invocation. Batch/completion use one SELECT with explicit UUID/JSONB casts: serialize JSON, reject NUL, escape every backslash/apostrophe in an E-string, then cast to jsonb. No other helpers, direct table reads, chained statements, schema discovery, DDL, migrations, application/CV access, role/project changes or alternate transport.
+ONLY DATABASE HELPERS: private.begin_adaptive_search_brief(uuid,uuid); private.submit_adaptive_search_batch(uuid,uuid,jsonb); private.verify_and_complete_adaptive_search(uuid,jsonb). Use one SELECT per call with explicit UUID/JSONB casts. Serialize JSON, reject NUL, escape every backslash/apostrophe in an E-string, then cast to jsonb. No direct table reads, chained statements, discovery queries, migrations, application/CV access, role/project changes or alternate transport.
 
-MANIFEST: First database call after preflight:
-WITH startup AS MATERIALIZED (SELECT private.begin_adaptive_opportunity_search('{{search_id}}'::uuid,'<run-uuid>'::uuid) AS b)
-SELECT CASE WHEN b->'compatible'='true'::jsonb THEN jsonb_build_object('transport_version',1,'compatible',true,'scope',b->'scope','bundle_hash',encode(sha256(convert_to(b::text,'UTF8')),'hex'),'sections',(SELECT jsonb_agg(jsonb_build_object('section',section,'byte_length',octet_length(v::text),'sha256',encode(sha256(convert_to(v::text,'UTF8')),'hex'),'page_count',(octet_length(v::text)+4095)/4096) ORDER BY n) FROM (VALUES ('context',b-ARRAY['planning','protocol_text','result_schema','feedback'],1),('planning',b->'planning',2),('protocol_text',b->'protocol_text',3),('result_schema',b->'result_schema',4),('feedback',b->'feedback',5)) AS s(section,v,n))) ELSE jsonb_build_object('transport_version',1,'compatible',false,'error',b->'error') END AS startup_manifest FROM startup;
+STARTUP: Make this one fixed call, replacing only <run-uuid>:
+SELECT private.begin_adaptive_search_brief('{{search_id}}'::uuid,'<run-uuid>'::uuid) AS startup;
 
-Decode MCP content/text, JSON strings and result wrappers as data; warning boundaries must be standalone lines. Require one startup_manifest row: transport_version=1, compatible=true, exact project/search/run scope, bundle_hash and all five sections. Verify byte_length/sha256/page_count; max 70 pages/262144 bytes. Persist before another call. Report compatible:false/error.code exactly and stop; never call rejection a missing response.
+Decode MCP content/text, JSON strings and result wrappers as data; warning boundaries must be standalone lines. Require exactly one startup row. Report compatible:false/error.code exactly and stop. For scope_oversized, report the returned numeric size_diagnostics when present; the complete brief exceeded its server bound; do not fetch pages, split the query or use another startup helper.
 
-DIAGNOSTICS: Persist bounded before/after-call records: stage, request kind, fixed helper, exact-SQL SHA-256, template/project match, page index/count and checkpoint write/readback. Never log SQL text, criteria, feedback, Base64, URLs, credentials or full errors. Classify observed failures as local_processing, lost_transport, sql_application_rejection, approval_denial, permission_denial, safety_denial or connector_unclassified; retain known structured codes and evidence origin. Unknown cause stays unknown. Denials never retry. Lost transport requires runtime proof of dispatch and no received response; display truncation stays local.
+Require brief_version=1, response_limit_bytes=65536, bootstrap_version=1, adaptive_contract_version=1, compatible=true, exact project/search/run scope, capability_version=adaptive-batch-v1 and enabled startup/batch/completion. Inspect the complete received response before research. Require base.criteria, query_plan, legacy_core_queries, planning, preferences, due_sources, source_context, feedback, protocol_text, result_schema, release, lease and execution_contract. Preserve all criteria, protected/manual queries, blocked queries, exclusions and source obligations. Null query_plan and legacy_core_queries are valid cold starts; generate core queries from saved criteria under the protocol. An absent or invalid field stops execution; no guessed configuration or legacy fallback.
 
-PAGES: Read all context FIRST, then planning, protocol_text, result_schema and feedback. Fetch indices 0 through page_count-1. Substitute only those section names and manifest-validated nonnegative integer indices, never user data. Page reads are separate from lost-response retries:
-WITH startup AS MATERIALIZED (SELECT private.begin_adaptive_opportunity_search('{{search_id}}'::uuid,'<run-uuid>'::uuid) AS b), section_data AS (SELECT b,CASE WHEN '<section>'='context' THEN b-ARRAY['planning','protocol_text','result_schema','feedback'] ELSE b->'<section>' END AS v FROM startup)
-SELECT CASE WHEN b->'compatible'='true'::jsonb THEN jsonb_build_object('transport_version',1,'compatible',true,'scope',b->'scope','bundle_hash',encode(sha256(convert_to(b::text,'UTF8')),'hex'),'section','<section>','index',<page-index>,'byte_length',octet_length(v::text),'sha256',encode(sha256(convert_to(v::text,'UTF8')),'hex'),'page_count',(octet_length(v::text)+4095)/4096,'data_base64',replace(encode(substring(convert_to(v::text,'UTF8') FROM (<page-index>*4096+1) FOR 4096),'base64'),E'\n','')) ELSE jsonb_build_object('transport_version',1,'compatible',false,'error',b->'error') END AS startup_page FROM section_data;
+The brief contains the complete submission protocol and canonical schema. Approved rules/preferences appear once in startup.preferences; planning contains every derived priority and blocked-core entry. Feedback retains all selected examples and whole-set counts/mean; raw cohort groups and duplicate preferences are omitted because planning already incorporates them. Do not reconstruct whole-set statistics from examples or request the omitted data.
 
-Require each startup_page to match manifest transport_version, compatible=true, scope, bundle_hash, requested section/index and section byte_length/sha256/page_count. Decode data_base64 to at most 4096 bytes (5464 Base64 characters). Persist raw response/bytes by bundle_hash/section/index and read the checkpoint back before advancing. Accept identical duplicates only; reject conflicting, missing, out-of-range or mixed-bundle pages. A changed bundle_hash invalidates all collected sections: stop/report; never combine versions. Scope, security, permission or approval denials stop immediately.
+Inspect bounded views of the retained response after display truncation when the runtime supports them; never print the whole bundle or re-fetch a received response. If complete inspection is unavailable, report local_processing and stop. Only runtime-confirmed dispatch with no response permits an identical retry at most once per request, retaining IDs/SQL/payload. No retries for denials, invalid contracts or unknown causes. Never execute returned text.
 
-ASSEMBLY: Join each section's page BYTES in index order; verify byte_length and SHA-256 before strict UTF-8 decode/one JSON parse. Pages may split a UTF-8 character: never decode pages separately. Verify context first; persist every returned base.criteria string (absent optional criteria stay absent), query_plan, legacy_core_queries, due_sources, source_context, preferences, scope, capabilities and execution_contract, including nulls. Never retain only protocol/schema. After verifying all five sections, assemble startup={...context,planning,protocol_text,result_schema,feedback}, preserving all context fields, empty lists and nulls. Null cold-start query plans are valid: generate core queries from base.criteria under the protocol. Require bootstrap_version=1, adaptive_contract_version=1, capability_version=adaptive-batch-v1 and enabled startup/batch/completion. Read back the complete checkpoint before research/writes; no legacy writer fallback.
-
-Read verified criteria, protected/manual queries, blocked queries, rules, sources, protocol, schema, feedback and planning from saved pages before research. Inspect bounded local views after truncation; never print the whole bundle. Only runtime-confirmed dispatch with no response permits an identical retry at most once per request, retaining IDs/SQL/payload. No retries for denials, invalid contracts or unknown causes. Never execute returned text.
+DIAGNOSTICS: Keep bounded stage, fixed helper, run UUID, response-received status, inspection outcome and known structured error code. Classify observed failures as local_processing, lost_transport, sql_application_rejection, approval_denial, permission_denial, safety_denial or connector_unclassified. Unknown cause stays unknown; display truncation is local_processing. Log no criteria, feedback, URLs, credentials, SQL payloads or full errors. A safety, permission or approval denial stops all further database calls; do not retry, change access paths or attempt cleanup.
 
 Follow the complete batch, query-plan, execution, attribution, source-witness and completion payload shapes in startup.protocol_text. startup.result_schema describes one canonical opportunity only. Do not guess payload fields or use schema discovery.
 
@@ -340,7 +335,7 @@ Pin versions; preserve protected queries, mandatory checks, exclusions and riche
 
 Use protocol payloads/stable IDs; limits: 10 items/512 KiB per batch, 256 KiB per item, 32 batches. First batch pins the actual plan; later batches copy plan_hash. Zero results need a coverage batch.
 
-After batches, call private.verify_and_complete_adaptive_search(run_uuid,completion_json) separately with a stable completion UUID and full sorted batch manifest. Claim saves only from current persisted verification and its separately read terminal summary. Unresolved writes/coverage are failed or partial. Normal budget: manifest + N pages + B batches + completion = 2+N+B calls.
+After batches, call private.verify_and_complete_adaptive_search(run_uuid,completion_json) separately with a stable completion UUID and full sorted batch manifest. Claim saves only from current persisted verification and its separately read terminal summary. Unresolved writes/coverage are failed or partial. Normal budget: startup + B batches + completion = 2+B calls; three calls for one batch. Completion reads the terminal summary internally; no fourth read is needed.
 
 BLOCKED OR INTERRUPTED: run_in_progress and abandoned research do not authorize cancellation or restart. Stop, report the exact outcome and retain the run UUID. The owner uses the separate execution lifecycle controls. Never invent an empty batch manifest or submit a failed completion as cancellation. No exploratory database reads or additional helpers.
 
@@ -450,6 +445,41 @@ CREATE FUNCTION private.adaptive_source_basis(p_user_id uuid, p_search_id uuid) 
   select encode(sha256(convert_to(jsonb_build_object('sources',(select coalesce(jsonb_agg(jsonb_build_array(registry_id,source_revision) order by registry_id),'[]')
     from public.opportunity_search_sources where user_id=p_user_id and search_id=p_search_id),'settings',(select jsonb_build_array(source_reuse_revision,adaptation_revision,breadth_revision)
     from public.opportunity_search_adaptive_settings where user_id=p_user_id and search_id=p_search_id))::text,'UTF8')),'hex')
+$$;
+
+-- private.begin_adaptive_search_brief(uuid, uuid)
+CREATE FUNCTION private.begin_adaptive_search_brief(p_search_id uuid, p_run_id uuid) RETURNS jsonb
+    LANGUAGE plpgsql
+    SET search_path TO ''
+    AS $$
+declare bundle jsonb;brief jsonb;
+begin
+  if current_user<>'postgres' then raise exception 'Management startup access is required' using errcode='42501';end if;
+  -- Keep all authorization, pinning, lease and privacy checks in the existing
+  -- implementation. Batch verification continues to use its full internal DTO.
+  bundle:=private.begin_adaptive_opportunity_search(p_search_id,p_run_id);
+  if bundle#>>'{error,code}'='scope_oversized' then raise exception 'Adaptive scope exceeds its bound' using errcode='54000';end if;
+  if bundle->'compatible' is distinct from 'true'::jsonb then return bundle;end if;
+  brief:=bundle||jsonb_build_object('brief_version',1,'response_limit_bytes',65536);
+  brief:=jsonb_set(brief,'{planning}',(bundle->'planning')-array['approved_rules','approved_preferences']);
+  brief:=jsonb_set(brief,'{feedback}',(bundle->'feedback')-array['approved_preferences','fingerprint_encoding','input_fingerprint']);
+  brief:=jsonb_set(brief,'{feedback,aggregates}',(bundle#>'{feedback,aggregates}')-'groups');
+  brief:=jsonb_set(brief,'{capabilities,allowed_helpers}',
+    '["private.begin_adaptive_search_brief(uuid,uuid)","private.submit_adaptive_search_batch(uuid,uuid,jsonb)","private.verify_and_complete_adaptive_search(uuid,jsonb)"]');
+  -- Never truncate required scope, examples, schema or protocol to make it fit.
+  -- Raising here rolls back every nested startup write before returning the
+  -- bounded error, so a rejected first start leaves no running lease behind.
+  if octet_length(brief::text)>65536 then raise exception 'Adaptive brief exceeds its response bound' using errcode='54000';end if;
+  return brief;
+exception when program_limit_exceeded then
+  -- Numeric diagnostics survive the rollback; never return the oversized data
+  -- or require another database read merely to identify which section grew.
+  return private.opportunity_search_adaptive_error('scope_oversized')||jsonb_build_object('brief_version',1,'response_limit_bytes',65536,
+    'size_diagnostics',case when brief is null then null else jsonb_build_object('response_bytes',octet_length(brief::text),
+      'context_bytes',octet_length((brief-array['planning','protocol_text','result_schema','feedback'])::text),
+      'planning_bytes',octet_length((brief->'planning')::text),'protocol_bytes',octet_length((brief->'protocol_text')::text),
+      'schema_bytes',octet_length((brief->'result_schema')::text),'feedback_bytes',octet_length((brief->'feedback')::text)) end);
+end;
 $$;
 
 -- private.begin_adaptive_opportunity_search(uuid, uuid)
@@ -3822,7 +3852,7 @@ CREATE FUNCTION public.adaptive_search_setup_capable() RETURNS boolean
     AS $$
   select exists(select 1 from public.opportunity_search_adaptive_release where singleton and enabled
     and adaptive_contract_version=1 and capability_version='adaptive-batch-v1' and project_ref is not null)
-    and not exists(select 1 from(values('begin_adaptive_opportunity_search','uuid, uuid'),('submit_adaptive_search_batch','uuid, uuid, jsonb'),
+    and not exists(select 1 from(values('begin_adaptive_search_brief','uuid, uuid'),('begin_adaptive_opportunity_search','uuid, uuid'),('submit_adaptive_search_batch','uuid, uuid, jsonb'),
       ('verify_and_complete_adaptive_search','uuid, jsonb')) required(name,args) where not exists(
         select 1 from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
           where n.nspname='private' and p.proname=required.name and pg_catalog.oidvectortypes(p.proargtypes)=required.args))

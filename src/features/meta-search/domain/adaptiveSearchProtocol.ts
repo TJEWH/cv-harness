@@ -1,4 +1,5 @@
 import { ADAPTIVE_FEEDBACK_MAX_BYTES } from './adaptiveFeedbackSnapshots';
+import { buildAdaptiveStartupBriefSql } from './adaptiveSearchBrief';
 
 export const ADAPTIVE_BATCH_SCHEMA_VERSION = 1;
 export const ADAPTIVE_MAX_BATCH_OPPORTUNITIES = 10;
@@ -181,7 +182,7 @@ export function buildAdaptiveSearchSqlCall(input: { action: 'startup'; scope: Ad
   const exact = scope(input.scope);
   let statement: string;
   switch (input.action) {
-    case 'startup': statement = `SELECT private.begin_adaptive_opportunity_search('${exact.search_id}'::uuid, '${exact.run_id}'::uuid);`; break;
+    case 'startup': statement = buildAdaptiveStartupBriefSql(exact); break;
     case 'batch': validateAdaptiveBatchEnvelope(input.payload);
       statement = `SELECT private.submit_adaptive_search_batch('${exact.run_id}'::uuid, '${identity(input.batch_id)}'::uuid, ${adaptiveJsonSqlLiteral(input.payload)});`; break;
     case 'complete': validateAdaptiveCompletionEnvelope(input.payload);

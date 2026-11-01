@@ -86,7 +86,7 @@ for (const batchCount of [1,2]) test(`AF-11 fully installed runner preserves ${2
     const finished=api(buildAdaptiveSearchSqlCall({action:'complete',scope,payload:{schema_version:1,completion_id:completion,batch_ids:[...batchIds].sort(),manifest_hash:receipt.manifest_hash,status:'complete'}}));
     assert.equal(finished.compatible,true,JSON.stringify(finished));assert.equal(finished.persisted_summary_read,true);
     assert.equal(finished.historical_summary.status,'complete',JSON.stringify(finished));assert.equal(finished.current_verification.verified_items,1);
-    assert.equal(calls.length,2+batchCount);assert(calls.every(call=>/^SELECT private\.(begin_adaptive_opportunity_search|submit_adaptive_search_batch|verify_and_complete_adaptive_search)\(/u.test(call)));
+    assert.equal(calls.length,2+batchCount);assert(calls.every(call=>/^SELECT private\.(begin_adaptive_search_brief|submit_adaptive_search_batch|verify_and_complete_adaptive_search)\(/u.test(call)));
     assert.equal(Number(sql(`select count(*) from public.opportunity_search_executions where run_id=${quote(run)} and status='complete';`)),3+sourceChecks.length);
     assert.equal(sql(`select count(*) from public.opportunity_search_sources where user_id=${quote(owner)} and search_id=${quote(search)}
       and listing_url=${quote(listing)} and provenance='evidenced_listing' and enabled and listing_verified_at is not null and last_successful_at is null;`),'1',
