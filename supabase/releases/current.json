@@ -111,7 +111,7 @@
   "runner_artifacts": [
     {
       "path": "src/features/meta-search/domain/adaptiveSearchProtocol.ts",
-      "sha256": "61f3c375e2f9cb49f551bd02aeacb300c778077d5566b6f7688778f8836913d7"
+      "sha256": "86c38223950cdbf0bdb73f02e9a1a88e071f1bf55740d43f9355012729fa8128"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",

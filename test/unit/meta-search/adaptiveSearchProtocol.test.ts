@@ -93,6 +93,17 @@ test('AF-08 completion uses a complete sorted manifest and a stable completion i
   }
 });
 
+test('AF-08 an interrupted startup can close the same run as failed before any batch was accepted', () => {
+  const failed: AdaptiveCompletionPayload = { ...completion(), batch_ids: [], status: 'failed' };
+  validateAdaptiveCompletionEnvelope(failed);
+  assert.deepEqual(buildAdaptiveSearchSqlCall({ action: 'complete', scope, payload: failed }), {
+    project_ref: scope.project_ref,
+    sql: `SELECT private.verify_and_complete_adaptive_search('${scope.run_id}'::uuid, ${adaptiveJsonSqlLiteral(failed)});`,
+  });
+  assert.throws(() => validateAdaptiveCompletionEnvelope({ ...failed, status: 'complete' }), /batch manifest/u);
+  assert.throws(() => validateAdaptiveCompletionEnvelope({ ...failed, completion_id: 'replacement' }), /stable UUID/u);
+});
+
 test('current payload guidance includes v2 evidence and reason restrictions while preserving the old full pin', async () => {
   const { ADAPTIVE_BATCH_PROTOCOL_TEXT, ADAPTIVE_LEGACY_BATCH_PROTOCOL_TEXT } = await import('../../../src/features/meta-search/domain/adaptiveSearchProtocol');
   assert.match(ADAPTIVE_BATCH_PROTOCOL_TEXT, /background_fit, project_context, requirements, availability/u);

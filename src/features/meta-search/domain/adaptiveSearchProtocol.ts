@@ -163,7 +163,9 @@ export function validateAdaptiveBatchEnvelope(value: unknown): asserts value is 
 }
 export function validateAdaptiveCompletionEnvelope(value: unknown): asserts value is AdaptiveCompletionPayload {
   if (!record(value) || !keys(value, ['schema_version', 'completion_id', 'batch_ids', 'manifest_hash', 'status'])
-    || value.schema_version !== 1 || !Array.isArray(value.batch_ids) || value.batch_ids.length < 1 || value.batch_ids.length > ADAPTIVE_MAX_RUN_BATCHES
+    || value.schema_version !== 1 || !Array.isArray(value.batch_ids) || value.batch_ids.length > ADAPTIVE_MAX_RUN_BATCHES
+    // A startup failure can have no accepted batches; it still needs terminal cleanup.
+    || value.batch_ids.length === 0 && value.status !== 'failed'
     || !['complete', 'failed'].includes(value.status as string)
     || value.manifest_hash !== undefined && (typeof value.manifest_hash !== 'string' || !hash.test(value.manifest_hash))) throw new TypeError('Use the complete bounded batch manifest.');
   identity(value.completion_id);
