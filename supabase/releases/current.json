@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "07ba7a5550e56294c4ea0db547c07ff1f06550a0811ecd07c64f8d9d83fad17b"
+      "sha256": "dcada1383eaf12b9cab74d363b5005a35bb9d3403f030f8419ad67cfbb2745e0"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "ea33072e8e249bbe863fcad87ba97a6d3b92f729963816ca3bfcd74888633c6a"
+        "sha256": "f1f3d9e015af70e34decef28a897551b071eaff83c853692891f1a9a0afb0e8a"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -119,7 +119,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
-      "sha256": "909835d4c797b25c4b5c1fdbf11e376efbcf22c6786bc931b82a7ff71f0a8cff"
+      "sha256": "df41e34db1a0b95edb66c27f3db630de49bc073dacb25a6c780f37597f390f2c"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchStartup.ts",

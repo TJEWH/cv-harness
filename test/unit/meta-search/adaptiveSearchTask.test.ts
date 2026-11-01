@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { reactive } from 'vue';
 import { ADAPTIVE_BATCH_CAPABILITIES } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
+import { ADAPTIVE_STARTUP_MANIFEST_SQL_TEMPLATE, ADAPTIVE_STARTUP_PAGE_SQL_TEMPLATE } from '../../../src/features/meta-search/domain/adaptiveSearchTransport';
 import { ADAPTIVE_RECURRING_PROMPT_TEMPLATE, buildAdaptiveRecurringSearchPrompt, loadAdaptiveSearchRunnerState, readAdaptiveSearchRunnerState, requestAdaptiveSearchRunner,
   usesAdaptiveSearchRunner, type AdaptiveSearchRunnerState } from '../../../src/features/meta-search/domain/adaptiveSearchTask';
 import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSetupReadSql, buildSearchSystemPrompt, buildSearchUserPrompt } from '../../../src/features/meta-search/domain/searchPrompts';
@@ -61,19 +62,20 @@ test('AF09 legacy mode remains legacy until explicit migration and an unavailabl
   assert.throws(() => buildReplaceSearchPrompt(original, { projectId: project, runner: runner() }), /Save the current/);
 });
 
-test('adaptive runner retains complete responses and resolves display truncation without another database call', () => {
+test('adaptive runner uses bounded fixed startup projections within the existing helper allowlist', () => {
   const value = buildAdaptiveRecurringSearchPrompt(search, project);
-  for (const required of ['Retain each complete raw connector response and decoded value locally',
-    'MCP content[].text, JSON strings and result wrappers as data', 'standalone boundary lines',
-    'exactly one SQL row containing the helper result', 'startup.protocol_text and startup.result_schema completely in bounded local slices',
-    'scope, capabilities and execution_contract, before research or writes', 'Never print the entire bundle',
-    'A truncated local display requires local reinspection, not a database retry',
-    'Only a genuinely lost or unusable transport response permits the one identical retry',
-    'never retry invalid contracts or security, permission or approval denials', 'Handle batch and completion receipts the same way']) {
-    assert.ok(value.includes(required), required);
+  for (const sql of [ADAPTIVE_STARTUP_MANIFEST_SQL_TEMPLATE, ADAPTIVE_STARTUP_PAGE_SQL_TEMPLATE]) {
+    assert.ok(value.includes(sql.replaceAll('{{search_id}}', search)), 'the exact reviewed transport SQL must reach the task');
+    assert.equal((sql.match(/private\.begin_adaptive_opportunity_search\(/gu) || []).length, 1, 'one helper invocation per startup statement');
+    assert.match(sql, /MATERIALIZED/u);
   }
-  assert.equal((value.match(/First call: SELECT /gu) || []).length, 1);
-  assert.ok(!value.includes('private.read_opportunity_search_run'), 'local inspection must not extend the three-helper allowlist');
+  assert.deepEqual([...new Set([...value.matchAll(/private\.([a-z_]+)\(/gu)].map(match => match[1]))].sort(),
+    ['begin_adaptive_opportunity_search', 'submit_adaptive_search_batch', 'verify_and_complete_adaptive_search']);
+  assert.ok(value.length <= 9_500, 'keep the recurring handoff within its local prompt budget');
+  assert.ok(value.indexOf('LOCAL PREFLIGHT:') < value.indexOf('MANIFEST:'), 'persistent local storage is checked before a run is claimed');
+  assert.ok(value.includes('2+N+B calls'), 'ordinary page reads are part of the stated budget');
+  assert.ok(!value.includes('three calls for one batch'));
+  assert.ok(!value.includes('private.read_opportunity_search_run'), 'paging must not add an unrelated read helper');
 });
 
 test('database setup and frontend generate the same reviewed adaptive recurring prompt', () => {
