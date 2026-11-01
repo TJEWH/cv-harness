@@ -16,6 +16,7 @@
     "test:adaptive-search-attribution": "node --import tsx --test test/database/adaptive-search/attribution.test.ts",
     "test:adaptive-search-preferences": "node --import tsx --test test/database/adaptive-search/preferences.test.ts",
     "test:adaptive-search-startup": "node --import tsx --test test/database/adaptive-search/startup.test.ts",
+    "test:adaptive-search-recovery": "node --import tsx --test test/unit/meta-search/adaptiveSearchTransport.test.ts test/unit/meta-search/adaptiveSearchCheckpoint.test.ts test/unit/meta-search/adaptiveSearchDiagnostics.test.ts test/unit/meta-search/adaptiveSearchTask.test.ts test/unit/meta-search/adaptiveSearchStartup.test.ts test/unit/meta-search/adaptiveSearchProtocol.test.ts",
     "test:adaptive-search-batches": "node --import tsx --test test/database/adaptive-search/batches.test.ts",
     "test:refinement": "node scripts/tests.mjs refinement",
     "refinement:prompts": "node --import tsx test/protocol/refinement/generate.ts",

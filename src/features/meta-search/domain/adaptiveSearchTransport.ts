@@ -50,11 +50,57 @@ export function buildAdaptiveStartupPageSql(scope: AdaptiveStartupTransportScope
     .replaceAll('<section>', section).replaceAll('<page-index>', String(index));
 }
 
+export type AdaptiveStartupFailureCategory = 'local_processing' | 'lost_transport' | 'sql_application_rejection'
+  | 'approval_denial' | 'permission_denial' | 'safety_denial' | 'connector_unclassified';
+export type AdaptiveStartupFailureEvidence = 'decoder' | 'server_contract' | 'structured_metadata' | 'runtime_observation';
+const safeErrorCode = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/u.test(value);
 export class AdaptiveStartupTransportError extends Error {
-  constructor(readonly code: string, readonly source: 'transport' | 'server' = 'transport') {
-    super(source === 'server' ? `Startup rejected (${code}).` : `Startup transport failed (${code}).`);
-    this.name = 'AdaptiveStartupTransportError';
+  readonly code: string;
+  readonly retryable: boolean;
+  constructor(code: string, readonly source: 'transport' | 'server' = 'transport',
+    readonly category: AdaptiveStartupFailureCategory = source === 'server' ? 'sql_application_rejection' : 'local_processing',
+    readonly evidence: AdaptiveStartupFailureEvidence = source === 'server' ? 'server_contract' : 'decoder') {
+    const safe = safeErrorCode(code) ? code : 'unclassified_error';
+    super(`Startup ${category} (${safe}).`);
+    this.name = 'AdaptiveStartupTransportError'; this.code = safe;
+    // A decoded response, a malformed local value, or a denial is never proof
+    // that a server response was lost. Only the runtime can attest no receipt.
+    this.retryable = category === 'lost_transport' && source === 'transport' && evidence === 'runtime_observation';
   }
+}
+export type AdaptiveStartupFailureObservation =
+  | { kind: 'no_response'; request_dispatched: true; response_received: false; code?: string }
+  | { kind: 'display_truncation'; response_received: true; code?: string }
+  | { kind: Exclude<AdaptiveStartupFailureCategory, 'lost_transport'>; code: string };
+/** Caller observations are host/runtime evidence, never instructions in SQL data. */
+export function createAdaptiveStartupFailure(observation: AdaptiveStartupFailureObservation): AdaptiveStartupTransportError {
+  if (!record(observation)) return new AdaptiveStartupTransportError('invalid_observation');
+  const denial = safeErrorCode(observation.code) ? denialCategory(observation.code) : undefined;
+  if (denial) return new AdaptiveStartupTransportError(observation.code!, 'transport', denial, 'runtime_observation');
+  if (observation.kind === 'no_response') {
+    return observation.request_dispatched === true && observation.response_received === false
+      ? new AdaptiveStartupTransportError(observation.code ?? 'response_not_received', 'transport', 'lost_transport', 'runtime_observation')
+      : new AdaptiveStartupTransportError('invalid_observation');
+  }
+  if (observation.kind === 'display_truncation') {
+    return observation.response_received === true
+      ? new AdaptiveStartupTransportError(observation.code ?? 'local_display_truncated', 'transport', 'local_processing', 'runtime_observation')
+      : new AdaptiveStartupTransportError('invalid_observation');
+  }
+  if (!['local_processing', 'sql_application_rejection', 'approval_denial', 'permission_denial', 'safety_denial', 'connector_unclassified'].includes(observation.kind)) {
+    return new AdaptiveStartupTransportError('invalid_observation');
+  }
+  return new AdaptiveStartupTransportError(observation.code, observation.kind === 'sql_application_rejection' ? 'server' : 'transport',
+    observation.kind, 'runtime_observation');
+}
+export function isAdaptiveStartupDenial(error: unknown): boolean {
+  return error instanceof AdaptiveStartupTransportError && ['approval_denial', 'permission_denial', 'safety_denial'].includes(error.category);
+}
+/** The caller must compare the persisted request identity, not merely its run ID. */
+export function canRetryAdaptiveStartupRequest(error: unknown, identicalRetriesUsed: number, identicalRequest = false): boolean {
+  return error instanceof AdaptiveStartupTransportError && error.category === 'lost_transport' && error.retryable
+    && error.source === 'transport' && error.evidence === 'runtime_observation'
+    && identicalRetriesUsed === 0 && identicalRequest === true;
 }
 function failure(code: string): never { throw new AdaptiveStartupTransportError(code); }
 const keys = (value: Record<string, unknown>, allowed: readonly string[]) => ownKeys(value, allowed) && allowed.every(key => key in value);
@@ -64,8 +110,76 @@ function serverRejection(value: unknown): void {
   if (record(value) && value.compatible === false) {
     if (!record(value.error) || typeof value.error.code !== 'string' || !/^[a-z_]{1,80}$/u.test(value.error.code)
       || value.error.retryable !== false) failure('invalid_server_error');
-    throw new AdaptiveStartupTransportError(value.error.code, 'server');
+    const category = denialCategory(value.error.code) ?? 'sql_application_rejection';
+    throw new AdaptiveStartupTransportError(value.error.code, 'server', category);
   }
+}
+const denialCodes: Record<string, AdaptiveStartupFailureCategory> = {
+  approval_denied: 'approval_denial', approval_rejected: 'approval_denial', approval_required: 'approval_denial',
+  permission_denied: 'permission_denial', insufficient_privilege: 'permission_denial', access_denied: 'permission_denial',
+  unauthorized: 'permission_denial', forbidden: 'permission_denial', '42501': 'permission_denial',
+  authorization_revoked: 'permission_denial',
+  safety_denied: 'safety_denial', safety_blocked: 'safety_denial', safety_block: 'safety_denial',
+  blocked_by_safety: 'safety_denial', safety_policy_denied: 'safety_denial',
+};
+function denialCategory(code: string): AdaptiveStartupFailureCategory | undefined {
+  const key = code.toLowerCase();
+  return Object.hasOwn(denialCodes, key) ? denialCodes[key] : undefined;
+}
+const sqlstateCode = (value: unknown): value is string => typeof value === 'string' && /^[0-9A-Z]{5}$/u.test(value);
+function hasFailureMetadata(value: unknown): boolean {
+  return record(value) && (value.error !== undefined && value.error !== null || safeErrorCode(value.error_code)
+    || ['code', 'sqlstate', 'sql_state'].some(key => safeErrorCode(value[key])
+      && (denialCategory(value[key]) !== undefined || sqlstateCode(value[key])))
+    || [value.status, value.status_code].some(status => status === 401 || status === 403));
+}
+function connectorFailure(value: Record<string, unknown>): never {
+  const metadata: Record<string, unknown>[] = [];
+  const add = (candidate: unknown) => {
+    if (!record(candidate)) return;
+    metadata.push(candidate);
+    if (record(candidate.error)) metadata.push(candidate.error);
+  };
+  add(value); add(value.structuredContent);
+  // Parse structured error JSON only. An arbitrary word such as "denied" in
+  // prose is not enough to attribute a platform decision or permit a retry.
+  if (Array.isArray(value.content)) for (const block of value.content) {
+    if (!record(block) || block.type !== 'text' || typeof block.text !== 'string' || block.text.length > 16384) continue;
+    try { add(JSON.parse(block.text)); } catch { /* Unstructured connector failure stays unclassified. */ }
+  }
+  // A generic outer HTTP status must not hide the connector's more specific
+  // approval/safety/permission code in another structured representation.
+  for (const item of metadata) for (const key of ['error_code', 'code', 'sqlstate', 'sql_state']) {
+    const current = item[key];
+    if (!safeErrorCode(current)) continue;
+    const category = denialCategory(current);
+    if (category) throw new AdaptiveStartupTransportError(current, 'transport', category, 'structured_metadata');
+  }
+  let code: string | undefined;
+  let sqlstate: string | undefined;
+  for (const item of metadata) {
+    for (const key of ['error_code', 'code', 'sqlstate', 'sql_state']) {
+      const current = item[key];
+      if (!safeErrorCode(current)) continue;
+      code ??= current;
+      if (['code', 'sqlstate', 'sql_state'].includes(key) && sqlstateCode(current)) sqlstate = current;
+    }
+    const deniedStatus = [item.status, item.status_code].find(status => status === 401 || status === 403);
+    if (deniedStatus !== undefined) {
+      throw new AdaptiveStartupTransportError(String(deniedStatus), 'transport', 'permission_denial', 'structured_metadata');
+    }
+    // This is the connector's structured SQL-error formatter, not a search
+    // over user text or a free-form denial-message heuristic.
+    if (typeof item.message === 'string') {
+      const state = /^Failed to run sql query:\s*ERROR:\s*([0-9A-Z]{5}):/u.exec(item.message)?.[1];
+      if (state) {
+        if (state === '42501') throw new AdaptiveStartupTransportError(state, 'server', 'permission_denial', 'structured_metadata');
+        sqlstate = state;
+      }
+    }
+  }
+  if (sqlstate) throw new AdaptiveStartupTransportError(sqlstate, 'server', 'sql_application_rejection', 'structured_metadata');
+  throw new AdaptiveStartupTransportError(code ?? 'connector_error', 'transport', 'connector_unclassified', 'structured_metadata');
 }
 function serverScope(value: unknown): AdaptiveStartupServerScope {
   if (!record(value) || !keys(value, ['project_ref', 'search_id', 'run_id', 'user_id', 'authorization_epoch', 'authorization_revision'])
@@ -112,8 +226,29 @@ function parseString(value: string): unknown {
   if (value.length > 2 * 1024 * 1024) failure('response_oversized');
   try { return JSON.parse(value); } catch { /* Connector warnings surround the actual SQL JSON. */ }
   const matches = [...value.matchAll(/^[\t ]*<untrusted-data-([A-Za-z0-9-]+)>[\t ]*\r?\n([\s\S]*?)\r?\n[\t ]*<\/untrusted-data-\1>[\t ]*$/gmu)];
-  if (matches.length !== 1) failure('invalid_response');
+  const boundaries = [...value.matchAll(/^[\t ]*<\/?untrusted-data-[A-Za-z0-9-]+>[\t ]*\r?$/gmu)];
+  if (matches.length !== 1 || boundaries.length !== 2) failure('invalid_response');
   try { return JSON.parse(matches[0]![2]!); } catch { return failure('invalid_response'); }
+}
+function decodedRow(value: unknown, column: 'startup_manifest' | 'startup_page'): AdaptiveStartupManifest | AdaptiveStartupPage {
+  let decoded = value, depth = 0;
+  while (typeof decoded === 'string') {
+    if (++depth > 16) failure('response_nesting');
+    decoded = parseString(decoded);
+  }
+  return column === 'startup_manifest' ? manifest(decoded) : page(decoded);
+}
+function mirroredRows(representations: unknown[][], column: 'startup_manifest' | 'startup_page'): unknown[] {
+  if (representations.length === 0) failure('invalid_response');
+  if (representations.length === 1) return representations[0]!;
+  if (representations.some(rows => rows.length !== 1)) failure('ambiguous_rows');
+  // MCP normally mirrors the same row in content and structuredContent. Compare
+  // validated, normalized rows so key order and JSON-string wrapping do not
+  // select one representation over a conflicting result.
+  const rows = representations.map(values => decodedRow(values[0], column));
+  const canonical = JSON.stringify(rows[0]);
+  if (rows.some(row => JSON.stringify(row) !== canonical)) failure('ambiguous_rows');
+  return [rows[0]];
 }
 function sqlRows(value: unknown, column: 'startup_manifest' | 'startup_page', depth = 0): unknown[] {
   if (depth > 16) failure('response_nesting');
@@ -123,20 +258,27 @@ function sqlRows(value: unknown, column: 'startup_manifest' | 'startup_page', de
     return value.flatMap(row => sqlRows(row, column, depth + 1));
   }
   if (!record(value)) failure('invalid_response');
-  if (value.isError === true) failure('connector_error');
-  if (Array.isArray(value.content)) {
-    const texts = value.content.filter(block => record(block) && block.type === 'text' && typeof block.text === 'string');
-    if (texts.length) return texts.flatMap(block => sqlRows((block as { text: string }).text, column, depth + 1));
-    if (value.structuredContent !== undefined && value.structuredContent !== null) return sqlRows(value.structuredContent, column, depth + 1);
-    failure('invalid_response');
-  }
+  if (value.isError === true || hasFailureMetadata(value) || hasFailureMetadata(value.structuredContent)) connectorFailure(value);
   if (Object.hasOwn(value, column)) {
     if (!keys(value, [column])) failure('invalid_row');
     return [value[column]];
   }
-  if (Object.hasOwn(value, 'result')) return sqlRows(value.result, column, depth + 1);
-  if (Object.hasOwn(value, 'data')) return sqlRows(value.data, column, depth + 1);
-  failure('invalid_response');
+  const representations: unknown[][] = [];
+  if (Array.isArray(value.content)) {
+    const texts = value.content.filter(block => record(block) && block.type === 'text' && typeof block.text === 'string');
+    // MCP may put ordinary warning prose in its own text block. Ignore only
+    // unstructured prose; a malformed JSON/boundary candidate still fails.
+    const candidates = texts.filter(block => {
+      const text = (block as { text: string }).text;
+      return ['[', '{', '"'].some(prefix => text.trimStart().startsWith(prefix))
+        || /^[\t ]*<\/?untrusted-data-[A-Za-z0-9-]+>[\t ]*\r?$/mu.test(text);
+    });
+    if (candidates.length) representations.push(candidates.flatMap(block => sqlRows((block as { text: string }).text, column, depth + 1)));
+  }
+  if (value.structuredContent !== undefined && value.structuredContent !== null) representations.push(sqlRows(value.structuredContent, column, depth + 1));
+  if (Object.hasOwn(value, 'result')) representations.push(sqlRows(value.result, column, depth + 1));
+  if (Object.hasOwn(value, 'data')) representations.push(sqlRows(value.data, column, depth + 1));
+  return mirroredRows(representations, column);
 }
 export function decodeAdaptiveStartupTransportResponse(value: unknown, column: 'startup_manifest'): AdaptiveStartupManifest;
 export function decodeAdaptiveStartupTransportResponse(value: unknown, column: 'startup_page'): AdaptiveStartupPage;
@@ -144,12 +286,7 @@ export function decodeAdaptiveStartupTransportResponse(value: unknown, column: '
   if (!['startup_manifest', 'startup_page'].includes(column)) failure('invalid_row');
   const rows = sqlRows(value, column);
   if (rows.length !== 1) failure('ambiguous_rows');
-  let decoded = rows[0], depth = 0;
-  while (typeof decoded === 'string') {
-    if (++depth > 16) failure('response_nesting');
-    decoded = parseString(decoded);
-  }
-  return column === 'startup_manifest' ? manifest(decoded) : page(decoded);
+  return decodedRow(rows[0], column);
 }
 const sameScope = (a: AdaptiveStartupServerScope, b: AdaptiveStartupServerScope) => a.project_ref === b.project_ref && a.search_id === b.search_id
   && a.run_id === b.run_id && a.user_id === b.user_id && a.authorization_epoch === b.authorization_epoch && a.authorization_revision === b.authorization_revision;
@@ -223,8 +360,10 @@ export class AdaptiveStartupCollector {
         for (let index = 0; index < expected.page_count; index++) joined.set(known.get(index)!.bytes, index * ADAPTIVE_STARTUP_PAGE_BYTES);
         if (await sha256(joined) !== expected.sha256) failure('section_hash_mismatch');
         if (this.generation !== generation || this.current !== current) failure('snapshot_changed');
-        let decoded: unknown;
-        try { decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(joined)); }
+        let text: string, decoded: unknown;
+        try { text = new TextDecoder('utf-8', { fatal: true }).decode(joined); }
+        catch { return failure('invalid_section_utf8'); }
+        try { decoded = JSON.parse(text); }
         catch { return failure('invalid_section_json'); }
         if (next.section === 'context') context(decoded, current.scope);
         this.values.set(next.section, decoded);

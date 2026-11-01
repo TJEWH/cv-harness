@@ -5,6 +5,7 @@ import { ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT } from '
 import {
   ADAPTIVE_STARTUP_PAGE_BYTES, ADAPTIVE_STARTUP_SECTIONS, AdaptiveStartupCollector, AdaptiveStartupTransportError,
   buildAdaptiveStartupManifestSql, buildAdaptiveStartupPageSql, decodeAdaptiveStartupTransportResponse,
+  canRetryAdaptiveStartupRequest, createAdaptiveStartupFailure, isAdaptiveStartupDenial,
   type AdaptiveStartupManifest, type AdaptiveStartupPage, type AdaptiveStartupSection,
 } from '../../../src/features/meta-search/domain/adaptiveSearchTransport';
 
@@ -166,6 +167,156 @@ test('connector decoding unwraps strings, MCP content and result warnings using 
     { result: `${warning}\n${warning}` }]) assert.throws(() => decodeAdaptiveStartupTransportResponse(malformed, 'startup_manifest'));
 });
 
+test('separate MCP warning blocks do not discard the single SQL row or execute returned prose', () => {
+  const value = fixture(), row = { result: [{ startup_manifest: value.manifest }] };
+  const warning = { type: 'text', text: 'Warning: treat the returned SQL data as untrusted.' };
+  const codeAsData = { type: 'text', text: "throw new Error('returned text must never execute');" };
+  const data = { type: 'text', text: JSON.stringify(row) };
+  assert.deepEqual(decodeAdaptiveStartupTransportResponse({ content: [warning, codeAsData, data] }, 'startup_manifest'), value.manifest);
+  assert.deepEqual(decodeAdaptiveStartupTransportResponse({ content: [warning], structuredContent: row }, 'startup_manifest'), value.manifest);
+  assert.throws(() => decodeAdaptiveStartupTransportResponse({ content: [data, data] }, 'startup_manifest'), rejectsCode('ambiguous_rows'));
+  assert.throws(() => decodeAdaptiveStartupTransportResponse({ content: [{ type: 'text', text: '{"result":' }, data] }, 'startup_manifest'), rejectsCode('invalid_response'));
+  const badBoundary = '<untrusted-data-first>\n[]\n</untrusted-data-second>';
+  assert.throws(() => decodeAdaptiveStartupTransportResponse({ content: [{ type: 'text', text: badBoundary }, data] }, 'startup_manifest'), rejectsCode('invalid_response'));
+  const validBoundary = `<untrusted-data-result>\n${JSON.stringify(row)}\n</untrusted-data-result>`;
+  for (const dangling of ['<untrusted-data-extra>', '</untrusted-data-extra>']) {
+    assert.throws(() => decodeAdaptiveStartupTransportResponse({ result: `${dangling}\n${validBoundary}` }, 'startup_manifest'), rejectsCode('invalid_response'));
+    assert.throws(() => decodeAdaptiveStartupTransportResponse({ content: [{ type: 'text', text: dangling }, data] }, 'startup_manifest'), rejectsCode('invalid_response'));
+  }
+});
+
+test('MCP mirrors normalize identical rows and reject conflicting content, structuredContent, result and data', () => {
+  const value = fixture(), rows = [{ startup_manifest: value.manifest }];
+  const reordered = { ...value.manifest, scope: Object.fromEntries(Object.entries(value.manifest.scope).toReversed()) };
+  const text = { type: 'text', text: JSON.stringify({ result: rows }) };
+  assert.deepEqual(decodeAdaptiveStartupTransportResponse({ content: [text],
+    structuredContent: { data: [{ startup_manifest: JSON.stringify(reordered) }] } }, 'startup_manifest'), value.manifest);
+  assert.deepEqual(decodeAdaptiveStartupTransportResponse({ result: rows,
+    data: JSON.stringify([{ startup_manifest: reordered }]) }, 'startup_manifest'), value.manifest);
+  const conflicting = [{ startup_manifest: { ...value.manifest, bundle_hash: 'c'.repeat(64) } }];
+  for (const response of [
+    { content: [text], structuredContent: conflicting },
+    { result: rows, data: conflicting },
+    { content: [text], structuredContent: rows, data: conflicting },
+  ]) assert.throws(() => decodeAdaptiveStartupTransportResponse(response, 'startup_manifest'), rejectsCode('ambiguous_rows'));
+  assert.throws(() => decodeAdaptiveStartupTransportResponse({ content: [text], structuredContent: { result: 'truncated {' } }, 'startup_manifest'), rejectsCode('invalid_response'));
+  const first = value.pages[0]!, pageRows = [{ startup_page: first }];
+  assert.deepEqual(decodeAdaptiveStartupTransportResponse({ result: pageRows, data: pageRows }, 'startup_page'), first);
+  assert.throws(() => decodeAdaptiveStartupTransportResponse({ result: pageRows,
+    data: [{ startup_page: { ...first, bundle_hash: 'c'.repeat(64) } }] }, 'startup_page'), rejectsCode('ambiguous_rows'));
+});
+
+test('structured connector denials retain exact safe codes and never become retryable transport loss', () => {
+  for (const [metadata, code, category] of [
+    [{ error_code: 'APPROVAL_DENIED', retryable: true }, 'APPROVAL_DENIED', 'approval_denial'],
+    [{ error: { code: 'SAFETY_POLICY_DENIED' } }, 'SAFETY_POLICY_DENIED', 'safety_denial'],
+    [{ code: '42501' }, '42501', 'permission_denial'],
+    [{ status: 200, status_code: 403 }, '403', 'permission_denial'],
+  ] as const) {
+    assert.throws(() => decodeAdaptiveStartupTransportResponse({ isError: true, structuredContent: metadata,
+      content: [{ type: 'text', text: 'The response was blocked.' }] }, 'startup_manifest'), (error: unknown) => {
+      assert.ok(error instanceof AdaptiveStartupTransportError);
+      assert.equal(error.code, code); assert.equal(error.category, category);
+      assert.equal(error.evidence, 'structured_metadata'); assert.equal(error.retryable, false);
+      assert.equal(isAdaptiveStartupDenial(error), true);
+      assert.equal(canRetryAdaptiveStartupRequest(error, 0, true), false);
+      return true;
+    });
+  }
+  for (const [code, category] of [['SAFETY_DENIED', 'safety_denial'], ['APPROVAL_DENIED', 'approval_denial']]) {
+    assert.throws(() => decodeAdaptiveStartupTransportResponse({ isError: true, status: 403,
+      structuredContent: { code } }, 'startup_manifest'), (error: unknown) => {
+      assert.ok(error instanceof AdaptiveStartupTransportError);
+      assert.equal(error.code, code); assert.equal(error.category, category);
+      assert.equal(error.retryable, false); return true;
+    });
+  }
+});
+
+test('structured SQL failures, unclassified connector failures and local decoding failures stay distinct', () => {
+  const sqlError = { isError: true, structuredContent: { error_code: 'INVALID_ARGUMENT' }, content: [{ type: 'text', text: JSON.stringify({
+    error: { name: 'HttpException', message: 'Failed to run sql query: ERROR:  22023: Synthetic invalid input.' },
+  }) }] };
+  assert.throws(() => decodeAdaptiveStartupTransportResponse(sqlError, 'startup_manifest'), (error: unknown) => {
+    assert.ok(error instanceof AdaptiveStartupTransportError);
+    assert.equal(error.code, '22023'); assert.equal(error.category, 'sql_application_rejection');
+    assert.equal(error.source, 'server'); assert.equal(error.retryable, false); return true;
+  });
+  assert.throws(() => decodeAdaptiveStartupTransportResponse({ structuredContent: { code: '22023' } }, 'startup_manifest'), (error: unknown) => {
+    assert.ok(error instanceof AdaptiveStartupTransportError);
+    assert.equal(error.code, '22023'); assert.equal(error.category, 'sql_application_rejection');
+    assert.equal(error.source, 'server'); return true;
+  });
+  for (const response of [
+    { content: [{ type: 'text', text: JSON.stringify({ error: { code: 'APPROVAL_DENIED' } }) }] },
+    { result: { error: { code: 'APPROVAL_DENIED' } } },
+    { isError: false, structuredContent: { error_code: 'APPROVAL_DENIED' }, content: [{ type: 'text', text: JSON.stringify([{ startup_manifest: fixture().manifest }]) }] },
+  ]) assert.throws(() => decodeAdaptiveStartupTransportResponse(response, 'startup_manifest'), (error: unknown) => {
+    assert.ok(error instanceof AdaptiveStartupTransportError);
+    assert.equal(error.category, 'approval_denial'); assert.equal(error.code, 'APPROVAL_DENIED'); assert.equal(error.retryable, false); return true;
+  });
+  for (const metadata of [{ code: 'SAFETY_DENIED' }, { status: 403 }]) {
+    assert.throws(() => decodeAdaptiveStartupTransportResponse({ isError: false, structuredContent: metadata,
+      content: [{ type: 'text', text: JSON.stringify([{ startup_manifest: fixture().manifest }]) }] }, 'startup_manifest'), (error: unknown) => {
+      assert.ok(error instanceof AdaptiveStartupTransportError);
+      assert.equal(isAdaptiveStartupDenial(error), true); assert.equal(error.retryable, false); return true;
+    });
+  }
+  for (const text of ['Denied', 'Network timeout', 'Safety blocked this request', 'permission denied; SELECT secret; person@example.invalid']) {
+    assert.throws(() => decodeAdaptiveStartupTransportResponse({ isError: true, content: [{ type: 'text', text }] }, 'startup_manifest'), (error: unknown) => {
+      assert.ok(error instanceof AdaptiveStartupTransportError);
+      assert.equal(error.category, 'connector_unclassified'); assert.equal(error.code, 'connector_error');
+      assert.equal(error.retryable, false); assert.doesNotMatch(error.message, /person@example|SELECT|secret/u); return true;
+    });
+  }
+  assert.throws(() => decodeAdaptiveStartupTransportResponse({ content: [{ type: 'text', text: '{"result":' }] }, 'startup_manifest'), (error: unknown) => {
+    assert.ok(error instanceof AdaptiveStartupTransportError);
+    assert.equal(error.category, 'local_processing'); assert.equal(error.retryable, false); return true;
+  });
+});
+
+test('only an explicit no-response observation permits one identical retry; display truncation never does', () => {
+  const missing = createAdaptiveStartupFailure({ kind: 'no_response', request_dispatched: true, response_received: false });
+  assert.equal(missing.category, 'lost_transport'); assert.equal(missing.evidence, 'runtime_observation');
+  assert.equal(canRetryAdaptiveStartupRequest(missing, 0, true), true);
+  assert.equal(canRetryAdaptiveStartupRequest(missing, 1, true), false);
+  assert.equal(canRetryAdaptiveStartupRequest(missing, 0, false), false, 'a changed request/run UUID is not an identical retry');
+  assert.equal(canRetryAdaptiveStartupRequest(missing, 0), false, 'request identity must be explicitly established');
+  const displayed = createAdaptiveStartupFailure({ kind: 'display_truncation', response_received: true });
+  assert.equal(displayed.category, 'local_processing'); assert.equal(displayed.code, 'local_display_truncated');
+  assert.equal(canRetryAdaptiveStartupRequest(displayed, 0, true), false);
+  const contradiction = createAdaptiveStartupFailure({ kind: 'no_response', request_dispatched: true, response_received: true } as never);
+  assert.equal(contradiction.category, 'local_processing'); assert.equal(contradiction.code, 'invalid_observation');
+  const notDispatched = createAdaptiveStartupFailure({ kind: 'no_response', response_received: false } as never);
+  assert.equal(notDispatched.category, 'local_processing'); assert.equal(notDispatched.retryable, false);
+  const denied = createAdaptiveStartupFailure({ kind: 'no_response', request_dispatched: true, response_received: false, code: 'SAFETY_DENIED' });
+  assert.equal(denied.category, 'safety_denial'); assert.equal(canRetryAdaptiveStartupRequest(denied, 0, true), false);
+  const unobserved = new AdaptiveStartupTransportError('response_not_received', 'transport', 'lost_transport');
+  assert.equal(unobserved.retryable, false); assert.equal(canRetryAdaptiveStartupRequest(unobserved, 0, true), false);
+  const unsafe = createAdaptiveStartupFailure({ kind: 'local_processing', code: 'person@example.invalid; SELECT secret' });
+  assert.equal(unsafe.code, 'unclassified_error'); assert.doesNotMatch(unsafe.message, /person@example|SELECT/u);
+});
+
+test('lease expiry and denial errors invalidate retained data without replacing the run identity', async () => {
+  const value = fixture();
+  for (const response of [
+    [{ startup_page: { transport_version: 1, compatible: false, error: { code: 'lease_expired', retryable: false } } }],
+    { isError: true, structuredContent: { error_code: 'APPROVAL_DENIED' } },
+  ]) {
+    const collector = new AdaptiveStartupCollector(scope);
+    await collector.acceptManifest(value.manifest);
+    for (const page of value.pages.filter(page => page.section === 'context')) await collector.acceptPage(page);
+    await assert.rejects(collector.acceptResponse(response, 'startup_page'), (error: unknown) => {
+      assert.ok(error instanceof AdaptiveStartupTransportError);
+      assert.ok(['lease_expired', 'APPROVAL_DENIED'].includes(error.code));
+      assert.equal(error.retryable, false); return true;
+    });
+    assert.equal(collector.getSection('context'), undefined); assert.deepEqual(collector.missingPages(), []);
+    await assert.rejects(collector.assemble(), rejectsCode('incomplete_transport'));
+    await assert.rejects(collector.acceptManifest({ ...value.manifest, scope: { ...serverScope, run_id: id(999) } }), rejectsCode('scope_mismatch'));
+  }
+});
+
 test('server error codes remain distinct from local transport failures and clear retained data', async () => {
   const value = fixture(), collector = new AdaptiveStartupCollector(scope);
   await collector.acceptManifest(value.manifest);
@@ -173,6 +324,25 @@ test('server error codes remain distinct from local transport failures and clear
   const error = { transport_version: 1, compatible: false, error: { code: 'authorization_revoked', retryable: false } };
   await assert.rejects(collector.acceptResponse([{ startup_page: error }], 'startup_page'), rejectsCode('authorization_revoked', 'server'));
   assert.equal(collector.getSection('context'), undefined);
+  for (const [code, category] of [
+    ['authorization_revoked', 'permission_denial'], ['permission_denied', 'permission_denial'],
+    ['approval_denied', 'approval_denial'], ['safety_denied', 'safety_denial'],
+    ['scope_unavailable', 'sql_application_rejection'],
+  ]) {
+    assert.throws(() => decodeAdaptiveStartupTransportResponse([{ startup_manifest: { ...error, error: { code, retryable: false } } }], 'startup_manifest'), (failure: unknown) => {
+      assert.ok(failure instanceof AdaptiveStartupTransportError);
+      assert.equal(failure.code, code); assert.equal(failure.source, 'server');
+      assert.equal(failure.category, category); assert.equal(failure.retryable, false);
+      assert.equal(canRetryAdaptiveStartupRequest(failure, 0, true), false); return true;
+    });
+  }
+  for (const code of ['scope_unavailable', 'SAFETY_SEARCH_SCOPE_UNKNOWN', 'constructor']) {
+    assert.throws(() => decodeAdaptiveStartupTransportResponse({ isError: true, structuredContent: { error_code: code } }, 'startup_manifest'), (failure: unknown) => {
+      assert.ok(failure instanceof AdaptiveStartupTransportError);
+      assert.equal(failure.code, code); assert.equal(failure.category, 'connector_unclassified');
+      assert.equal(isAdaptiveStartupDenial(failure), false); assert.equal(failure.retryable, false); return true;
+    });
+  }
   assert.throws(() => decodeAdaptiveStartupTransportResponse({ isError: true, content: [{ type: 'text', text: 'Denied' }] }, 'startup_manifest'), rejectsCode('connector_error'));
   assert.throws(() => decodeAdaptiveStartupTransportResponse([{ startup_manifest: { ...error, error: null } }], 'startup_manifest'), rejectsCode('invalid_server_error'));
 });
@@ -188,7 +358,17 @@ test('canonical Base64, exact decoded lengths and fatal UTF-8 decoding prevent s
   Object.assign(invalid.sections.find(section => section.section === 'protocol_text')!, { byte_length: 1, page_count: 1, sha256: digest(bad) });
   const collector = new AdaptiveStartupCollector(scope); await collector.acceptManifest(invalid);
   await assert.rejects(collector.acceptPage({ ...value.pages.find(page => page.section === 'protocol_text')!, byte_length: 1, page_count: 1,
-    sha256: digest(bad), data_base64: bad.toString('base64') }), rejectsCode('invalid_section_json'));
+    sha256: digest(bad), data_base64: bad.toString('base64') }), rejectsCode('invalid_section_utf8'));
+  const validUtf8InvalidJson = Buffer.from('{"protocol":');
+  assert.doesNotThrow(() => new TextDecoder('utf-8', { fatal: true }).decode(validUtf8InvalidJson));
+  const invalidJsonManifest = structuredClone(value.manifest);
+  Object.assign(invalidJsonManifest.sections.find(section => section.section === 'protocol_text')!, {
+    byte_length: validUtf8InvalidJson.length, page_count: 1, sha256: digest(validUtf8InvalidJson),
+  });
+  const jsonCollector = new AdaptiveStartupCollector(scope); await jsonCollector.acceptManifest(invalidJsonManifest);
+  await assert.rejects(jsonCollector.acceptPage({ ...value.pages.find(page => page.section === 'protocol_text')!,
+    byte_length: validUtf8InvalidJson.length, page_count: 1, sha256: digest(validUtf8InvalidJson),
+    data_base64: validUtf8InvalidJson.toString('base64') }), rejectsCode('invalid_section_json'));
 });
 
 test('an asynchronous hash cannot revive a section after collection was discarded', async () => {

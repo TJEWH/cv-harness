@@ -73,6 +73,7 @@ test('adaptive runner uses bounded fixed startup projections within the existing
     ['begin_adaptive_opportunity_search', 'submit_adaptive_search_batch', 'verify_and_complete_adaptive_search']);
   assert.ok(value.length <= 9_500, 'keep the recurring handoff within its local prompt budget');
   assert.ok(value.indexOf('LOCAL PREFLIGHT:') < value.indexOf('MANIFEST:'), 'persistent local storage is checked before a run is claimed');
+  assert.ok(value.includes('never print the whole bundle'), 'local inspection must stay bounded after truncation');
   assert.ok(value.includes('2+N+B calls'), 'ordinary page reads are part of the stated budget');
   assert.ok(!value.includes('three calls for one batch'));
   assert.ok(!value.includes('private.read_opportunity_search_run'), 'paging must not add an unrelated read helper');
