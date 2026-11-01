@@ -2,7 +2,7 @@
 
 Use the connected Supabase workflow: **Sync / Copy task → ChatGPT → Sync**, with version-2 requests and proposals. Standalone letter-drafting/CV-adjustment APIs, version-1 refinement and manual proposal imports are retired. You retain opportunities, applications, current refinement history and private working documents.
 
-For a new database use [`schema.sql`](schema.sql). For existing installations, apply [`refinement_document_rounds.sql`](refinement_document_rounds.sql) in a transaction **before releasing this client**. It backfills only the existing current single-document request; the other pointer stays empty. Combined history is preserved without reactivating superseded requests. Follow [setup](README.md) for deployment. Find applied and superseded upgrade scripts in Git history. Use [`src/features/refinement/refinementTypes.ts`](../src/features/refinement/refinementTypes.ts) for the source contract. The app generates copied instructions from that contract; [`test/refinementProtocol`](../test/refinementProtocol) verifies them.
+The current schema includes separate CV and letter request pointers. Use [`schema.sql`](schema.sql) for a fresh installation and follow [setup](README.md) for current installation and verification. Historical upgrade scripts remain in Git history. The app preserves connected request/proposal history without reactivating superseded requests. [`src/features/refinement/refinementTypes.ts`](../src/features/refinement/refinementTypes.ts) defines the source contract; [`test/protocol/refinement`](../test/protocol/refinement) verifies copied instructions generated from it.
 
 ## Workflow and storage
 
@@ -128,7 +128,7 @@ The public endpoint is invoker-only. Its narrowly granted `private.clear_refinem
 
 ## Verification and rollout
 
-Run `npm test`, `npm run refinement:prompts:check`, `npm run test:refinement-protocol` and `npm run build`. Browser checks use synthetic data; see [testing](../test/REFINEMENT_TESTING.md).
+Run `npm test`, `npm run refinement:prompts:check`, `npm run test:refinement-protocol` and `npm run build`. Browser checks use synthetic data; see [testing](../test/protocol/refinement/TESTING.md).
 
 SQL suites under [`tests`](tests) exercise real database functions and RLS with synthetic users/JWT claims and roll all fixtures back. Cover workspace security, current structured refinement, privacy, annotations, protocol publication, review retries, history clearing, approval concurrency and application removal. Run security/performance advisors after DDL and compare against the pre-migration baseline. Browser mocks do not prove deployed RLS or live Auth/PostgREST transport.
 

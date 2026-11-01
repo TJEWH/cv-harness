@@ -1,0 +1,711 @@
+{
+  "runs": [
+    {
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": null,
+        "preference_revision": null
+      },
+      "counts": {
+        "new": 1,
+        "updated": 0,
+        "verified": 1,
+        "unchanged": 0,
+        "unresolved": 0,
+        "failed_checks": 0,
+        "incomplete_sources": 1
+      },
+      "run_id": "5ec3d3fd-240b-49bd-8429-bba7f97ed0a6",
+      "status": "complete",
+      "deadline": {
+        "unknown": 0,
+        "uncertain": true,
+        "late_discoveries": 0,
+        "exact_lead_time_hours": null,
+        "lower_lead_time_hours": 48,
+        "upper_lead_time_hours": 72,
+        "possible_late_discoveries": 1
+      },
+      "started_at": "2026-10-31T23:18:03.469406+00:00",
+      "completed_at": "2026-10-20T11:00:00+00:00",
+      "query_plan_id": null,
+      "backlog_omitted": 0,
+      "delivery_status": "unknown",
+      "backlog_overflow": false,
+      "backlog_candidates": 0,
+      "execution_report_status": "complete",
+      "adaptive_contract_version": null
+    },
+    {
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": null,
+        "preference_revision": null
+      },
+      "counts": {
+        "new": 0,
+        "updated": 0,
+        "verified": 0,
+        "unchanged": 0,
+        "unresolved": 1,
+        "failed_checks": 0,
+        "incomplete_sources": 0
+      },
+      "run_id": "ce9944c8-4d2c-44dd-b788-2fce7759c738",
+      "status": "failed",
+      "deadline": {
+        "unknown": 0,
+        "uncertain": true,
+        "late_discoveries": 0,
+        "exact_lead_time_hours": null,
+        "lower_lead_time_hours": null,
+        "upper_lead_time_hours": null,
+        "possible_late_discoveries": 0
+      },
+      "started_at": "2026-10-31T23:18:02.467551+00:00",
+      "completed_at": "2026-10-31T23:18:01.210008+00:00",
+      "query_plan_id": null,
+      "backlog_omitted": 2,
+      "delivery_status": "unknown",
+      "backlog_overflow": true,
+      "backlog_candidates": 1,
+      "execution_report_status": "failed",
+      "adaptive_contract_version": null
+    },
+    {
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": null,
+        "preference_revision": null
+      },
+      "counts": {
+        "new": 0,
+        "updated": 0,
+        "verified": 0,
+        "unchanged": 0,
+        "unresolved": null,
+        "failed_checks": 0,
+        "incomplete_sources": 0
+      },
+      "run_id": "06d9c131-bf80-48a5-b6e2-3cb37fbeb978",
+      "status": "complete",
+      "deadline": {
+        "unknown": 0,
+        "uncertain": true,
+        "late_discoveries": 0,
+        "exact_lead_time_hours": null,
+        "lower_lead_time_hours": null,
+        "upper_lead_time_hours": null,
+        "possible_late_discoveries": 0
+      },
+      "started_at": "2026-10-31T23:18:01.031193+00:00",
+      "completed_at": null,
+      "query_plan_id": null,
+      "backlog_omitted": null,
+      "delivery_status": "unknown",
+      "backlog_overflow": null,
+      "backlog_candidates": null,
+      "execution_report_status": "unreported",
+      "adaptive_contract_version": null
+    },
+    {
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": null,
+        "preference_revision": null
+      },
+      "counts": {
+        "new": 0,
+        "updated": 0,
+        "verified": 0,
+        "unchanged": 0,
+        "unresolved": null,
+        "failed_checks": 0,
+        "incomplete_sources": 0
+      },
+      "run_id": "0e0f5552-4f17-4325-a9a7-8b7ee22e1f98",
+      "status": "complete",
+      "deadline": {
+        "unknown": 0,
+        "uncertain": true,
+        "late_discoveries": 0,
+        "exact_lead_time_hours": null,
+        "lower_lead_time_hours": null,
+        "upper_lead_time_hours": null,
+        "possible_late_discoveries": 0
+      },
+      "started_at": "2026-10-31T23:18:01.031193+00:00",
+      "completed_at": null,
+      "query_plan_id": null,
+      "backlog_omitted": null,
+      "delivery_status": "unknown",
+      "backlog_overflow": null,
+      "backlog_candidates": null,
+      "execution_report_status": "unreported",
+      "adaptive_contract_version": null
+    },
+    {
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": null,
+        "preference_revision": null
+      },
+      "counts": {
+        "new": 0,
+        "updated": 0,
+        "verified": 0,
+        "unchanged": 0,
+        "unresolved": null,
+        "failed_checks": 0,
+        "incomplete_sources": 0
+      },
+      "run_id": "6987bb84-bc32-4800-ad6a-48253cc267c9",
+      "status": "complete",
+      "deadline": {
+        "unknown": 0,
+        "uncertain": true,
+        "late_discoveries": 0,
+        "exact_lead_time_hours": null,
+        "lower_lead_time_hours": null,
+        "upper_lead_time_hours": null,
+        "possible_late_discoveries": 0
+      },
+      "started_at": "2026-10-31T23:18:01.031193+00:00",
+      "completed_at": null,
+      "query_plan_id": null,
+      "backlog_omitted": null,
+      "delivery_status": "unknown",
+      "backlog_overflow": null,
+      "backlog_candidates": null,
+      "execution_report_status": "unreported",
+      "adaptive_contract_version": null
+    },
+    {
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": null,
+        "preference_revision": null
+      },
+      "counts": {
+        "new": 0,
+        "updated": 0,
+        "verified": 0,
+        "unchanged": 0,
+        "unresolved": null,
+        "failed_checks": 0,
+        "incomplete_sources": 0
+      },
+      "run_id": "6e2352c8-f0c6-4e8e-9024-c306552f0ea1",
+      "status": "complete",
+      "deadline": {
+        "unknown": 0,
+        "uncertain": true,
+        "late_discoveries": 0,
+        "exact_lead_time_hours": null,
+        "lower_lead_time_hours": null,
+        "upper_lead_time_hours": null,
+        "possible_late_discoveries": 0
+      },
+      "started_at": "2026-10-31T23:18:01.031193+00:00",
+      "completed_at": null,
+      "query_plan_id": null,
+      "backlog_omitted": null,
+      "delivery_status": "unknown",
+      "backlog_overflow": null,
+      "backlog_candidates": null,
+      "execution_report_status": "unreported",
+      "adaptive_contract_version": null
+    },
+    {
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": null,
+        "preference_revision": null
+      },
+      "counts": {
+        "new": 0,
+        "updated": 0,
+        "verified": 0,
+        "unchanged": 0,
+        "unresolved": null,
+        "failed_checks": 0,
+        "incomplete_sources": 0
+      },
+      "run_id": "7a35fcdd-990b-4831-9a67-79119d993b85",
+      "status": "complete",
+      "deadline": {
+        "unknown": 0,
+        "uncertain": true,
+        "late_discoveries": 0,
+        "exact_lead_time_hours": null,
+        "lower_lead_time_hours": null,
+        "upper_lead_time_hours": null,
+        "possible_late_discoveries": 0
+      },
+      "started_at": "2026-10-31T23:18:01.031193+00:00",
+      "completed_at": null,
+      "query_plan_id": null,
+      "backlog_omitted": null,
+      "delivery_status": "unknown",
+      "backlog_overflow": null,
+      "backlog_candidates": null,
+      "execution_report_status": "unreported",
+      "adaptive_contract_version": null
+    },
+    {
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": null,
+        "preference_revision": null
+      },
+      "counts": {
+        "new": 0,
+        "updated": 0,
+        "verified": 0,
+        "unchanged": 0,
+        "unresolved": null,
+        "failed_checks": 0,
+        "incomplete_sources": 0
+      },
+      "run_id": "7cc90b36-d197-499e-aa23-218089ee9de0",
+      "status": "complete",
+      "deadline": {
+        "unknown": 0,
+        "uncertain": true,
+        "late_discoveries": 0,
+        "exact_lead_time_hours": null,
+        "lower_lead_time_hours": null,
+        "upper_lead_time_hours": null,
+        "possible_late_discoveries": 0
+      },
+      "started_at": "2026-10-31T23:18:01.031193+00:00",
+      "completed_at": null,
+      "query_plan_id": null,
+      "backlog_omitted": null,
+      "delivery_status": "unknown",
+      "backlog_overflow": null,
+      "backlog_candidates": null,
+      "execution_report_status": "unreported",
+      "adaptive_contract_version": null
+    },
+    {
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": null,
+        "preference_revision": null
+      },
+      "counts": {
+        "new": 0,
+        "updated": 0,
+        "verified": 0,
+        "unchanged": 0,
+        "unresolved": null,
+        "failed_checks": 0,
+        "incomplete_sources": 0
+      },
+      "run_id": "8cd8e19e-0131-4fe7-8176-7ad8c21fe88f",
+      "status": "complete",
+      "deadline": {
+        "unknown": 0,
+        "uncertain": true,
+        "late_discoveries": 0,
+        "exact_lead_time_hours": null,
+        "lower_lead_time_hours": null,
+        "upper_lead_time_hours": null,
+        "possible_late_discoveries": 0
+      },
+      "started_at": "2026-10-31T23:18:01.031193+00:00",
+      "completed_at": null,
+      "query_plan_id": null,
+      "backlog_omitted": null,
+      "delivery_status": "unknown",
+      "backlog_overflow": null,
+      "backlog_candidates": null,
+      "execution_report_status": "unreported",
+      "adaptive_contract_version": null
+    },
+    {
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": null,
+        "preference_revision": null
+      },
+      "counts": {
+        "new": 0,
+        "updated": 0,
+        "verified": 0,
+        "unchanged": 0,
+        "unresolved": null,
+        "failed_checks": 0,
+        "incomplete_sources": 0
+      },
+      "run_id": "c92a7793-e7e2-451a-9645-5350cb7c99e5",
+      "status": "complete",
+      "deadline": {
+        "unknown": 0,
+        "uncertain": true,
+        "late_discoveries": 0,
+        "exact_lead_time_hours": null,
+        "lower_lead_time_hours": null,
+        "upper_lead_time_hours": null,
+        "possible_late_discoveries": 0
+      },
+      "started_at": "2026-10-31T23:18:01.031193+00:00",
+      "completed_at": null,
+      "query_plan_id": null,
+      "backlog_omitted": null,
+      "delivery_status": "unknown",
+      "backlog_overflow": null,
+      "backlog_candidates": null,
+      "execution_report_status": "unreported",
+      "adaptive_contract_version": null
+    }
+  ],
+  "bounds": {
+    "maximum_runs": 10,
+    "maximum_queries": 30,
+    "maximum_sources": 64,
+    "maximum_proposals": 32,
+    "maximum_executions": 64,
+    "maximum_suggestions": 64,
+    "maximum_feedback_bytes": 65536,
+    "maximum_dashboard_bytes": 262144
+  },
+  "policy": {
+    "policy_version": "adaptive-query-v3",
+    "maximum_queries": 30,
+    "exploration_ratio": 0.2,
+    "institution_policy": "source-only-v1",
+    "exploration_guidance": "Explore underrepresented named interests, alternative terminology and new official sources. Research directions are alternatives, not cumulative requirements. Preserve the shared profile and all hard criteria; interests do not establish qualifications.",
+    "institution_guidance": "Retain institution listings as reusable sources only. Screen each project independently against the shared profile, funding, requirements and deadlines. Do not add an institution-wide fit bonus or infer qualifications from university-level outcomes.",
+    "minimum_observations": 3,
+    "minimum_exploration_queries": 1,
+    "positive_interest_threshold": 6
+  },
+  "omitted": {
+    "runs": 4,
+    "queries": 0,
+    "sources": 0,
+    "proposals": 0,
+    "executions": 0,
+    "withheld_fields": 2,
+    "preference_suggestions": 0
+  },
+  "queries": {
+    "plan": {
+      "id": "a7dd9828-df5d-451a-a3b8-0ef61a88d9e3",
+      "basis": {
+        "base_revision": 1,
+        "protocol_version": "opportunity-search-v1-canonical-6",
+        "feedback_revision": 1,
+        "preference_revision": 0
+      },
+      "queries": [
+        {
+          "role": "core",
+          "query": "synthetic BCI opportunities",
+          "manual": true,
+          "outcomes": {
+            "reviewed": 1,
+            "sample_size": 1,
+            "mean_interest": 9,
+            "with_interest": 1,
+            "confirmed_submissions": 0,
+            "explicit_high_interest": 1
+          },
+          "query_id": "85defec8-74b6-4cdc-a9f6-a4f1daf88f05",
+          "withheld": false,
+          "text_hash": "0eaa6c718c7b83aa26db119c90df42fde2d582179ce114c308782c4765b2b59f",
+          "source_registry_id": "f780ab4a-127c-420b-b860-7c86bf0697ae"
+        },
+        {
+          "role": "adaptive",
+          "query": null,
+          "manual": false,
+          "outcomes": {
+            "reviewed": 0,
+            "sample_size": 0,
+            "mean_interest": null,
+            "with_interest": 0,
+            "confirmed_submissions": 0,
+            "explicit_high_interest": 0
+          },
+          "query_id": "20bfc7a2-12dd-4c9b-bf52-95e9f2bb06c8",
+          "withheld": true,
+          "text_hash": "c7d995bbad8409cc521b950f2f2966781fdbde4ddd6055426d0bdcb9a2828247",
+          "source_registry_id": null
+        },
+        {
+          "role": "exploration",
+          "query": null,
+          "manual": false,
+          "outcomes": {
+            "reviewed": 0,
+            "sample_size": 0,
+            "mean_interest": null,
+            "with_interest": 0,
+            "confirmed_submissions": 0,
+            "explicit_high_interest": 0
+          },
+          "query_id": "97fcd026-dc87-4fb1-96c2-1568a87463ee",
+          "withheld": true,
+          "text_hash": "3a86b127beb0cb08f8b6cefeefbc4cecf2d799a5572755ae806e9c4055bd4813",
+          "source_registry_id": null
+        }
+      ],
+      "revision": 1,
+      "plan_hash": "366fa4685429f83df89b8aaaa01904175cee2f977b6d19d90b2a8a5c065a8398",
+      "created_at": "2026-10-31T23:18:01.200255+00:00",
+      "planning_policy": {
+        "policy_version": "adaptive-query-v3",
+        "maximum_queries": 30,
+        "exploration_ratio": 0.2,
+        "institution_policy": "source-only-v1",
+        "exploration_guidance": "Explore underrepresented named interests, alternative terminology and new official sources. Research directions are alternatives, not cumulative requirements. Preserve the shared profile and all hard criteria; interests do not establish qualifications.",
+        "institution_guidance": "Retain institution listings as reusable sources only. Screen each project independently against the shared profile, funding, requirements and deadlines. Do not add an institution-wide fit bonus or infer qualifications from university-level outcomes.",
+        "minimum_observations": 3,
+        "minimum_exploration_queries": 1,
+        "positive_interest_threshold": 6
+      }
+    },
+    "executions": [
+      {
+        "kind": "source",
+        "run_id": "ce9944c8-4d2c-44dd-b788-2fce7759c738",
+        "status": "blocked",
+        "check_id": "d5748dad-da22-4f34-aecb-71722bb72458",
+        "query_id": null,
+        "text_hash": null,
+        "attempted_at": "2026-10-20T12:00:00+00:00",
+        "results_count": null,
+        "failure_reason": "access_denied",
+        "source_registry_id": "f780ab4a-127c-420b-b860-7c86bf0697ae"
+      },
+      {
+        "kind": "query",
+        "run_id": "5ec3d3fd-240b-49bd-8429-bba7f97ed0a6",
+        "status": "complete",
+        "check_id": "025fb7dc-2ff9-4fdb-8c4d-dada79528bba",
+        "query_id": "85defec8-74b6-4cdc-a9f6-a4f1daf88f05",
+        "text_hash": "0eaa6c718c7b83aa26db119c90df42fde2d582179ce114c308782c4765b2b59f",
+        "attempted_at": "2026-10-20T10:00:00+00:00",
+        "results_count": 1,
+        "failure_reason": null,
+        "source_registry_id": "f780ab4a-127c-420b-b860-7c86bf0697ae"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "kind": "other",
+      "pinned": true,
+      "status": "ready",
+      "topics": [
+        "BCI"
+      ],
+      "enabled": false,
+      "coverage": {
+        "last_status": "blocked",
+        "last_attempted_at": "2026-10-20T12:00:00+00:00",
+        "last_failure_reason": "access_denied"
+      },
+      "outcomes": {
+        "reviewed": 1,
+        "sample_size": 1,
+        "mean_interest": 9,
+        "with_interest": 1,
+        "confirmed_submissions": 0,
+        "explicit_high_interest": 1
+      },
+      "priority": 50,
+      "mandatory": false,
+      "provenance": "explicit",
+      "institution": "Synthetic Institute",
+      "listing_url": "https://example.invalid/Jobs?VacancyID=CaseA",
+      "registry_id": "f780ab4a-127c-420b-b860-7c86bf0697ae",
+      "vacancy_url": null,
+      "owner_disabled": true,
+      "source_revision": 3,
+      "last_attempted_at": null,
+      "last_successful_at": null,
+      "listing_verified_at": null,
+      "check_interval_hours": 96
+    },
+    {
+      "kind": "other",
+      "pinned": false,
+      "status": "pending_identification",
+      "topics": [],
+      "enabled": false,
+      "coverage": {
+        "last_status": null,
+        "last_attempted_at": null,
+        "last_failure_reason": null
+      },
+      "outcomes": {
+        "reviewed": 0,
+        "sample_size": 0,
+        "mean_interest": null,
+        "with_interest": 0,
+        "confirmed_submissions": 0,
+        "explicit_high_interest": 0
+      },
+      "priority": 50,
+      "mandatory": false,
+      "provenance": "candidate",
+      "institution": null,
+      "listing_url": null,
+      "registry_id": "be8c1e7e-62be-4489-8403-38c78dfde87f",
+      "vacancy_url": "https://example.invalid/Vacancy/CaseA",
+      "owner_disabled": false,
+      "source_revision": 2,
+      "last_attempted_at": null,
+      "last_successful_at": null,
+      "listing_verified_at": null,
+      "check_interval_hours": 168
+    }
+  ],
+  "user_id": "0d337faa-4001-44af-b639-47931cfd3004",
+  "settings": {
+    "breadth_revision": 0,
+    "query_plan_dirty": true,
+    "adaptation_paused": true,
+    "feedback_revision": 1,
+    "adaptation_enabled": false,
+    "adaptation_revision": 3,
+    "preference_revision": 2,
+    "query_plan_revision": 1,
+    "source_reuse_revision": 1,
+    "search_breadth_percent": 20,
+    "reuse_check_interval_hours": 96,
+    "institution_sources_omitted": 0,
+    "successful_source_reuse_enabled": true
+  },
+  "readiness": {
+    "mode": "legacy",
+    "ready": false,
+    "binding": null,
+    "user_id": "0d337faa-4001-44af-b639-47931cfd3004",
+    "revision": 0,
+    "setup_id": null,
+    "search_id": "8782140b-2f14-4e63-a61e-951fdd68c55e",
+    "project_ref": "dddddddddddddddddddd",
+    "readiness_code": "release_disabled",
+    "migration_requested": false,
+    "setup_contract_version": 1
+  },
+  "search_id": "8782140b-2f14-4e63-a61e-951fdd68c55e",
+  "preferences": {
+    "revision": 2,
+    "proposals": [],
+    "suggestions": [
+      {
+        "rule": {
+          "kind": "emphasis",
+          "target": "BCI",
+          "rule_id": "39820409-dd28-46c4-9040-878bdeae261c",
+          "category": "topic",
+          "polarity": "positive",
+          "evidence_refs": [
+            "8a29a0c7-5d18-468d-9657-74d668e30348"
+          ]
+        },
+        "state": "rejected",
+        "origin": "owner",
+        "created_at": "2026-10-31T23:18:01.213653+00:00",
+        "decided_at": "2026-10-31T23:18:01.285883+00:00",
+        "suggestion_id": "d5feaef2-48eb-46db-972d-44146e4cdbad"
+      }
+    ],
+    "approved_rules": []
+  },
+  "project_ref": "dddddddddddddddddddd",
+  "feedback_preview": {
+    "counts": {
+      "scored": 1,
+      "eligible": 1,
+      "selected": 1,
+      "application": 1,
+      "omitted_bytes": 0,
+      "omitted_limit": 0,
+      "omitted_groups": 0,
+      "explicit_rating": 0,
+      "approved_summaries": 0,
+      "baseline_available": 0,
+      "categorical_review": 0,
+      "submission_fallback": 0,
+      "confirmed_submissions": 0
+    },
+    "examples": [
+      {
+        "title": "Synthetic opportunity",
+        "topics": [
+          "BCI"
+        ],
+        "reasons": [],
+        "institution": "Synthetic Institute",
+        "interest_gap": null,
+        "review_state": "interested",
+        "submission_at": null,
+        "interest_score": 9,
+        "metric_version": "opportunity-interest-v2",
+        "opportunity_id": "8a29a0c7-5d18-468d-9657-74d668e30348",
+        "baseline_status": "unavailable",
+        "interest_origin": "application",
+        "feedback_revision": 1,
+        "feedback_updated_at": "2026-10-31T23:18:01.172539+00:00",
+        "confirmed_submission": false
+      }
+    ],
+    "aggregates": {
+      "groups": [
+        {
+          "key": "synthetic institute",
+          "kind": "institution",
+          "count": 1,
+          "scored": 1,
+          "score_sum": 9,
+          "mean_interest": 9
+        },
+        {
+          "key": "bci",
+          "kind": "topic",
+          "count": 1,
+          "scored": 1,
+          "score_sum": 9,
+          "mean_interest": 9
+        }
+      ],
+      "score_sum": 9,
+      "mean_interest": 9
+    },
+    "metric_version": "opportunity-interest-v2",
+    "feedback_revision": 2,
+    "input_fingerprint": "aeb9bcfdef51c7e5cef9375dc6180bc170bc4b79cdf36f53ff55fc72a8d394cf",
+    "preference_revision": 2,
+    "approved_preferences": [],
+    "fingerprint_encoding": "sha256-pg-jsonb-v1",
+    "privacy_scope_changed": false,
+    "selection_policy_version": "opportunity-feedback-selection-v2"
+  },
+  "dashboard_version": 1,
+  "planning_capacity": {
+    "core_queries": 1,
+    "discretionary": 29
+  },
+  "runner_authorization": {
+    "enabled": false,
+    "project_ref": null,
+    "authorization_revision": 0
+  }
+}

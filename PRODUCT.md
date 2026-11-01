@@ -63,7 +63,7 @@ The initial product brief specified no voice, visual identity, or other aestheti
 - `src/app/App.vue` and `src/features/applications/components/ApplicationWorkspace.vue` implement the main workspaces and application stages.
 - `src/i18n/dict.ts` contains existing German/English interface terminology and privacy explanations.
 - `docs/json-format.md` documents content/configuration backups and privacy-aware editing.
-- `test/browser/job-workspace.html` and `test/fixtures/` contain synthetic development scenarios. Do not cite them as evidence of applicant outcomes.
+- `test/browser/pages/job-workspace.html` and `test/fixtures/` contain synthetic development scenarios. Do not cite them as evidence of applicant outcomes.
 - `public/fonts/` includes bundled font assets and license information. Preserve the licensing boundaries documented in the repository.
 
 The initial product brief supplied no testimonials, acceptance-rate evidence, ATS certification, customer counts, or evidence for commercial positioning claims. Do not invent them.

@@ -1,0 +1,51 @@
+name: Tests
+on:
+  pull_request:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm test
+        env:
+          CV_TEST_CONCURRENCY: '4'
+      - run: npm run db:schema:check
+      - run: npm run adaptive:release:check
+      - run: npm run refinement:prompts:check
+      - run: node scripts/generateOpportunityTypes.mjs --check
+      - run: npm run build
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Start isolated synthetic PostgreSQL
+        run: |
+          docker run -d --name cv-adaptive-feedback-test --network none \
+            --label cv-builder.test-suite=adaptive-feedback \
+            -e POSTGRES_PASSWORD=synthetic-fixture-only \
+            -e POSTGRES_DB=adaptive_feedback_test postgres:17.6
+          for attempt in $(seq 1 60); do
+            if docker exec cv-adaptive-feedback-test sh -c '[ "$(cat /proc/1/comm)" = postgres ] && pg_isready -U postgres -d adaptive_feedback_test'; then exit 0; fi
+            sleep 1
+          done
+          docker logs cv-adaptive-feedback-test
+          exit 1
+      - run: npm run test:database
+      - name: Remove isolated fixture
+        if: always()
+        run: docker rm -f cv-adaptive-feedback-test

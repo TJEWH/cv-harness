@@ -71,4 +71,4 @@ npm run build
 
 Database suites use synthetic records in a labelled, network-disabled PostgreSQL 17 container, with no host bind mounts or published ports. The harness checks its target and exclusive lock before resetting the disposable database. Tests install the complete current schema and cover current canonical intake, ownership/privacy, application/refinement actions, feedback, scheduling and adaptive execution.
 
-The database transaction tests also verify that a failed fresh install leaves no partial application tables. Unit and component tests check frontend readers, generated types, prompt contracts and persistence behavior. Read the [testing guide](../test/REFINEMENT_TESTING.md) and [current release contract](../docs/adaptive-search-release.md) for the remaining checks.
+The database transaction tests also verify that a failed fresh install leaves no partial application tables. Unit and component tests check frontend readers, generated types, prompt contracts and persistence behavior. Read the [testing guide](../test/README.md) and [current release contract](../docs/adaptive-search-release.md) for the remaining checks.

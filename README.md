@@ -95,7 +95,7 @@ The app uses Vue 3, TypeScript, and Vite. It runs as a static frontend with loca
 | `npm run build` | Typecheck and build into `dist/`. |
 | `npm run preview` | Serve the production build for local inspection. |
 
-Browser tests use in-memory data and an isolated Vite configuration. Follow the [testing guide](test/REFINEMENT_TESTING.md) to run them. Database tests require a separate run; `npm test` does not verify deployed permissions.
+Browser tests use in-memory data and an isolated Vite configuration. Follow the [testing guide](./test/README.md) to run them. Database tests require a separate run; `npm test` does not verify deployed permissions.
 
 | Path | Contents |
 | --- | --- |
@@ -126,6 +126,7 @@ The build targets `/cv-harness/` and writes to `dist/`. For another static host,
 - [JSON formats and editing workflow](docs/json-format.md)
 - [Supabase setup and security model](supabase/README.md)
 - [Application refinement contract](supabase/REFINEMENT.md)
-- [Application and browser testing](test/REFINEMENT_TESTING.md)
-- [Refinement protocol tests](test/refinementProtocol/README.md)
+- [Test organization and commands](./test/README.md)
+- [Application and browser coverage](./test/protocol/refinement/TESTING.md)
+- [Refinement protocol tests](./test/protocol/refinement/README.md)
 - [Product scope and constraints](PRODUCT.md)
