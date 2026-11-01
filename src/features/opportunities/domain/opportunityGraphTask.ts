@@ -6,6 +6,7 @@ import { buildOpportunityJobHierarchy } from './opportunityJobHierarchy';
 import { clusterOpportunityJobs } from './opportunityJobKMeans';
 import { prepareOpportunityJobTopics } from './opportunityJobTopicSimilarity';
 import { buildOpportunityJobBundling } from './opportunityJobBundling';
+import { buildOpportunityTopicBundling } from './opportunityTopicBundling';
 
 /** Worker entry point: complete job evidence is never constructed on the UI thread. */
 export function runOpportunityGraphTask(request: OpportunityGraphLayoutRequest): OpportunityGraphLayoutResponse {
@@ -16,11 +17,13 @@ export function runOpportunityGraphTask(request: OpportunityGraphLayoutRequest):
   const partition = jobInput ? clusterOpportunityJobs(jobInput.jobs, prepared!, request.jobClusterCount) : undefined;
   const graph = request.jobs ? projectOpportunityJobGraph(complete) : undefined;
   const hierarchy = request.jobs ? buildOpportunityJobHierarchy(request.jobs, complete.nodes, prepared, complete.links, partition!.groups)
-    : request.view === 'hierarchy' ? buildOpportunityTopicHierarchy(complete) : undefined;
-  const bundling = request.view === 'bundling' && jobInput
+    : request.view === 'hierarchy' || request.view === 'bundling' ? buildOpportunityTopicHierarchy(complete) : undefined;
+  const bundling = request.view === 'bundling' ? jobInput
     ? buildOpportunityJobBundling(jobInput.jobs, hierarchy!, { ...options, minimumInterest: 0,
       // Reserve enough circumference for readable, non-overlapping job labels.
-      radius: Math.max(240, (jobInput.jobs.length + partition!.groups.length * 1.4) * 5.5) }) : undefined;
+      radius: Math.max(240, (jobInput.jobs.length + partition!.groups.length * 1.4) * 5.5) })
+    : buildOpportunityTopicBundling(complete.nodes, request.topicJobs ?? [], hierarchy!, {
+      radius: Math.max(240, (complete.nodes.length + hierarchy!.length * 1.4) * 5.5) }) : undefined;
   return { generation: request.generation, positions: request.view === 'hierarchy' || request.view === 'bundling' ? []
     : layoutOpportunityGraph({ ...complete, communityAssignments: partition?.assignments }), hierarchy, bundling, graph };
 }

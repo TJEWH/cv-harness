@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { OpportunityInsightGraph } from '../domain/opportunityInsights';
 import { opportunityGraphPreference, opportunityGraphSemanticLinks, type OpportunityGraphLayoutResponse, type OpportunityGraphRenderData, type OpportunityGraphLink, type OpportunityGraphNode, type OpportunityGraphPosition } from '../domain/opportunityGraphLayout';
 import type { OpportunityTopicHierarchyNode } from '../domain/opportunityTopicHierarchy';
-import type { OpportunityJobBundlingDiagram } from '../domain/opportunityJobBundling';
+import type { OpportunityBundlingDiagram } from '../domain/opportunityEdgeBundling';
 import OpportunityTopicHierarchy from './OpportunityTopicHierarchy.vue';
 import OpportunityJobBundling from './OpportunityJobBundling.vue';
 import { JOB_CLUSTER_COLORS, TOPIC_CLUSTER_COLORS } from './opportunityClusterColors';
@@ -39,7 +39,7 @@ const viewport = ref<HTMLDivElement | null>(null);
 const dimensions = ref<2 | 3>(2);
 const presentation = ref<'network' | 'hierarchy' | 'bundling'>('network');
 const hierarchy = shallowRef<OpportunityTopicHierarchyNode[]>([]);
-const bundling = shallowRef<OpportunityJobBundlingDiagram | null>(null);
+const bundling = shallowRef<OpportunityBundlingDiagram | null>(null);
 const retryLabel = computed(() => presentation.value === 'bundling' ? text('Retry edge bundling', 'Kantenbündelung erneut laden')
   : presentation.value === 'hierarchy' ? text('Retry hierarchy', 'Hierarchie erneut laden') : text('Retry map', 'Karte erneut laden'));
 const jobEvidence = shallowRef<{ source: OpportunityInsightGraph; minimumInterest: number; excludedKey: string; graph: OpportunityGraphRenderData } | null>(null);
@@ -80,6 +80,11 @@ const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 const topicId = (id: string) => `topic:${id}`;
 const jobId = (id: string) => `job:${id}`;
+const topicJobs = computed(() => {
+  const threshold = props.interestThreshold ?? (props.interestMode === 'low' ? 4 : 8);
+  return props.interestMode === 'all' ? props.graph.jobs : props.graph.jobs.filter(job => job.explicitInterest && job.interestScore !== null
+    && (props.interestMode === 'low' ? job.interestScore <= threshold : job.interestScore >= threshold));
+});
 
 const model = computed(() => {
   if (props.viewMode === 'jobs') {
@@ -95,11 +100,8 @@ const model = computed(() => {
       lowInterestCount: topic.lowInterestCount, avoidedCount: topic.avoidedCount, positiveReasonCount: topic.positiveReasonCount,
       mismatch: false, avoided: topic.avoidedCount > 0 };
   });
-  const threshold = props.interestThreshold ?? (props.interestMode === 'low' ? 4 : 8);
-  const jobs = props.interestMode === 'all' ? props.graph.jobs : props.graph.jobs.filter(job => job.explicitInterest && job.interestScore !== null
-    && (props.interestMode === 'low' ? job.interestScore <= threshold : job.interestScore >= threshold));
   const sharedJobs = new Map<string, { source: string; target: string; count: number }>();
-  for (const job of jobs) {
+  for (const job of topicJobs.value) {
     const ids = [...new Set(job.topicIds)].filter(id => !visibleTopics || visibleTopics.has(id)).sort();
     for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) {
       const source = ids[a]!, target = ids[b]!, key = JSON.stringify([source, target]);
@@ -116,9 +118,17 @@ const nodeIndexes = computed(() => new Map(model.value.nodes.map((node, index) =
 const prominentNodes = computed(() => new Set([...model.value.nodes].sort((a, b) => (b.matchingJobCount ?? b.highInterestCount) - (a.matchingJobCount ?? a.highInterestCount) || a.label.localeCompare(b.label)).slice(0, 10).map(node => node.id)));
 const selectedIds = computed(() => new Set(props.viewMode === 'jobs'
   ? props.selectedJobId ? [jobId(props.selectedJobId)] : [] : props.selectedTopicIds.map(topicId)));
-const relatedIds = computed(() => props.viewMode === 'jobs'
-  ? currentJobEvidence.value ? opportunityJobGraphFocus(currentJobEvidence.value.adjacency, props.selectedJobId ? jobId(props.selectedJobId) : null) : null
-  : opportunityTopicFocus(model.value.nodes.map(node => node.id), model.value.links, selectedIds.value));
+const relatedIds = computed(() => {
+  if (props.viewMode === 'jobs') return currentJobEvidence.value ? opportunityJobGraphFocus(currentJobEvidence.value.adjacency, props.selectedJobId ? jobId(props.selectedJobId) : null) : null;
+  if (presentation.value !== 'bundling') return opportunityTopicFocus(model.value.nodes.map(node => node.id), model.value.links, selectedIds.value);
+  const related = new Set<string>();
+  for (const id of selectedIds.value) {
+    if (!nodeById.value.has(id)) continue;
+    const exact = bundling.value ? opportunityJobGraphFocus(bundling.value.adjacency, id) : null;
+    for (const neighbor of exact ?? [id]) related.add(neighbor);
+  }
+  return related.size ? related : null;
+});
 watch(relatedIds, ids => emit('focusTopics', props.viewMode === 'topics' && ids ? [...ids].map(id => id.slice(6)) : null), { immediate: true });
 const edgeDescription = computed(() => {
   const edge = hoveredEdge.value;
@@ -455,7 +465,9 @@ function announceFailure() {
   stopRenderer();
   const owner = props.ownerId, token = generation;
   failureToast = notify({ tone: 'error', message: presentation.value === 'bundling'
-    ? text('The shared-topic connections could not be computed. The job list remains available.', 'Die Verbindungen gemeinsamer Themen konnten nicht berechnet werden. Die Stellenliste bleibt verfügbar.')
+    ? props.viewMode === 'jobs'
+      ? text('The shared-topic connections could not be computed. The job list remains available.', 'Die Verbindungen gemeinsamer Themen konnten nicht berechnet werden. Die Stellenliste bleibt verfügbar.')
+      : text('The shared-job connections could not be computed. The topic and job lists remain available.', 'Die Verbindungen gemeinsamer Stellen konnten nicht berechnet werden. Themen- und Stellenlisten bleiben verfügbar.')
     : presentation.value === 'hierarchy'
     ? text('The relationship hierarchy could not be computed. The topic and job lists remain available.', 'Die Beziehungshierarchie konnte nicht berechnet werden. Themen- und Stellenlisten bleiben verfügbar.')
     : text('The relationship map could not be displayed. The topic and job lists remain available.', 'Die Beziehungskarte konnte nicht angezeigt werden. Themen- und Stellenlisten bleiben verfügbar.'),
@@ -524,7 +536,7 @@ function arrange() {
       }
     };
     worker.onerror = event => { event.preventDefault(); if (!disposed && token === generation && owner === props.ownerId) announceFailure(); };
-    worker.postMessage({ generation: token, view: presentation.value, nodes: model.value.nodes, links: props.viewMode === 'jobs' ? [] : model.value.links, jobs: props.viewMode === 'jobs' ? props.graph.jobs : undefined, jobMinimumInterest: minimumInterest, jobClusterCount: props.jobClusterCount, jobExcludedTopicIds: props.viewMode === 'jobs' ? [...props.jobExcludedTopicIds] : undefined, jobTopics: props.viewMode === 'jobs' ? props.graph.topics : undefined, dimensions: dimensions.value, entityKind: model.value.entityKind, previous: [...positions.values()] });
+    worker.postMessage({ generation: token, view: presentation.value, nodes: model.value.nodes, links: props.viewMode === 'jobs' ? [] : model.value.links, jobs: props.viewMode === 'jobs' ? props.graph.jobs : undefined, topicJobs: props.viewMode === 'topics' && presentation.value === 'bundling' ? topicJobs.value : undefined, jobMinimumInterest: minimumInterest, jobClusterCount: props.jobClusterCount, jobExcludedTopicIds: props.viewMode === 'jobs' ? [...props.jobExcludedTopicIds] : undefined, jobTopics: props.viewMode === 'jobs' ? props.graph.topics : undefined, dimensions: dimensions.value, entityKind: model.value.entityKind, previous: [...positions.values()] });
   } catch { announceFailure(); }
 }
 async function retry() { if (failureToast) dismiss(failureToast); failureToast = 0; await nextTick(); initialize(); }
@@ -544,11 +556,15 @@ watch([...evidenceSources, () => props.layoutPaused], () => {
   if (presentation.value !== 'network') { arrange(); return; }
   if (!renderer && !failed.value) initialize(); else arrange();
 });
-watch(evidenceSources, () => { hierarchy.value = []; bundling.value = null; hoveredEdge.value = null; }, { flush: 'sync' });
+watch(evidenceSources, () => {
+  generation++; stopWorker(); busy.value = false;
+  hierarchy.value = []; bundling.value = null; hoveredEdge.value = null;
+}, { flush: 'sync' });
 watch([() => props.selectedTopicIds, () => props.selectedJobId], () => { buildScene(); }, { deep: true });
-watch(() => props.viewMode, mode => {
+watch(() => props.viewMode, () => {
   frameFit = true; hoveredId.value = null; focusedId.value = null; hoveredEdge.value = null;
-  if (mode !== 'jobs' && presentation.value === 'bundling') presentation.value = 'network';
+  failed.value = false;
+  if (failureToast) dismiss(failureToast); failureToast = 0;
 }, { flush: 'sync' });
 watch(dimensions, () => { if (presentation.value === 'network') { configureCamera(); arrange(); } });
 watch(presentation, async () => {
@@ -577,7 +593,7 @@ onBeforeUnmount(() => { disposed = true; generation++; stopWorker(); busy.value 
   <section class="topic-network" :aria-busy="busy">
     <div class="network-toolbar">
       <Teleport defer :to="presentationControlsTarget || 'body'" :disabled="!presentationControlsTarget">
-        <div class="network-view-controls network-presentation" role="group" :aria-label="viewMode === 'jobs' ? text('Job cluster view', 'Ansicht der Stellengruppen') : text('Topic relationship view', 'Ansicht der Themenbeziehungen')"><button type="button" :aria-pressed="presentation === 'network'" @click="presentation = 'network'">{{ text('Network', 'Netzwerk') }}</button><button type="button" :aria-pressed="presentation === 'hierarchy'" @click="presentation = 'hierarchy'">{{ text('Hierarchy', 'Hierarchie') }}</button><button v-if="viewMode === 'jobs'" type="button" :aria-pressed="presentation === 'bundling'" @click="presentation = 'bundling'">{{ text('Hierarchical edge bundling', 'Hierarchische Kantenbündelung') }}</button></div>
+        <div class="network-view-controls network-presentation" role="group" :aria-label="viewMode === 'jobs' ? text('Job cluster view', 'Ansicht der Stellengruppen') : text('Topic relationship view', 'Ansicht der Themenbeziehungen')"><button type="button" :aria-pressed="presentation === 'network'" @click="presentation = 'network'">{{ text('Network', 'Netzwerk') }}</button><button type="button" :aria-pressed="presentation === 'hierarchy'" @click="presentation = 'hierarchy'">{{ text('Hierarchy', 'Hierarchie') }}</button><button type="button" :aria-pressed="presentation === 'bundling'" @click="presentation = 'bundling'">{{ text('Hierarchical edge bundling', 'Hierarchische Kantenbündelung') }}</button></div>
       </Teleport>
       <Teleport defer :to="cameraControlsTarget || 'body'" :disabled="!cameraControlsTarget">
         <div v-if="presentation === 'network'" class="network-view-controls" role="group" :aria-label="text('Network view', 'Netzwerkansicht')">
@@ -589,7 +605,7 @@ onBeforeUnmount(() => { disposed = true; generation++; stopWorker(); busy.value 
       <button v-if="failed" class="network-retry" type="button" @click="retry">{{ retryLabel }}</button>
     </div>
     <OpportunityTopicHierarchy v-if="presentation === 'hierarchy' && !failed && model.nodes.length" :forest="hierarchy" :nodes="model.nodes" :selected-ids="selectedIds" :related-ids="relatedIds" :entity-kind="viewMode === 'jobs' ? 'job' : 'topic'" :lang="lang" :busy="busy" @select="select" />
-    <OpportunityJobBundling v-if="presentation === 'bundling' && viewMode === 'jobs' && !failed && model.nodes.length" :diagram="bundling" :nodes="model.nodes" :topics="graph.topics" :selected-id="selectedJobId ? jobId(selectedJobId) : null" :lang="lang" :busy="busy" @select="select" />
+    <OpportunityJobBundling v-if="presentation === 'bundling' && !failed && model.nodes.length" :diagram="bundling" :entity-kind="viewMode === 'jobs' ? 'job' : 'topic'" :nodes="model.nodes" :topics="graph.topics" :jobs="viewMode === 'topics' ? topicJobs : graph.jobs" :selected-id="viewMode === 'jobs' && selectedJobId ? jobId(selectedJobId) : null" :selected-ids="selectedIds" :lang="lang" :busy="busy" @select="select" />
     <div v-show="presentation === 'network' && !failed && model.nodes.length" ref="viewport" class="network-canvas">
       <svg class="network-leaders" :viewBox="`0 0 ${viewSize.width} ${viewSize.height}`" aria-hidden="true"><line v-for="label in labels" :key="label.id" :class="{ 'is-muted': label.muted }" :x1="label.anchorX" :y1="label.anchorY" :x2="label.leaderX" :y2="label.leaderY" /></svg>
       <div class="network-labels">

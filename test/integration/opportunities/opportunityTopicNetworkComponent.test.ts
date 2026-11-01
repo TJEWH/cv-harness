@@ -88,8 +88,8 @@ test('job network worker requests clone reactive exclusion drafts on initial and
   const controlInstances: Controls[] = [];
   const Empty = defineComponent({ setup: () => () => h('span') });
   const Hierarchy = defineComponent({ props: ['forest', 'busy'], setup: props => () => h('hierarchy', { forest: props.forest, busy: props.busy }) });
-  const Bundling = defineComponent({ props: ['diagram', 'nodes', 'topics', 'selectedId', 'lang', 'busy'], emits: ['select'],
-    setup: (props, { emit }) => () => h('bundling', { ...props, onSelect: () => emit('select', 'job:a') }) });
+  const Bundling = defineComponent({ props: ['diagram', 'entityKind', 'nodes', 'topics', 'jobs', 'selectedId', 'selectedIds', 'lang', 'busy'], emits: ['select'],
+    setup: (props, { emit }) => () => h('bundling', { ...props, onSelect: (id: string) => emit('select', id) }) });
   const module = (path: string) => path === 'three' ? { ...three, WebGLRenderer: Renderer }
     : path === 'three/addons/controls/OrbitControls.js' ? { OrbitControls: Controls }
       : path.endsWith('OpportunityTopicHierarchy.vue') ? { default: Hierarchy }
@@ -109,9 +109,13 @@ test('job network worker requests clone reactive exclusion drafts on initial and
   // The parent computes graph evidence as plain objects, while its ref-held exclusions are reactive arrays.
   const props = shallowReactive({ graph, selectedTopicIds: [] as string[], selectedJobId: null, lang: 'en', ownerId: 'owner',
     viewMode: 'jobs', jobMinimumInterest: 8, jobClusterCount: 5, jobExcludedTopicIds: reactive<string[]>([]),
+    interestMode: 'all' as 'all' | 'high' | 'low', interestThreshold: undefined as number | undefined,
+    visibleTopicIds: undefined as string[] | undefined, layoutPaused: false,
     presentationControlsTarget: undefined as string | undefined, cameraControlsTarget: undefined as string | undefined });
   assert(isProxy(props.jobExcludedTopicIds));
-  const root = node('root'), app = renderer.createApp({ render: () => h(component, props) });
+  const topicFocus: (string[] | null)[] = [], topicSelections: string[] = [];
+  const root = node('root'), app = renderer.createApp({ render: () => h(component, { ...props,
+    onFocusTopics: (ids: string[] | null) => topicFocus.push(ids), onSelectTopic: (id: string) => topicSelections.push(id) }) });
   useToasts().clear();
   t.after(() => { app.unmount(); channel.port1.close(); channel.port2.close(); useToasts().clear(); teleportTargets.clear();
     for (const [key, value] of previous) { if (value) Object.defineProperty(globalThis, key, value); else Reflect.deleteProperty(globalThis, key); } });
@@ -256,11 +260,73 @@ test('job network worker requests clone reactive exclusion drafts on initial and
     await nextTick();
     assert.equal(walk(root).find(target => target.tag === 'bundling')!.props.diagram, null, 'previous-account curves remain discarded');
     props.viewMode = 'topics'; await nextTick(); await nextTick();
-    assert.equal(requests.at(-1)!.view, 'network', 'topic mode recovers its supported presentation');
-    assert.equal(requests.at(-1)!.jobs, undefined, 'topic layout never receives a job bundling request');
-    assert(!walk(presentationTarget).some(target => target.tag === 'button' && content(target) === 'Hierarchical edge bundling'));
-    assert(!walk(root).some(target => target.tag === 'bundling'));
-    assert.equal(rendererInstances.length, rendererCount + 1, 'topic mode restores the network canvas');
+    assert.equal(requests.at(-1)!.view, 'bundling', 'topic mode keeps the selected presentation');
+    assert.equal(requests.at(-1)!.jobs, undefined, 'topic layout never enters the job clustering pipeline');
+    assert.deepEqual(requests.at(-1)!.topicJobs, graph.jobs);
+    assert(walk(presentationTarget).some(target => target.tag === 'button' && content(target) === 'Hierarchical edge bundling'));
+    assert.equal(walk(root).find(target => target.tag === 'bundling')!.props.entityKind, 'topic');
+    assert.equal(rendererInstances.length, rendererCount, 'both bundling modes stay independent of WebGL');
+  });
+  await t.test('topic bundling uses the interest cohort, exact multi-selection focus, and mode-safe worker results', async () => {
+    const { runOpportunityGraphTask } = await import('../../../src/features/opportunities/domain/opportunityGraphTask');
+    const baseJob = graph.jobs[0]!, baseTopic = graph.topics[0]!;
+    props.graph = { ...graph, topics: [
+      { ...baseTopic, id: 'a', label: 'Acoustics' }, { ...baseTopic, id: 'b', label: 'Audio analysis' },
+      { ...baseTopic, id: 'c', label: 'Acoustic sensing' }, { ...baseTopic, id: 'd', label: 'Robotics' },
+    ], jobs: [
+      { ...baseJob, id: 'high', topicIds: ['a', 'b'], interestScore: 9, explicitInterest: true },
+      { ...baseJob, id: 'boundary', topicIds: ['a', 'b'], interestScore: 8, explicitInterest: true },
+      { ...baseJob, id: 'low', topicIds: ['a', 'c'], interestScore: 3, explicitInterest: true },
+      { ...baseJob, id: 'unknown', topicIds: ['b', 'd'], interestScore: null, explicitInterest: false },
+      { ...baseJob, id: 'implicit', topicIds: ['a', 'c'], interestScore: 9, explicitInterest: false },
+    ], edges: [] };
+    props.interestMode = 'high'; props.interestThreshold = 8;
+    props.selectedTopicIds = ['a', 'd'];
+    await nextTick();
+    let request = requests.at(-1)!;
+    assert.equal(request.view, 'bundling'); assert.equal(request.entityKind, 'topic');
+    assert.deepEqual(request.topicJobs!.map(job => job.id), ['high', 'boundary'], 'high interest is inclusive and requires an explicit score');
+    assert.equal(request.jobs, undefined);
+    assert(request.links.some(link => link.kind === 'semantic' && [link.source, link.target].includes('topic:c')),
+      'the routing hierarchy retains the incumbent local-wording evidence');
+    const result = runOpportunityGraphTask(request); assert(!('error' in result));
+    assert.equal(result.bundling!.entityKind, 'topic');
+    assert.deepEqual(result.bundling!.edges.map(edge => [edge.source, edge.target, edge.sharedCount]), [['topic:a', 'topic:b', 2]]);
+    workers.at(-1)!.onmessage?.({ data: result }); await nextTick();
+    assert.deepEqual([...topicFocus.at(-1)!].sort(), ['a', 'b', 'd'], 'multi-topic focus unions complete exact neighbors and preserves isolated selections');
+    let bundled = walk(root).find(target => target.tag === 'bundling')!;
+    assert.deepEqual([...bundled.props.selectedIds].sort(), ['topic:a', 'topic:d']);
+    assert.equal(bundled.props.selectedId, null);
+    assert.deepEqual(bundled.props.jobs.map((job: { id: string }) => job.id), ['high', 'boundary']);
+    bundled.props.onSelect('topic:c'); await nextTick();
+    assert.equal(topicSelections.at(-1), 'c', 'SVG topic selection reuses the parent toggle route');
+    props.interestMode = 'low'; props.interestThreshold = 3; await nextTick();
+    request = requests.at(-1)!;
+    assert.deepEqual(request.topicJobs!.map(job => job.id), ['low'], 'low interest is inclusive and excludes missing or implicit scores');
+    props.interestMode = 'all'; await nextTick();
+    assert.equal(requests.at(-1)!.topicJobs!.length, 5, 'all topics retains unknown-interest records');
+    props.visibleTopicIds = ['a', 'd']; await nextTick();
+    request = requests.at(-1)!;
+    assert.deepEqual(request.nodes.map(node => node.id), ['topic:a', 'topic:d'], 'visible topic minimum and search cohort stays authoritative');
+    const filtered = runOpportunityGraphTask(request); assert(!('error' in filtered));
+    assert.equal(filtered.bundling!.leaves.length, 2);
+    assert.equal(filtered.bundling!.relationshipCount, 0, 'a hidden topic cannot leave an edge or count behind');
+    const previousWorker = workers.at(-1)!, previousGeneration = request.generation;
+    props.layoutPaused = true; await nextTick();
+    previousWorker.onmessage?.({ data: filtered }); await nextTick();
+    assert.equal(previousWorker.terminated, true);
+    assert.equal(walk(root).find(target => target.tag === 'bundling')!.props.diagram, null, 'brush pause rejects canceled pending curves');
+    props.layoutPaused = false; await nextTick();
+    assert(requests.at(-1)!.generation > previousGeneration, 'brush release requests the current cohort');
+    const topicWorker = workers.at(-1)!, topicGeneration = requests.at(-1)!.generation;
+    props.viewMode = 'jobs'; await nextTick();
+    assert.equal(requests.at(-1)!.view, 'bundling');
+    assert.equal(requests.at(-1)!.topicJobs, undefined);
+    assert(requests.at(-1)!.jobs);
+    topicWorker.onmessage?.({ data: { ...filtered, generation: topicGeneration } }); await nextTick();
+    bundled = walk(root).find(target => target.tag === 'bundling')!;
+    assert.equal(bundled.props.entityKind, 'job');
+    assert.equal(bundled.props.diagram, null, 'topic curves cannot reappear in job mode');
   });
   assert(!useToasts().toasts.value.some(toast => toast.tone === 'error'), 'serialization must not fail the map');
 });

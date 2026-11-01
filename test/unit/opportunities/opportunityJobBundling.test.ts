@@ -96,3 +96,16 @@ test('dense drawings are bounded while complete exact adjacency preserves omitte
   assert.equal(new Set(diagram.edges.map(edge => edge.id)).size, diagram.edges.length);
   assert(diagram.leaves.every(row => diagram.edges.some(edge => edge.source === row.id || edge.target === row.id)), 'every connected job retains visible evidence');
 });
+
+test('the job adapter keeps its legacy fields alongside generic record and evidence fields', () => {
+  const diagram = buildOpportunityJobBundling([job('a', ['one', 'two']), job('b', ['one'])], []);
+  assert.equal(diagram.entityKind, 'job');
+  for (const row of diagram.leaves) {
+    assert.equal(row.recordId, row.jobId);
+    assert.equal(row.evidenceCount, row.topicCount);
+  }
+  for (const edge of diagram.edges) {
+    assert.equal(edge.sharedCount, edge.sharedTopicCount);
+    assert.strictEqual(edge.sharedIds, edge.sharedTopicIds, 'legacy labels share the same evidence array');
+  }
+});

@@ -1,23 +1,27 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import InfoHint from '../../../shared/ui/InfoHint.vue';
-import type { OpportunityJobBundlingDiagram } from '../domain/opportunityJobBundling';
+import type { OpportunityBundlingDiagram } from '../domain/opportunityEdgeBundling';
 import type { OpportunityGraphNode } from '../domain/opportunityGraphLayout';
-import type { OpportunityInsightTopicNode } from '../domain/opportunityInsights';
+import type { OpportunityInsightJob, OpportunityInsightTopicNode } from '../domain/opportunityInsights';
 import { opportunityJobGraphFocus } from '../domain/opportunityJobGraph';
-import { JOB_CLUSTER_COLORS, opportunityJobBundlingEdgeColor } from './opportunityClusterColors';
+import { JOB_CLUSTER_COLORS, TOPIC_CLUSTER_COLORS, opportunityJobBundlingEdgeColor } from './opportunityClusterColors';
 import { attachOpportunityBundlingZoom } from '../interaction/bundlingZoom';
 
-const props = defineProps<{
-  diagram: OpportunityJobBundlingDiagram | null;
+const props = withDefaults(defineProps<{
+  diagram: OpportunityBundlingDiagram | null;
   nodes: OpportunityGraphNode[];
   topics: OpportunityInsightTopicNode[];
-  selectedId: string | null;
+  jobs?: OpportunityInsightJob[];
+  entityKind?: 'job' | 'topic';
+  selectedId?: string | null;
+  selectedIds?: ReadonlySet<string>;
   lang: string;
   busy: boolean;
-}>();
+}>(), { jobs: () => [], selectedId: null, selectedIds: () => new Set<string>() });
 const emit = defineEmits<{ select: [id: string] }>();
 const text = (en: string, de: string) => props.lang === 'de' ? de : en;
+const isTopic = computed(() => (props.entityKind ?? props.diagram?.entityKind ?? 'job') === 'topic');
 const host = ref<HTMLElement | null>(null), viewport = ref<HTMLElement | null>(null), width = ref(960), zoom = ref(1);
 const hoveredId = ref<string | null>(null), focusedId = ref<string | null>(null), hoveredEdgeId = ref<string | null>(null);
 const focusedEdgeId = ref<string | null>(null), tabEdgeId = ref<string | null>(null), edgeTooltipVisible = ref(false);
@@ -36,42 +40,67 @@ const viewBox = computed(() => compact.value
   : `0 0 ${size.value} ${size.value}`);
 const records = computed(() => new Map(props.nodes.map(node => [node.id, node])));
 const topicLabels = computed(() => new Map(props.topics.map(topic => [topic.id, topic.label])));
+const jobLabels = computed(() => new Map(props.jobs.map(job => [job.id, job.title])));
+const sharedLabel = (count = 2) => isTopic.value
+  ? text(count === 1 ? 'Shared job' : 'Shared jobs', count === 1 ? 'Gemeinsame Stelle' : 'Gemeinsame Stellen')
+  : text(count === 1 ? 'Shared topic' : 'Shared topics', count === 1 ? 'Gemeinsames Thema' : 'Gemeinsame Themen');
+const sharedEvidenceLabels = (ids: readonly string[]) => isTopic.value
+  ? ids.map(id => jobLabels.value.get(id) || text('Title withheld', 'Titel zurückgehalten'))
+  : ids.map(id => topicLabels.value.get(id) ?? id);
 const leaves = computed(() => props.diagram?.leaves.map(leaf => {
   const left = leaf.angle > Math.PI;
   return { ...leaf, left, rotation: leaf.angle * 180 / Math.PI - 90 + (left ? 180 : 0),
-    label: records.value.get(leaf.id)?.label || leaf.label || text('Title withheld', 'Titel zurückgehalten') };
+    label: records.value.get(leaf.id)?.label || leaf.label || (isTopic.value ? text('Topic withheld', 'Thema zurückgehalten') : text('Title withheld', 'Titel zurückgehalten')) };
 }) ?? []);
 const leafById = computed(() => new Map(leaves.value.map(leaf => [leaf.id, leaf])));
-const activeId = computed(() => [hoveredId.value, focusedId.value, props.selectedId].find(id => id && leafById.value.has(id)) ?? null);
-const relatedIds = computed(() => props.diagram ? opportunityJobGraphFocus(props.diagram.adjacency, activeId.value) : null);
+const selectionIds = computed(() => new Set([...props.selectedIds, ...(props.selectedId ? [props.selectedId] : [])].filter(id => leafById.value.has(id))));
+const activeId = computed(() => [hoveredId.value, focusedId.value, ...selectionIds.value].find(id => id && leafById.value.has(id)) ?? null);
+const focusIds = computed(() => isTopic.value
+  ? new Set([...selectionIds.value, ...(activeId.value ? [activeId.value] : [])]) : new Set(activeId.value ? [activeId.value] : []));
+const relatedIds = computed(() => {
+  if (!props.diagram || !focusIds.value.size) return null;
+  const related = new Set<string>();
+  for (const id of focusIds.value) for (const neighbor of opportunityJobGraphFocus(props.diagram.adjacency, id) ?? []) related.add(neighbor);
+  return related;
+});
 const activeLeaf = computed(() => activeId.value ? leafById.value.get(activeId.value) : null);
 const activeEdge = computed(() => props.diagram?.edges.find(edge => edge.id === (hoveredEdgeId.value ?? focusedEdgeId.value)));
 const tabbableEdgeId = computed(() => props.diagram?.edges.find(edge => edge.id === tabEdgeId.value)?.id ?? props.diagram?.edges[0]?.id);
-const activeEdgeTopics = computed(() => activeEdge.value?.sharedTopicIds.map(id => topicLabels.value.get(id) ?? id) ?? []);
-const color = (index: number) => JOB_CLUSTER_COLORS[index % JOB_CLUSTER_COLORS.length]!;
+const activeEdgeTopics = computed(() => sharedEvidenceLabels(activeEdge.value?.sharedIds ?? []));
+const color = (index: number) => {
+  const palette = isTopic.value ? TOPIC_CLUSTER_COLORS : JOB_CLUSTER_COLORS;
+  return palette[index % palette.length]!;
+};
 // Sparsification retains the strongest pairs first, including the cohort maximum.
-const maximumSharedTopics = computed(() => props.diagram?.edges.reduce((maximum, edge) => Math.max(maximum, edge.sharedTopicCount), 0) ?? 0);
+const maximumSharedTopics = computed(() => props.diagram?.edges.reduce((maximum, edge) => Math.max(maximum, edge.sharedCount), 0) ?? 0);
 const edgeColor = (count: number) => opportunityJobBundlingEdgeColor(count, maximumSharedTopics.value);
 const bundlingHint = computed(() => {
   const maximum = maximumSharedTopics.value;
-  const scale = maximum > 1
-    ? text(`Blue edges share one topic; red edges share ${maximum} topics, the most for these settings.`, `Blaue Linien teilen ein Thema; rote Linien teilen ${maximum} Themen, das Maximum für diese Einstellungen.`)
-    : maximum === 1 ? text('Every connection currently shares one topic and is blue.', 'Jede Verbindung teilt derzeit ein Thema und ist blau.')
-      : text('Curves connect jobs with shared topics through the colored cluster hierarchy.', 'Kurven verbinden Stellen mit gemeinsamen Themen entlang der farbigen Gruppenhierarchie.');
-  return `${scale} ${text('Pinch to zoom, scroll to pan, and select a job for its title and connections.', 'Ziehe zwei Finger auseinander zum Zoomen, scrolle zum Verschieben und wähle eine Stelle für ihren Titel und ihre Verbindungen.')}`;
+  const scale = isTopic.value
+    ? maximum > 1 ? text(`Blue edges share one job; red edges share ${maximum} jobs, the most for these settings.`, `Blaue Linien teilen eine Stelle; rote Linien teilen ${maximum} Stellen, das Maximum für diese Einstellungen.`)
+      : maximum === 1 ? text('Every connection currently has one shared job and is blue.', 'Jede Verbindung hat derzeit eine gemeinsame Stelle und ist blau.')
+        : text('Curves connect topics that occur in the same jobs.', 'Kurven verbinden Themen, die in denselben Stellen vorkommen.')
+    : maximum > 1 ? text(`Blue edges share one topic; red edges share ${maximum} topics, the most for these settings.`, `Blaue Linien teilen ein Thema; rote Linien teilen ${maximum} Themen, das Maximum für diese Einstellungen.`)
+      : maximum === 1 ? text('Every connection currently shares one topic and is blue.', 'Jede Verbindung teilt derzeit ein Thema und ist blau.')
+        : text('Curves connect jobs with shared topics through the colored cluster hierarchy.', 'Kurven verbinden Stellen mit gemeinsamen Themen entlang der farbigen Gruppenhierarchie.');
+  const controls = isTopic.value ? text('Pinch to zoom, scroll to pan, and select topics to find matching jobs.', 'Zoome mit zwei Fingern, scrolle zum Verschieben und wähle Themen für passende Stellen.')
+    : text('Pinch to zoom, scroll to pan, and select a job for its title and connections.', 'Ziehe zwei Finger auseinander zum Zoomen, scrolle zum Verschieben und wähle eine Stelle für ihren Titel und ihre Verbindungen.');
+  return `${scale} ${controls}`;
 });
-const connectedJobs = (count: number) => count === 1 ? text('connected job', 'verbundene Stelle') : text('connected jobs', 'verbundene Stellen');
+const connectedJobs = (count: number) => isTopic.value
+  ? text(count === 1 ? 'connected topic' : 'connected topics', count === 1 ? 'verbundenes Thema' : 'verbundene Themen')
+  : count === 1 ? text('connected job', 'verbundene Stelle') : text('connected jobs', 'verbundene Stellen');
 const isMuted = (id: string) => relatedIds.value != null && !relatedIds.value.has(id);
-const edgeActive = (edge: { source: string; target: string }) => edge.source === activeId.value || edge.target === activeId.value;
+const edgeActive = (edge: { source: string; target: string }) => focusIds.value.has(edge.source) || focusIds.value.has(edge.target);
 const edges = computed(() => [...(props.diagram?.edges ?? [])].sort((a, b) => Number(edgeActive(a)) - Number(edgeActive(b))));
 function description(id: string) {
   const leaf = leafById.value.get(id);
   if (!leaf) return '';
+  if (isTopic.value) return `${leaf.label}; ${leaf.evidenceCount} ${text('matching jobs', 'passende Stellen')}; ${leaf.relationshipCount} ${connectedJobs(leaf.relationshipCount)}${records.value.get(id)?.avoided ? text('; explicit topic avoid reason', '; ausdrücklicher Themen-Vermeidungsgrund') : ''}`;
   return `${leaf.label}; ${text('interest', 'Interesse')} ${records.value.get(id)?.interestScore ?? '—'}/10; ${leaf.relationshipCount} ${connectedJobs(leaf.relationshipCount)}`;
 }
 function edgeDescription(edge: NonNullable<typeof activeEdge.value>) {
-  const labels = edge.sharedTopicIds.map(id => topicLabels.value.get(id) ?? id);
-  return `${leafById.value.get(edge.source)?.label ?? ''} · ${leafById.value.get(edge.target)?.label ?? ''}: ${text('Shared topics', 'Gemeinsame Themen')}: ${labels.join(', ')}`;
+  return `${leafById.value.get(edge.source)?.label ?? ''} · ${leafById.value.get(edge.target)?.label ?? ''}: ${sharedLabel()}: ${sharedEvidenceLabels(edge.sharedIds).join(', ')}`;
 }
 let edgeAnchor = { x: 0, y: 0 }, focusedEdgeElement: SVGPathElement | null = null;
 const tooltipHovered = ref(false);
@@ -214,31 +243,31 @@ onBeforeUnmount(() => { observer?.disconnect(); zoomControls?.dispose(); dismiss
 </script>
 
 <template>
-  <div ref="host" class="job-bundling" :class="{ 'is-compact': compact }" :aria-busy="busy">
+  <div ref="host" class="job-bundling" :class="{ 'is-compact': compact, 'is-topic': isTopic }" :aria-busy="busy">
     <div class="bundling-heading">
-      <span>{{ text('Shared topics', 'Gemeinsame Themen') }}</span>
+      <span>{{ sharedLabel() }}</span>
       <InfoHint :lang="lang" :label="text('Hierarchical edge bundling', 'Hierarchische Kantenbündelung')" :text="bundlingHint" />
       <button v-if="diagram" class="bundling-reset" type="button" @click="resetView">{{ text('Reset view', 'Ansicht zurücksetzen') }}</button>
-      <span v-if="diagram" class="bundling-counts">{{ leaves.length }} {{ text('jobs', 'Stellen') }} · {{ diagram.relationshipCount }} {{ text('connections', 'Verbindungen') }}<template v-if="diagram.edges.length < diagram.relationshipCount"> · {{ diagram.edges.length }} {{ text('shown', 'angezeigt') }}</template></span>
+      <span v-if="diagram" class="bundling-counts">{{ leaves.length }} {{ isTopic ? text('topics', 'Themen') : text('jobs', 'Stellen') }} · {{ diagram.relationshipCount }} {{ text('connections', 'Verbindungen') }}<template v-if="diagram.edges.length < diagram.relationshipCount"> · {{ diagram.edges.length }} {{ text('shown', 'angezeigt') }}</template></span>
     </div>
-    <div v-if="diagram && leaves.length" ref="viewport" class="bundling-scroll" :style="{ height: `${baseDisplayWidth}px` }" tabindex="0" :aria-label="text('Job connections chart. Pinch to zoom and scroll to pan. Plus and minus zoom; Home resets. Use Tab to reach connections and jobs; arrow keys move between them.', 'Diagramm der Stellenverbindungen. Zoome mit zwei Fingern und scrolle zum Verschieben. Plus und Minus zoomen; Pos1 setzt zurück. Erreiche Verbindungen und Stellen mit Tab und wechsle mit den Pfeiltasten.')" @keydown="zoomKey" @scroll="tooltipScroll">
-      <svg class="bundling-chart" :style="{ width: `${displayWidth}px`, minWidth: `${displayWidth}px`, height: `${displayWidth}px`, marginTop: `${Math.max(0, (baseDisplayWidth - displayWidth) / 2)}px` }" :width="compact ? compactSize : size" :height="compact ? compactSize : size" :viewBox="viewBox" role="group" :aria-label="text('Jobs connected by shared topics', 'Stellen verbunden durch gemeinsame Themen')">
+    <div v-if="diagram && leaves.length" ref="viewport" class="bundling-scroll" :style="{ height: `${baseDisplayWidth}px` }" tabindex="0" :aria-label="isTopic ? text('Topic connections chart. Pinch to zoom and scroll to pan. Plus and minus zoom; Home resets. Use Tab to reach connections and topics; arrow keys move between them.', 'Diagramm der Themenverbindungen. Zoome mit zwei Fingern und scrolle zum Verschieben. Plus und Minus zoomen; Pos1 setzt zurück. Erreiche Verbindungen und Themen mit Tab und wechsle mit den Pfeiltasten.') : text('Job connections chart. Pinch to zoom and scroll to pan. Plus and minus zoom; Home resets. Use Tab to reach connections and jobs; arrow keys move between them.', 'Diagramm der Stellenverbindungen. Zoome mit zwei Fingern und scrolle zum Verschieben. Plus und Minus zoomen; Pos1 setzt zurück. Erreiche Verbindungen und Stellen mit Tab und wechsle mit den Pfeiltasten.')" @keydown="zoomKey" @scroll="tooltipScroll">
+      <svg class="bundling-chart" :style="{ width: `${displayWidth}px`, minWidth: `${displayWidth}px`, height: `${displayWidth}px`, marginTop: `${Math.max(0, (baseDisplayWidth - displayWidth) / 2)}px` }" :width="compact ? compactSize : size" :height="compact ? compactSize : size" :viewBox="viewBox" role="group" :aria-label="isTopic ? text('Topics connected by shared jobs', 'Themen verbunden durch gemeinsame Stellen') : text('Jobs connected by shared topics', 'Stellen verbunden durch gemeinsame Themen')">
         <g :transform="`translate(${size / 2},${size / 2})`">
           <g class="bundling-groups" aria-hidden="true"><path v-for="group in diagram.groups" :key="group.id" :d="groupArc(group.startAngle, group.endAngle)" :stroke="color(group.index)" /></g>
           <g class="bundling-edges">
-            <path v-for="edge in edges" :key="edge.id" class="bundling-edge" :class="{ 'is-active': edgeActive(edge), 'is-muted': activeId && !edgeActive(edge), 'is-hovered': hoveredEdgeId === edge.id || focusedEdgeId === edge.id }" :d="edge.path" :stroke="edgeColor(edge.sharedTopicCount)" :tabindex="edge.id === tabbableEdgeId ? 0 : -1" role="img" :aria-label="edgeDescription(edge)" :aria-describedby="edgeTooltipVisible && activeEdge?.id === edge.id ? edgeTooltipId : undefined" @pointerenter="inspectEdge(edge.id, $event)" @pointermove="moveEdgeTooltip" @pointerleave="leaveEdge" @focus="focusEdge(edge.id, $event)" @blur="blurEdge" @keydown="edgeKey" />
+            <path v-for="edge in edges" :key="edge.id" class="bundling-edge" :class="{ 'is-active': edgeActive(edge), 'is-muted': focusIds.size > 0 && !edgeActive(edge), 'is-hovered': hoveredEdgeId === edge.id || focusedEdgeId === edge.id }" :d="edge.path" :stroke="edgeColor(edge.sharedCount)" :tabindex="edge.id === tabbableEdgeId ? 0 : -1" role="img" :aria-label="edgeDescription(edge)" :aria-describedby="edgeTooltipVisible && activeEdge?.id === edge.id ? edgeTooltipId : undefined" @pointerenter="inspectEdge(edge.id, $event)" @pointermove="moveEdgeTooltip" @pointerleave="leaveEdge" @focus="focusEdge(edge.id, $event)" @blur="blurEdge" @keydown="edgeKey" />
           </g>
-          <g v-for="(leaf, index) in leaves" :key="leaf.id" class="bundling-leaf" :class="{ 'is-selected': selectedId === leaf.id, 'is-active': activeId === leaf.id, 'is-muted': isMuted(leaf.id), 'is-left': leaf.left }" :style="{ '--job-group-color': color(leaf.groupIndex) }" :transform="`translate(${leaf.x},${leaf.y}) rotate(${leaf.rotation})`" @pointerenter="hoveredId = leaf.id" @pointerleave="hoveredId = null">
+          <g v-for="(leaf, index) in leaves" :key="leaf.id" class="bundling-leaf" :class="{ 'is-selected': selectionIds.has(leaf.id), 'is-active': activeId === leaf.id, 'is-muted': isMuted(leaf.id), 'is-left': leaf.left, 'is-avoided': isTopic && records.get(leaf.id)?.avoided }" :style="{ '--job-group-color': color(leaf.groupIndex) }" :transform="`translate(${leaf.x},${leaf.y}) rotate(${leaf.rotation})`" @pointerenter="hoveredId = leaf.id" @pointerleave="hoveredId = null">
             <circle r="4" aria-hidden="true" />
-            <foreignObject :x="compact ? -compactTarget / 2 : leaf.left ? -labelWidth - 16 : 16" :y="compact ? -compactTarget / 2 : -16" :width="compact ? compactTarget : labelWidth" :height="compact ? compactTarget : 32" :transform="compact ? `rotate(${-leaf.rotation})` : undefined"><button class="bundling-job" :style="compact ? { fontSize: `${12 * compactSize / compactWidth}px` } : undefined" type="button" :aria-pressed="selectedId === leaf.id" :aria-label="compact ? `${index + 1}. ${description(leaf.id)}` : description(leaf.id)" :title="description(leaf.id)" @click="emit('select', leaf.id)" @focus="focusedId = leaf.id" @blur="focusedId = null" @keydown="leafKey($event, index)">{{ compact ? index + 1 : leaf.label }}</button></foreignObject>
+            <foreignObject :x="compact ? -compactTarget / 2 : leaf.left ? -labelWidth - 16 : 16" :y="compact ? -compactTarget / 2 : -16" :width="compact ? compactTarget : labelWidth" :height="compact ? compactTarget : 32" :transform="compact ? `rotate(${-leaf.rotation})` : undefined"><button class="bundling-job" :class="{ 'bundling-topic': isTopic }" :style="compact ? { fontSize: `${12 * compactSize / compactWidth}px` } : undefined" type="button" :aria-pressed="selectionIds.has(leaf.id)" :aria-label="compact ? `${index + 1}. ${description(leaf.id)}` : description(leaf.id)" :title="description(leaf.id)" @click="emit('select', leaf.id)" @focus="focusedId = leaf.id" @blur="focusedId = null" @keydown="leafKey($event, index)">{{ compact ? index + 1 : leaf.label }}</button></foreignObject>
           </g>
         </g>
       </svg>
     </div>
-    <p v-if="diagram && leaves.length && !diagram.relationshipCount" class="bundling-empty">{{ text('These jobs have no shared topics after exclusions.', 'Diese Stellen haben nach den Ausschlüssen keine gemeinsamen Themen.') }}</p>
+    <p v-if="diagram && leaves.length && !diagram.relationshipCount" class="bundling-empty">{{ isTopic ? text('These topics have no shared jobs under the current filters.', 'Diese Themen haben unter den aktuellen Filtern keine gemeinsamen Stellen.') : text('These jobs have no shared topics after exclusions.', 'Diese Stellen haben nach den Ausschlüssen keine gemeinsamen Themen.') }}</p>
     <p v-if="activeLeaf" class="bundling-record"><template v-if="compact">{{ leaves.indexOf(activeLeaf) + 1 }}. </template>{{ activeLeaf.label }} · {{ activeLeaf.relationshipCount }} {{ connectedJobs(activeLeaf.relationshipCount) }}</p>
     <div :id="edgeTooltipId" ref="edgeTooltip" class="bundling-edge-tooltip" role="tooltip" popover="manual" :hidden="!edgeTooltipVisible || !activeEdge" @pointerenter="tooltipHovered = true; cancelEdgeClose()" @pointerleave="tooltipHovered = false; leaveEdge()" @keydown.esc.stop.prevent="dismissEdgeTooltip">
-      <span class="bundling-edge-tooltip-label">{{ activeEdgeTopics.length === 1 ? text('Shared topic', 'Gemeinsames Thema') : text('Shared topics', 'Gemeinsame Themen') }}</span>
+      <span class="bundling-edge-tooltip-label">{{ sharedLabel(activeEdgeTopics.length) }}</span>
       <strong class="bundling-edge-topics">{{ activeEdgeTopics.join(', ') }}</strong>
     </div>
   </div>
@@ -266,6 +295,8 @@ onBeforeUnmount(() => { observer?.disconnect(); zoomControls?.dispose(); dismiss
 .bundling-leaf > circle { fill: var(--job-group-color); }
 .bundling-leaf.is-selected > circle, .bundling-leaf.is-active > circle { fill: var(--ui-accent); r: 5px; }
 .bundling-leaf.is-muted > circle { opacity: .3; }
+.bundling-leaf.is-avoided > circle { stroke: var(--ui-score-red); stroke-width: 2; }
+.bundling-leaf.is-avoided .bundling-job { text-decoration: underline; text-decoration-color: var(--ui-score-red); text-underline-offset: 3px; }
 .bundling-job { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; box-sizing: border-box; width: 100%; height: 100%; overflow: hidden; padding: 1px 4px; border: 0; border-radius: 3px; color: var(--ui-text); background: transparent; font: 500 11px/1.35 var(--font-ui); text-align: start; overflow-wrap: anywhere; cursor: pointer; }
 .is-left .bundling-job { text-align: end; }
 .is-muted .bundling-job { color: var(--ui-muted); }
@@ -274,6 +305,7 @@ onBeforeUnmount(() => { observer?.disconnect(); zoomControls?.dispose(); dismiss
 .is-compact .bundling-job { display: flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--job-group-color); border-radius: 50%; background: var(--ui-control); text-align: center; }
 .is-compact .is-muted .bundling-job { border-color: var(--ui-border); }
 .is-compact .bundling-job[aria-pressed=true] { border-color: var(--ui-accent); color: var(--ui-accent); background: var(--ui-active); }
+.is-compact .is-avoided .bundling-job { border-color: var(--ui-score-red); }
 .bundling-job:focus-visible, .bundling-scroll:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -2px; }
 .bundling-empty, .bundling-record { margin: 12px 0 0; color: var(--ui-muted); font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 760px) {

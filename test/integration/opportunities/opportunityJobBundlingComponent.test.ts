@@ -5,7 +5,9 @@ import { createRequire } from 'node:module';
 import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc';
 import ts from 'typescript';
 import { createRenderer, defineComponent, h, nextTick, reactive, type Component } from 'vue';
-import { buildOpportunityJobBundling, type OpportunityJobBundlingDiagram } from '../../../src/features/opportunities/domain/opportunityJobBundling';
+import { buildOpportunityJobBundling } from '../../../src/features/opportunities/domain/opportunityJobBundling';
+import { buildOpportunityTopicBundling } from '../../../src/features/opportunities/domain/opportunityTopicBundling';
+import type { OpportunityBundlingDiagram } from '../../../src/features/opportunities/domain/opportunityEdgeBundling';
 import type { OpportunityInsightJob, OpportunityInsightTopicNode } from '../../../src/features/opportunities/domain/opportunityInsights';
 import type { OpportunityGraphNode } from '../../../src/features/opportunities/domain/opportunityGraphLayout';
 
@@ -63,10 +65,11 @@ const renderer = createRenderer<HostNode, HostNode>({
 });
 const job = (id: string, topicIds: string[], title: string | null = `Role ${id}`): OpportunityInsightJob => ({ id, title, institution: null, country: null, addedAt: null, currentFit: 8, interestScore: 9,
   explicitInterest: true, highInterest: true, mismatch: false, topicIds, avoidedTopicIds: [], reasons: [] });
-function mount(t: TestContext, jobs: OpportunityInsightJob[], diagram = buildOpportunityJobBundling(jobs, [])) {
-  const nodes: OpportunityGraphNode[] = jobs.map(record => ({ id: `job:${record.id}`, label: record.title ?? '', kind: 'job', radius: 5, highInterestCount: 1, interestScore: 9, topicCount: record.topicIds.length, avoided: false, mismatch: false }));
-  const topics: OpportunityInsightTopicNode[] = [{ id: 'robotics', label: 'Robotics', highInterestCount: 3, reviewedCount: 3, jobCount: 3, lowInterestCount: 0, avoidedCount: 0, positiveReasonCount: 0 }];
-  const props = reactive({ diagram: diagram as OpportunityJobBundlingDiagram | null, nodes, topics, selectedId: null as string | null, lang: 'en', busy: false });
+interface MountOptions { entityKind?: 'job' | 'topic'; nodes?: OpportunityGraphNode[]; topics?: OpportunityInsightTopicNode[]; selectedIds?: Set<string> }
+function mount(t: TestContext, jobs: OpportunityInsightJob[], diagram: OpportunityBundlingDiagram = buildOpportunityJobBundling(jobs, []), options: MountOptions = {}) {
+  const nodes: OpportunityGraphNode[] = options.nodes ?? jobs.map(record => ({ id: `job:${record.id}`, label: record.title ?? '', kind: 'job', radius: 5, highInterestCount: 1, interestScore: 9, topicCount: record.topicIds.length, avoided: false, mismatch: false }));
+  const topics: OpportunityInsightTopicNode[] = options.topics ?? [{ id: 'robotics', label: 'Robotics', highInterestCount: 3, reviewedCount: 3, jobCount: 3, lowInterestCount: 0, avoidedCount: 0, positiveReasonCount: 0 }];
+  const props = reactive({ diagram: diagram as OpportunityBundlingDiagram | null, nodes, topics, jobs, entityKind: options.entityKind ?? 'job', selectedIds: options.selectedIds ?? new Set<string>(), selectedId: null as string | null, lang: 'en', busy: false });
   const root = node('root'), selected: string[] = [], app = renderer.createApp({ render: () => h(component, { ...props, onSelect: (id: string) => selected.push(id) }) });
   let mounted = true;
   const unmount = () => { if (mounted) { app.unmount(); mounted = false; } };
@@ -85,6 +88,12 @@ function gestureEvent(values: Record<string, any> = {}) {
   return result;
 }
 const settleZoom = async () => { await nextTick(); await nextTick(); };
+const topic = (id: string, label: string, jobCount = 1, avoidedCount = 0): OpportunityInsightTopicNode => ({ id, label, highInterestCount: jobCount, reviewedCount: jobCount,
+  jobCount, lowInterestCount: 0, avoidedCount, positiveReasonCount: 0 });
+function topicNodes(topics: OpportunityInsightTopicNode[]): OpportunityGraphNode[] {
+  return topics.map(record => ({ id: `topic:${record.id}`, label: record.label, kind: 'topic', radius: 5, highInterestCount: record.highInterestCount,
+    matchingJobCount: record.jobCount, avoidedCount: record.avoidedCount, avoided: record.avoidedCount > 0, mismatch: false }));
+}
 
 test('native job controls preserve selection and exact shared-topic descriptions for pointer and keyboard inspection', async t => {
   const jobs = [job('A', ['robotics']), job('B', ['robotics']), job('C', ['robotic learning'])];
@@ -424,4 +433,99 @@ test('native scrolling reanchors a focused edge tooltip without changing its cou
   assert.equal(tooltip.props.hidden, false);
   viewport.props.onScroll(gestureEvent({ target: viewport, currentTarget: viewport })); await nextTick();
   assert.equal(tooltip.props.hidden, true, 'pointer-only inspection still dismisses on chart scrolling');
+});
+
+test('topic bundling preserves multiple topic selections and highlights only their exact shared-job neighbors', async t => {
+  const topics = [topic('robotics', 'Robotics'), topic('acoustics', 'Acoustics', 1, 1), topic('acoustic measurement', 'Acoustic measurement'),
+    topic('embedded systems', 'Embedded systems'), topic('sensing', 'Sensing'), topic('isolated', 'Isolated topic', 0)];
+  const jobs = [job('A', ['robotics', 'acoustics']), job('B', ['embedded systems', 'sensing']), job('C', ['acoustic measurement'])];
+  const nodes = topicNodes(topics), diagram = buildOpportunityTopicBundling(nodes, jobs, []);
+  const initialSelection = new Set(['topic:robotics', 'topic:embedded systems']);
+  const view = mount(t, jobs, diagram, { entityKind: 'topic', nodes, topics, selectedIds: initialSelection }); await settleZoom();
+  assert.equal(view.buttons().length, 6); assert.equal(view.edges().length, 2, 'similar topic wording does not invent a shared-job connection');
+  assert.match(text(view.byClass('bundling-heading')[0]!), /Shared jobs/u);
+  assert.match(text(view.byClass('bundling-counts')[0]!), /6 topics · 2 connections/u);
+  assert.deepEqual(view.buttons().filter(button => button.props['aria-pressed']).map(text).sort(), ['Embedded systems', 'Robotics']);
+  const leaf = (label: string) => view.leaves().find(item => text(item) === label)!;
+  assert(!String(leaf('Acoustics').props.class).includes('is-muted'));
+  assert(!String(leaf('Sensing').props.class).includes('is-muted'));
+  assert.match(leaf('Acoustic measurement').props.class, /is-muted/u);
+  assert.match(leaf('Isolated topic').props.class, /is-muted/u);
+  const avoided = view.buttons().find(button => text(button) === 'Acoustics')!;
+  assert.match(avoided.props['aria-label'], /1 matching job/u); assert.match(avoided.props['aria-label'], /avoid reason/u);
+  assert(!view.buttons().some(button => /interest\s+[\d—]/u.test(button.props['aria-label'])), 'topic labels report evidence rather than a job interest score');
+  const acoustic = view.buttons().find(button => text(button) === 'Acoustic measurement')!;
+  acoustic.props.onClick(); assert.deepEqual(view.selected, ['topic:acoustic measurement']);
+  assert.deepEqual([...view.props.selectedIds].sort(), [...initialSelection].sort(), 'topic interaction emits a topic toggle without mutating other selections');
+  view.props.selectedIds = new Set([...initialSelection, 'topic:acoustic measurement']); await nextTick();
+  assert.equal(acoustic.props['aria-pressed'], true); assert(!String(leaf('Acoustic measurement').props.class).includes('is-muted'));
+  assert(view.selected.every(id => id.startsWith('topic:')), 'topic leaf controls never emit a job selection');
+});
+
+test('topic connection tooltips list the shared jobs and color by exact supporting-job count under the current cohort', async t => {
+  const topics = [topic('robotics', 'Robotics', 4), topic('acoustics', 'Acoustics', 3), topic('sensing', 'Sensing', 2)];
+  const jobs = [job('A', ['robotics', 'acoustics', 'sensing'], 'Research Engineer in Human–Robot Interaction'), job('B', ['robotics', 'acoustics'], 'Acoustic Measurement Research Fellowship'),
+    job('C', ['robotics', 'acoustics'], null), job('D', ['robotics', 'sensing'], 'Embedded Sensing PhD')];
+  const nodes = topicNodes(topics), view = mount(t, jobs, buildOpportunityTopicBundling(nodes, jobs, []), { entityKind: 'topic', nodes, topics }); await settleZoom();
+  const pathFor = (source: string, target: string) => {
+    const edge = view.props.diagram!.edges.find(record => [record.source, record.target].includes(`topic:${source}`) && [record.source, record.target].includes(`topic:${target}`))!;
+    return view.edges().find(path => path.props.d === edge.path)!;
+  };
+  const three = pathFor('robotics', 'acoustics'), two = pathFor('robotics', 'sensing'), one = pathFor('acoustics', 'sensing');
+  assert.equal(three.props.stroke, '#ef5350'); assert.equal(one.props.stroke, '#4d9fff');
+  assert.notEqual(two.props.stroke, three.props.stroke); assert.notEqual(two.props.stroke, one.props.stroke);
+  three.props.onPointerenter(gestureEvent({ target: three, currentTarget: three, clientX: 300, clientY: 260 })); await settleZoom();
+  const tooltip = view.byClass('bundling-edge-tooltip')[0]!;
+  assert.equal(tooltip.props.hidden, false); assert.match(text(tooltip), /Shared jobs/u);
+  const sharedJobs = text(view.byClass('bundling-edge-topics')[0]!);
+  assert(sharedJobs.includes('Research Engineer in Human–Robot Interaction')); assert(sharedJobs.includes('Acoustic Measurement Research Fellowship'));
+  assert(sharedJobs.includes('Title withheld')); assert(!sharedJobs.includes('Embedded Sensing PhD'));
+  assert.match(three.props['aria-label'], /Shared jobs/u); assert.deepEqual(view.selected, []);
+  view.props.lang = 'de'; await nextTick();
+  assert.match(text(view.byClass('bundling-edge-topics')[0]!), /Titel zurückgehalten/u);
+  const filteredJobs = jobs.filter(record => record.id !== 'C');
+  view.props.jobs = filteredJobs; view.props.diagram = buildOpportunityTopicBundling(nodes, filteredJobs, []); await settleZoom();
+  assert.equal(pathFor('robotics', 'sensing').props.stroke, '#ef5350', 'two jobs become the red maximum when the shared-job cohort shrinks');
+  view.props.jobs = [jobs[0]!]; view.props.diagram = buildOpportunityTopicBundling(nodes, view.props.jobs, []); await settleZoom();
+  assert(view.edges().every(edge => edge.props.stroke === '#4d9fff'), 'one shared job remains blue for every topic connection');
+});
+
+test('compact topic bundling keeps full topic identities and reuses selection, keyboard navigation and pinch zoom', async t => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver');
+  let resize: ((entries: { contentRect: { width: number } }[]) => void) | undefined;
+  Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: class { constructor(callback: typeof resize) { resize = callback; } observe() {} disconnect() {} } });
+  const topics = [topic('acoustics', 'Acoustic measurement and spatial listening', 1, 1), topic('robotics', 'Human–robot interaction', 2), topic('sensing', 'Embedded sensing')];
+  const jobs = [job('A', ['acoustics', 'robotics']), job('B', ['robotics', 'sensing'])], nodes = topicNodes(topics);
+  const diagram = buildOpportunityTopicBundling(nodes, jobs, []), selectedIds = new Set(['topic:acoustics']);
+  const view = mount(t, jobs, diagram, { entityKind: 'topic', nodes, topics, selectedIds });
+  t.after(() => { if (previous) Object.defineProperty(globalThis, 'ResizeObserver', previous); else Reflect.deleteProperty(globalThis, 'ResizeObserver'); });
+  await settleZoom(); resize!([{ contentRect: { width: 360 } }]); view.props.lang = 'de'; await settleZoom();
+  assert.deepEqual(view.buttons().map(text), ['1', '2', '3']);
+  const firstLeaf = diagram.leaves[0]!, first = view.buttons()[0]!;
+  assert(first.props['aria-label'].includes(firstLeaf.label)); assert.match(first.props['aria-label'], /^1\./u);
+  assert(!/Interesse\s+[\d—]/u.test(first.props['aria-label']));
+  assert.match(text(view.byClass('bundling-counts')[0]!), /3 Themen/u);
+  assert.match(view.byClass('bundling-chart')[0]!.props['aria-label'], /Themen/u);
+  const avoidedIndex = diagram.leaves.findIndex(leaf => leaf.id === 'topic:acoustics');
+  const avoidedLeaf = () => view.leaves()[avoidedIndex]!, avoidedButton = () => view.buttons()[avoidedIndex]!;
+  assert.match(avoidedLeaf().props.class, /is-avoided/u); assert.match(avoidedLeaf().props.class, /is-selected/u);
+  assert.match(avoidedButton().props['aria-label'], /Vermeidungsgrund/u);
+  first.focus(); await nextTick(); assert(text(view.byClass('bundling-record')[0]!).includes(firstLeaf.label));
+  const arrow = gestureEvent({ key: 'ArrowRight', currentTarget: first, target: first }); first.props.onKeydown(arrow); await nextTick();
+  assert.equal(arrow.defaultPrevented, true); assert(view.buttons()[1]!.focused);
+  view.buttons()[1]!.props.onClick(); assert.deepEqual(view.selected, [diagram.leaves[1]!.id]); assert(view.selected[0]!.startsWith('topic:'));
+  const viewport = view.byClass('bundling-scroll')[0]!, chart = () => view.byClass('bundling-chart')[0]!;
+  const base = Number.parseFloat(chart().props.style.width);
+  viewport.dispatch('wheel', gestureEvent({ ctrlKey: true, deltaY: -Math.log(2) * 100, clientX: 220, clientY: 280 })); await settleZoom();
+  assert(Math.abs(Number.parseFloat(chart().props.style.width) / base - 2) < 1e-9);
+  assert.equal(view.buttons().find(button => button.props['aria-label'].includes('Acoustic measurement and spatial listening'))!.props['aria-pressed'], true);
+  view.buttons()[1]!.props.onBlur(); view.props.selectedIds = new Set(['topic:sensing']); await nextTick();
+  assert.match(avoidedLeaf().props.class, /is-avoided/u); assert.match(avoidedLeaf().props.class, /is-muted/u);
+  assert.equal(avoidedButton().props['aria-pressed'], false);
+  assert.match(avoidedButton().props['aria-label'], /Vermeidungsgrund/u, 'explicit avoidance remains available when an unrelated topic is selected');
+  const css = descriptor.styles.map(style => style.content).join('\n');
+  const compactAvoidance = css.match(/\.is-compact\s+\.is-avoided\s+\.bundling-job\s*\{([^}]*)\}/u);
+  assert(compactAvoidance); assert.match(compactAvoidance[1]!, /border-color:\s*var\(--ui-score-red\)/u);
+  assert(compactAvoidance.index! > css.indexOf('.is-compact .is-muted .bundling-job'), 'compact avoidance retains its visible border over the muted state');
+  assert(compactAvoidance.index! > css.indexOf('.is-compact .bundling-job[aria-pressed=true]'), 'compact avoidance retains its visible border over the selected state');
 });

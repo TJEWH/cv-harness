@@ -214,7 +214,7 @@ test('bundling worker shares the balanced hierarchy and connects only retained e
   assert.deepEqual(result.bundling!.leaves.map(leaf => leaf.id).sort(), ['job:a', 'job:b', 'job:c', 'job:isolated']);
   assert.equal(result.bundling!.groups.length, 2);
   assert.equal(result.bundling!.relationshipCount, 1);
-  assert.deepEqual(result.bundling!.edges.map(edge => [edge.source, edge.target, edge.sharedTopicIds]),
+  assert.deepEqual(result.bundling!.edges.map(edge => [edge.source, edge.target, edge.sharedIds]),
     [['job:a', 'job:c', ['acoustics']]], 'inferred related wording never becomes a shared-topic bundle');
   const excluded = runOpportunityGraphTask({ ...request, view: 'bundling', jobExcludedTopicIds: ['common', 'acoustics'] });
   assert(!('error' in excluded));

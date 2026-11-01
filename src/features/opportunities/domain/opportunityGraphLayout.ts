@@ -2,7 +2,7 @@ import { UndirectedGraph } from 'graphology';
 import louvain from 'graphology-communities-louvain';
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, forceZ, type SimulationLinkDatum, type SimulationNodeDatum } from 'd3-force-3d';
 import type { OpportunityTopicHierarchyNode } from './opportunityTopicHierarchy';
-import type { OpportunityJobBundlingDiagram } from './opportunityJobBundling';
+import type { OpportunityBundlingDiagram } from './opportunityEdgeBundling';
 import type { OpportunityInsightJob, OpportunityInsightTopicNode } from './opportunityInsights';
 
 export interface OpportunityGraphNode {
@@ -44,12 +44,14 @@ export interface OpportunityGraphLayoutRequest extends OpportunityGraphLayoutInp
   view?: 'network' | 'hierarchy' | 'bundling';
   /** Safe cohort data; dense job relationships are built only in the worker. */
   jobs?: OpportunityInsightJob[];
+  /** Interest-filtered current topic cohort; never triggers job clustering. */
+  topicJobs?: OpportunityInsightJob[];
   jobMinimumInterest?: number;
   jobClusterCount?: number;
   jobExcludedTopicIds?: string[];
   jobTopics?: OpportunityInsightTopicNode[];
 }
-export type OpportunityGraphLayoutResponse = { generation: number; positions: OpportunityGraphPosition[]; hierarchy?: OpportunityTopicHierarchyNode[]; bundling?: OpportunityJobBundlingDiagram; graph?: OpportunityGraphRenderData } | { generation: number; error: true };
+export type OpportunityGraphLayoutResponse = { generation: number; positions: OpportunityGraphPosition[]; hierarchy?: OpportunityTopicHierarchyNode[]; bundling?: OpportunityBundlingDiagram; graph?: OpportunityGraphRenderData } | { generation: number; error: true };
 
 function hash(value: string): number {
   let result = 2166136261;
