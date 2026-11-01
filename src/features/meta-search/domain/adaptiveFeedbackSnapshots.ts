@@ -3,6 +3,7 @@ import { OPPORTUNITY_INTEREST_METRIC_VERSION, isOpportunityInterestRating, norma
 import { opportunityFeedbackTextHash, opportunityFeedbackTextIsSafe, sanitizeOpportunityFeedbackUrl, validateAdaptiveSummaryInclusion, type SafeOpportunityFeedbackExample } from '../../opportunities/domain/opportunityFeedbackPrivacy';
 
 export const ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION = 'opportunity-feedback-selection-v2';
+export const ADAPTIVE_FEEDBACK_SOURCE_POLICY_VERSION = 'institution-aggregates-omitted-v1';
 export const ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING = 'sha256-canonical-json-v1';
 export const ADAPTIVE_FEEDBACK_MAX_EXAMPLES = 16;
 export const ADAPTIVE_FEEDBACK_MAX_GROUPS = 64;
@@ -202,7 +203,7 @@ function preferences(values: readonly ApprovedAdaptivePreference[]): ApprovedAda
   return [...unique.values()].sort((a, b) => compare(a.preference_id, b.preference_id));
 }
 
-function groups(examples: readonly AdaptiveFeedbackExample[]): AdaptiveFeedbackGroup[] {
+function groups(examples: readonly AdaptiveFeedbackExample[], historicalInstitutions: boolean): AdaptiveFeedbackGroup[] {
   const entries = new Map<string, { kind: AdaptiveFeedbackGroup['kind']; key: string; polarity?: AdaptiveFeedbackGroup['polarity']; observations: Map<string, number | null> }>();
   const add = (example: AdaptiveFeedbackExample, kind: AdaptiveFeedbackGroup['kind'], key: string, polarity?: AdaptiveFeedbackGroup['polarity']) => {
     const normalized = textKey(key); if (!normalized) return;
@@ -212,7 +213,7 @@ function groups(examples: readonly AdaptiveFeedbackExample[]): AdaptiveFeedbackG
   };
   for (const example of examples) {
     for (const topic of example.topics) add(example, 'topic', topic);
-    if (example.institution) add(example, 'institution', example.institution);
+    if (historicalInstitutions && example.institution) add(example, 'institution', example.institution);
     for (const reason of example.reasons) add(example, reason.category, reason.target ?? reason.category, reason.polarity);
   }
   return [...entries.values()].map(group => ({ kind: group.kind, key: group.key, ...(group.polarity ? { polarity: group.polarity } : {}),
@@ -266,10 +267,11 @@ export async function compileAdaptiveFeedbackSnapshot(input: CompileAdaptiveFeed
     else if (example.feedback_revision === previous.feedback_revision && canonicalJson(example) !== canonicalJson(previous)) throw new TypeError('Conflicting current feedback observations.');
   }
   const eligible = [...unique.values()].sort((a, b) => compare(a.opportunity_id, b.opportunity_id));
-  const allGroups = groups(eligible);
+  const allGroups = groups(eligible, metricVersion === 'opportunity-interest-v1');
   const selected = selectExamples(eligible);
   const inputFingerprint = await opportunityFeedbackTextHash(canonicalJson({ user_id: owner, search_id: search,
     metric_version: metricVersion, selection_policy_version: ADAPTIVE_FEEDBACK_SELECTION_POLICY_VERSION,
+    ...(metricVersion === 'opportunity-interest-v2' ? { source_policy_version: ADAPTIVE_FEEDBACK_SOURCE_POLICY_VERSION } : {}),
     fingerprint_encoding: ADAPTIVE_FEEDBACK_FINGERPRINT_ENCODING,
     preference_revision: preferenceRevision, examples: eligible, approved_preferences: approved }));
   const total = statistics(eligible.flatMap(example => example.interest_score === null ? [] : [example.interest_score]));

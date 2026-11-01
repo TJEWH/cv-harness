@@ -5566,7 +5566,10 @@ begin
       and (s.provenance='explicit' or s.pinned or s.mandatory or adaptation_active and settings.successful_source_reuse_enabled);
   if adaptation_active then
     groups:=coalesce(packet#>'{aggregates,groups}','[]');
-    for key_row in select category,target from(select distinct g->>'kind' category,g->>'key' target from jsonb_array_elements(groups) g) keys order by category collate "C",target collate "C" loop
+    -- Historical packets can still contain institution cohorts. They identify
+    -- sources, not a project-level preference, and have no current priority.
+    for key_row in select category,target from(select distinct g->>'kind' category,g->>'key' target from jsonb_array_elements(groups) g
+      where g->>'kind'<>'institution') keys order by category collate "C",target collate "C" loop
       if exists(select 1 from jsonb_array_elements(rules) r where r->>'kind' in('emphasis','hard_exclusion') and r->>'category'=key_row.category
         and translate(btrim(r->>'target'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')=key_row.target) then continue;end if;
       select g into generic from jsonb_array_elements(groups) g where g->>'kind'=key_row.category and g->>'key'=key_row.target and not(g?'polarity');
@@ -5582,13 +5585,12 @@ begin
       else stats:=coalesce(negative,positive,generic);end if;
       observations:=coalesce((stats->>'scored')::integer,0);mean_value:=(stats->>'mean_interest')::numeric;
       provisional:=false;reason:='supported_mean';direction:='unchanged';
-      if key_row.category='institution' then reason:='source_only';provisional:=true;direction:='examples_only';
-      elsif untargeted then reason:='untargeted_reason';provisional:=true;direction:='examples_only';
+      if untargeted then reason:='untargeted_reason';provisional:=true;direction:='examples_only';
       elsif positive is not null and negative is not null then reason:='contradictory';provisional:=true;
       elsif observations<minimum_observations or mean_value is null then reason:='sparse';provisional:=true;direction:='examples_only';
       elsif negative is not null and mean_value>=positive_threshold or positive is not null and mean_value<positive_threshold then reason:='contradictory';provisional:=true;
       elsif mean_value>=positive_threshold then direction:='increase';
-      elsif negative is not null and key_row.category<>'institution' then direction:='decrease';
+      elsif negative is not null then direction:='decrease';
       else reason:='negative_requires_reason';provisional:=true;end if;
       priorities:=priorities||jsonb_build_array(jsonb_build_object('category',key_row.category,'target',key_row.target,'observations',observations,
         'mean_interest',mean_value,'direction',direction,'provisional',provisional,'basis','feedback','reason',reason));
@@ -7439,7 +7441,7 @@ begin
       ) candidate
     ) e where e.example is not null;
   preferences:=public.opportunity_search_preference_document(p_user_id,p_search_id); preference_version:=(preferences->>'preference_revision')::bigint; approved:=preferences->'approved_preferences'; fingerprint:=encode(sha256(convert_to(jsonb_build_object('metric_version','opportunity-interest-v2',
-    'selection_policy_version','opportunity-feedback-selection-v2','text_policy_version','included-unless-excluded-v1','source_policy_version','institutions-source-only-v1','user_id',p_user_id,'search_id',p_search_id,
+    'selection_policy_version','opportunity-feedback-selection-v2','text_policy_version','included-unless-excluded-v1','source_policy_version','institution-aggregates-omitted-v1','user_id',p_user_id,'search_id',p_search_id,
     'preference_revision',preference_version,'approved_preferences',approved,'examples',rows)::text,'UTF8')),'hex');
   select * into prior from public.opportunity_search_feedback_snapshots where user_id=p_user_id and search_id=p_search_id and input_fingerprint=fingerprint;
   if found then
@@ -7463,11 +7465,8 @@ begin
     'baseline_available',count(*) filter(where e.value->>'baseline_status'='available'),
     'approved_summaries',count(*) filter(where e.value?'search_feedback_summary')) into counts from jsonb_array_elements(rows) e;
   with memberships as (
-    select e.value->>'opportunity_id' id,e.value->>'interest_score' score,'institution' kind,
-      translate(btrim(e.value->>'institution'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz') key,null::text polarity
-      from jsonb_array_elements(rows) e where e.value->>'institution' is not null
-    union select e.value->>'opportunity_id',e.value->>'interest_score','topic',
-      translate(btrim(t.value#>>'{}'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),null
+    select e.value->>'opportunity_id' id,e.value->>'interest_score' score,'topic' kind,
+      translate(btrim(t.value#>>'{}'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz') key,null::text polarity
       from jsonb_array_elements(rows) e cross join lateral jsonb_array_elements(e.value->'topics') t
     union select e.value->>'opportunity_id',e.value->>'interest_score',r.value->>'category',
       translate(btrim(coalesce(r.value->>'target',r.value->>'category')),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),r.value->>'polarity'

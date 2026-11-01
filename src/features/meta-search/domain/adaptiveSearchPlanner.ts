@@ -238,16 +238,16 @@ export function buildAdaptiveSearchPlanningContext(input: AdaptiveSearchPlannerI
       // timing/location complaints into three relevant negative observations.
       const chosen = opposite ? group.general ?? (group.negative!.scored >= group.positive!.scored ? group.negative! : group.positive!)
         : group.negative ?? group.positive ?? group.general!;
+      // Historical packets can contain institution cohorts. The current policy
+      // uses institutions through its source registry, without repeating them here.
+      if (settings.policy_version === 'adaptive-query-v3' && chosen.kind === 'institution') continue;
       const mean = chosen.mean_interest;
       const observations = chosen.scored;
       const untargeted = ['topic', 'method'].includes(chosen.kind) && key(chosen.key) === chosen.kind;
       const contradicts = !untargeted && (opposite || mean !== null && (Boolean(group.negative) && mean >= settings.positive_interest_threshold
         || Boolean(group.positive) && mean < settings.positive_interest_threshold));
       let direction: AdaptivePriority['direction'] = 'examples_only', reason: AdaptivePriority['reason'] = 'sparse', provisional = true;
-      // A university is a reusable discovery source, not evidence that each
-      // project there fits. Keep diagnostics without rewarding or penalizing it.
-      if (settings.policy_version === 'adaptive-query-v3' && chosen.kind === 'institution') reason = 'source_only';
-      else if (untargeted) reason = 'untargeted_reason';
+      if (untargeted) reason = 'untargeted_reason';
       else if (contradicts) { direction = 'unchanged'; reason = 'contradictory'; }
       else if (!untargeted && observations >= settings.minimum_observations && mean !== null) {
         if (mean >= settings.positive_interest_threshold) { direction = 'increase'; reason = 'supported_mean'; provisional = false; }

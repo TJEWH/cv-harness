@@ -166,19 +166,16 @@ test('AF-06 supported targeted negative and positive cohorts alter only their ow
   assert.equal(result.priorities.find(item => item.target === 'robotics')?.provisional, false);
 });
 
-test('institution cohorts are source-only for strong, weak and sparse outcomes without a university fit bonus', async () => {
+test('current planning omits historical institution cohorts for strong, weak and sparse outcomes', async () => {
   for (const scores of [[9, 9, 9], [1, 1, 1], [9]]) {
     const packet = await feedback(scores.map((interest_score, index) => example(index + 1, {
       institution: 'Synthetic retained university', interest_score,
     })));
     const before = JSON.stringify(packet);
-    const institution = buildAdaptiveSearchPlanningContext(input({ feedback: packet })).priorities.find(item => item.category === 'institution')!;
-    assert.equal(institution.direction, 'examples_only');
-    assert.equal(institution.reason, 'source_only');
-    assert.equal(institution.provisional, true);
-    assert.equal(institution.observations, scores.length);
-    assert.equal(institution.mean_interest, scores.reduce((sum, value) => sum + value, 0) / scores.length);
-    assert.equal(JSON.stringify(packet), before, 'source-only planning cannot rewrite project evidence');
+    assert.ok(packet.aggregates.groups.some(group => group.kind === 'institution'));
+    const result = buildAdaptiveSearchPlanningContext(input({ feedback: packet }));
+    assert.equal(result.priorities.some(item => item.category === 'institution'), false);
+    assert.equal(JSON.stringify(packet), before, 'current planning cannot rewrite historical project evidence');
   }
 });
 
@@ -191,14 +188,14 @@ test('historical v1/v2 institution priorities retain their pinned semantics whil
     assert.equal(institution.direction, 'increase'); assert.equal(institution.reason, 'supported_mean');
     const current = buildAdaptiveSearchPlanningContext(input({ feedback: packet, previous_plan: original, previous_policy: previousPolicy }));
     assert.equal(current.refresh_required, true, 'old institution-weighted queries must not remain current after the policy upgrade');
-    assert.equal(current.priorities.find(item => item.category === 'institution')?.direction, 'examples_only');
+    assert.equal(current.priorities.some(item => item.category === 'institution'), false);
   }
   assert.match(DEFAULT_ADAPTIVE_SEARCH_POLICY.institution_guidance!, /Screen each project independently/u);
   assert.match(DEFAULT_ADAPTIVE_SEARCH_POLICY.institution_guidance!, /Do not add an institution-wide fit bonus/u);
   assert.throws(() => validateAdaptiveSearchPolicy({ ...DEFAULT_ADAPTIVE_SEARCH_POLICY, institution_guidance: 'Give every university project a fit bonus' }));
 });
 
-test('contrasting projects within one institution retain project-specific priorities while the institution stays neutral', async () => {
+test('contrasting projects retain project-specific priorities without an institution diagnostic entry', async () => {
   const samples = [
     ...Array.from({ length: 3 }, (_, index) => example(index + 1, { institution: 'Synthetic University', interest_score: 9,
       topics: ['Acoustics'], reasons: [{ category: 'topic', polarity: 'positive', target: 'Acoustics' }] })),
@@ -206,10 +203,7 @@ test('contrasting projects within one institution retain project-specific priori
       topics: ['Simulation'], reasons: [{ category: 'topic', polarity: 'negative', target: 'Simulation' }] })),
   ];
   const result = buildAdaptiveSearchPlanningContext(input({ feedback: await feedback(samples) }));
-  const institution = result.priorities.find(item => item.category === 'institution')!;
-  assert.equal(institution.target, 'synthetic university');
-  assert.equal(institution.observations, 6); assert.equal(institution.mean_interest, 5);
-  assert.equal(institution.direction, 'examples_only'); assert.equal(institution.reason, 'source_only');
+  assert.equal(result.priorities.some(item => item.category === 'institution'), false);
   assert.equal(result.priorities.find(item => item.category === 'topic' && item.target === 'acoustics')?.direction, 'increase');
   assert.equal(result.priorities.find(item => item.category === 'topic' && item.target === 'simulation')?.direction, 'decrease');
 });

@@ -22,6 +22,10 @@ begin
  packet:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);
  assert packet->>'metric_version'='opportunity-interest-v2' and packet#>'{counts,eligible}'='30'::jsonb and packet#>'{counts,scored}'='30'::jsonb,'Whole-set aggregation sampled evidence';
  assert packet#>'{aggregates,score_sum}'='180'::jsonb and packet#>'{aggregates,mean_interest}'='6'::jsonb,'Current interest aggregate incorrect';
+ assert not exists(select 1 from jsonb_array_elements(packet#>'{aggregates,groups}') g where g->>'kind'='institution'),
+   'Feedback exported institution-wide preference cohorts';
+ assert exists(select 1 from jsonb_array_elements(packet->'examples') e where e->>'institution'='Synthetic Institute'),
+   'Removing institution cohorts removed opportunity identity';
  assert jsonb_array_length(packet->'examples')=16 and packet#>'{counts,omitted_limit}'='14'::jsonb,'Example bound incorrect';
  assert packet::text!~'person@example.invalid|Hidden Synthetic Person|context_json|"comment"','Snapshot leaked private raw fields';
  again:=private.compile_opportunity_feedback_snapshot(owner_a,search_a);assert packet=again,'Same semantic inputs allocated a new packet';

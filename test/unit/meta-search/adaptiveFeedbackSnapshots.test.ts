@@ -135,6 +135,23 @@ test('AF-03 selection prefers explicit evidence and then unseen institutions/top
   assert.equal(submitted.examples[0]!.opportunity_id, id(9), 'explicit low interest outranks a weak submission preference proxy');
 });
 
+test('current feedback omits institution cohorts without changing project examples, diversity or topic statistics', async () => {
+  const samples = Array.from({ length: 20 }, (_, index) => example(index + 1, {
+    metric_version: 'opportunity-interest-v2', interest_origin: 'categorical_review', review_state: 'strong_interest', interest_score: 8,
+    institution: `Institute ${index % 5}`, topics: [index % 2 ? 'Acoustics' : 'Robotics'],
+  }));
+  const current = await compileAdaptiveFeedbackSnapshot(input(samples, { metric_version: 'opportunity-interest-v2' }));
+  const historical = await compileAdaptiveFeedbackSnapshot(input(samples.map(item => ({ ...item, metric_version: 'opportunity-interest-v1' }))));
+  assert.equal(current.aggregates.groups.some(group => group.kind === 'institution'), false);
+  assert.ok(historical.aggregates.groups.some(group => group.kind === 'institution'), 'historical compiler retains its original cohorts');
+  assert.deepEqual(current.examples.map(item => item.opportunity_id), historical.examples.map(item => item.opportunity_id));
+  assert.equal(current.examples.length, 16);
+  assert.equal(new Set(current.examples.map(item => item.institution)).size, 5);
+  assert.ok(current.examples.every(item => item.institution));
+  assert.deepEqual(current.aggregates.groups, historical.aggregates.groups.filter(group => group.kind !== 'institution'));
+  assert.equal(current.counts.eligible, 20); assert.equal(current.aggregates.score_sum, 160);
+});
+
 test('AF-03 summary-only and reason-only observations preserve unknown interest and use only scored denominators', async () => {
   const summary = await summaryExample(3);
   const reason = example(4, { interest_score: null, interest_origin: 'none', feedback_updated_at: null, reasons: [{ category: 'funding', polarity: 'negative' }] });

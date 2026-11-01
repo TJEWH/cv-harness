@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "0b5d53469ce66a83512447ad84540279af2780eb1efe6060235b9481d8410f3e"
+      "sha256": "a9f14de8b692d267b0da889fcaa479253463ca32f454c19e74acd3b3627daaf5"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "fd1384df13d5110c273c3c61690378cce16c6854d69f93ae9d492cc0487c22f8"
+        "sha256": "2cfe56459e8618358b660dedb002a1e86636f3b0e04a8705a8d775460046fbae"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -159,7 +159,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveFeedbackSnapshots.ts",
-      "sha256": "5c6249920ecafbea411742cdb8e45185d05c6befc117eb9d8c93013f662dbc70"
+      "sha256": "644b122784a1a4fcd50b0e43cfb4c72e6e1313ea9075e8c5555d646e90f180a0"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchPlans.ts",
@@ -167,7 +167,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchPlanner.ts",
-      "sha256": "c4577af15c734df36f5690f653369afaf24157761e6cb91bf4abf225c4fb2081"
+      "sha256": "c361aab6b62230caa0b2377966c7e11bb94072e89b62f14c701abe5c3c18928b"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchSources.ts",

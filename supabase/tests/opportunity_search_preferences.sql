@@ -6,7 +6,7 @@ declare owner_a uuid:=gen_random_uuid();owner_b uuid:=gen_random_uuid();search_a
   pending_id uuid:=gen_random_uuid();positive_id uuid:=gen_random_uuid();hard_id uuid:=gen_random_uuid();negative_id uuid:=gen_random_uuid();source_id uuid:=gen_random_uuid();
   positive_rule uuid:=gen_random_uuid();hard_rule uuid:=gen_random_uuid();negative_rule uuid:=gen_random_uuid();source_rule uuid:=gen_random_uuid();
   approve_op uuid:=gen_random_uuid();reject_op uuid:=gen_random_uuid();undo_op uuid:=gen_random_uuid();n integer;blocked boolean;protocol text;doc jsonb;rule jsonb;result jsonb;repeat_result jsonb;
-  packet jsonb;before_packet jsonb;context jsonb;again jsonb;original_criteria jsonb;original_revision integer;application_id uuid:=gen_random_uuid();application_context jsonb;proof public.opportunity_reviews;
+  packet jsonb;before_packet jsonb;context jsonb;again jsonb;original_criteria jsonb;original_revision integer;snapshot_revision_value bigint;application_id uuid:=gen_random_uuid();application_context jsonb;proof public.opportunity_reviews;
   schedule jsonb:='{"frequency":"daily","intervalHours":24,"weekdays":[],"time":"08:00","timezone":"UTC","runImmediately":false}';
 begin
   insert into auth.users(id) values(owner_a),(owner_b);
@@ -59,6 +59,16 @@ begin
   assert exists(select 1 from jsonb_array_elements(context->'priorities') p where p->>'target'='acoustics' and p->>'direction'='increase'),'Supported positive topic evidence was ignored';
   assert exists(select 1 from jsonb_array_elements(context->'priorities') p where p->>'target'='fusion' and p->>'reason'='contradictory' and p->'provisional'='true'::jsonb),'Contradictory evidence became a strong shift';
   assert not context::text~'person@example.invalid|comment|context_json','Planning context exposed private content';
+  -- Current planning also omits institution cohorts from retained older packets.
+  before_packet:=jsonb_set(packet,'{aggregates,groups}',(packet#>'{aggregates,groups}')||jsonb_build_array(
+    jsonb_build_object('kind','institution','key','synthetic institute','count',9,'scored',9,'score_sum',63,'mean_interest',7)));
+  again:=private.opportunity_search_planning_context(owner_a,search_a,before_packet,plan_id);
+  assert not exists(select 1 from jsonb_array_elements(again->'priorities') p where p->>'category'='institution'),
+    'Historical institution cohort became redundant current planning output';
+  assert again->'priorities'=context->'priorities','Omitting institution cohorts changed project-level preferences';
+  snapshot_revision_value:=(packet->>'feedback_revision')::bigint;
+  assert (select s.packet from public.opportunity_search_feedback_snapshots s where s.user_id=owner_a and s.search_id=search_a
+    and s.feedback_revision=snapshot_revision_value)=packet,'Planning rewrote an immutable feedback snapshot';
 
   rule:=jsonb_build_object('rule_id',gen_random_uuid(),'kind','hard_exclusion','category','topic','target','Robotics','evidence_refs',jsonb_build_array(target));
   before_packet:=packet;
