@@ -321,7 +321,7 @@ test('an unbound explicitly authorized manual search also replaces its prior exe
   } finally { f.cleanup(); }
 });
 
-test('targeted supersession upgrade preserves active state and matches the fresh schema before replacing a run', () => {
+test('targeted supersession upgrade preserves active state and installs its historical contract before replacing a run', () => {
   const signatures = [
     'private.adaptive_search_recurring_prompt(uuid,text)',
     'private.begin_adaptive_search_brief(uuid,uuid)',
@@ -391,13 +391,20 @@ test('targeted supersession upgrade preserves active state and matches the fresh
     const before = state();
     const upgrade = file('supabase/releases/adaptive-search-supersession-v1.sql');
     sql(upgrade);
-    const installedSupersession = catalog(), promptSignature = signatures[0]!;
-    const withoutPromptBody = (value: typeof freshCatalog) => {
+    const installedSupersession = catalog(), promptSignature = signatures[0]!, briefSignature = signatures[1]!;
+    const expectedBriefBody = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(
+      definitions(upgrade).get('private.begin_adaptive_search_brief')!)?.[2];
+    assert.ok(expectedBriefBody);
+    assert.equal(sql(`select prosrc from pg_proc where oid='${briefSignature}'::regprocedure;`), expectedBriefBody.trim());
+    // Later prompt and evidence-guidance upgrades deliberately replace these
+    // two bodies. Check their historical definitions separately; retain ACLs.
+    const withoutLaterBodies = (value: typeof freshCatalog) => {
       const projected = structuredClone(value);
       delete projected.helpers[promptSignature].definition;
+      delete projected.helpers[briefSignature].definition;
       return projected;
     };
-    assert.deepEqual(withoutPromptBody(installedSupersession), withoutPromptBody(freshCatalog), 'Historical supersession helper or privilege changed');
+    assert.deepEqual(withoutLaterBodies(installedSupersession), withoutLaterBodies(freshCatalog), 'Historical supersession helper or privilege changed');
     assert.deepEqual(state(), before, 'Installing the contract changed existing execution or schedule data');
     assert.equal(runRow(f.run).superseded_by_run_id, null);
     assert.throws(() => sql(upgrade), /Supersession installation already exists/iu);
@@ -405,7 +412,8 @@ test('targeted supersession upgrade preserves active state and matches the fresh
     assert.deepEqual(catalog(), installedSupersession, 'Refused repeated installation changed the installed contract');
     const responseUpgrade = file('supabase/releases/adaptive-search-response-handling-v1.sql');
     sql(responseUpgrade);
-    assert.deepEqual(withoutPromptBody(catalog()), withoutPromptBody(freshCatalog), 'Historical upgrades changed current helper or privilege definitions');
+    assert.deepEqual(withoutLaterBodies(catalog()), withoutLaterBodies(freshCatalog), 'Historical upgrades changed current helper or privilege definitions');
+    assert.equal(sql(`select prosrc from pg_proc where oid='${briefSignature}'::regprocedure;`), expectedBriefBody.trim());
     const expectedPromptBody = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(
       definitions(responseUpgrade).get('private.adaptive_search_recurring_prompt')!)?.[2];
     assert.ok(expectedPromptBody);
