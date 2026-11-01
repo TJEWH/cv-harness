@@ -691,3 +691,9 @@ ALTER TABLE private.opportunity_search_lifecycle_operations
 ALTER TABLE private.opportunity_search_lifecycle_operations
   ADD CONSTRAINT opportunity_search_lifecycle_target_scope_fkey FOREIGN KEY (user_id,search_id,target_run_id)
   REFERENCES public.opportunity_search_runs(user_id,search_id,id) ON DELETE CASCADE;
+
+-- Replacement startup creates the referenced run later in the same transaction.
+-- Keep the fence if a caller tries to delete only the replacement run.
+ALTER TABLE public.opportunity_search_runs
+  ADD CONSTRAINT opportunity_search_runs_superseded_scope_fkey FOREIGN KEY (user_id,search_id,superseded_by_run_id)
+  REFERENCES public.opportunity_search_runs(user_id,search_id,id) DEFERRABLE INITIALLY DEFERRED;

@@ -71,12 +71,15 @@ test('manual and scheduled adaptive instructions use one bounded startup call wi
   }
   assert.deepEqual([...new Set([...value.matchAll(/private\.([a-z_]+)\(/gu)].map(match => match[1]))].sort(),
     ['begin_adaptive_search_brief', 'submit_adaptive_search_batch', 'verify_and_complete_adaptive_search']);
-  assert.ok(value.length <= 7_000, 'keep the recurring handoff within its local prompt budget');
+  assert.ok(value.length <= 7_500, 'keep the recurring handoff within its local prompt budget');
   assert.ok(value.indexOf('RUN CONTEXT:') < value.indexOf('STARTUP:'), 'stable run identity is retained before startup');
   assert.ok(value.includes('Local persistent capture is optional when supported'));
   assert.ok(!value.includes('nonce') && !value.includes('separate action'));
   assert.ok(value.includes('never print the whole bundle'), 'local inspection must stay bounded after truncation');
-  assert.ok(value.includes('run_in_progress and abandoned research do not authorize cancellation or restart'));
+  assert.ok(value.includes('startup atomically replaces older active runs'));
+  assert.ok(value.includes('The same UUID only retries its own run'));
+  assert.ok(value.includes('Normal startup needs no abort call or lifecycle handoff'));
+  assert.ok(value.includes('never change UUID to reclaim execution'));
   assert.ok(!value.includes('FAILED-RUN CLEANUP'), 'owner cancellation uses the separate pinned lifecycle operation');
   assert.ok(value.includes('2+B calls') && value.includes('three calls for one batch'));
   assert.ok(value.includes('do not fetch pages, split the query or use another startup helper'));

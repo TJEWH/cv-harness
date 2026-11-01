@@ -15,6 +15,8 @@ const actor = (owner: string, statement: string) => `begin;
 function fixture(exampleCount = 0, adaptation = false) {
   const owner = randomUUID(), search = randomUUID(), run = randomUUID(), registry = randomUUID();
   const opportunities = Array.from({ length: exampleCount }, () => randomUUID());
+  const researchSummary = '音響🧠 acoustic sensing. '.repeat(18);
+  const sharedFeedback = 'SYNTHETIC_BRIEF_FEEDBACK_0: ' + 'Prefer 音響🧠 with practical prototypes. '.repeat(20);
   const criteria = {
     opportunityTypes: 'Funded doctoral and applied research positions.',
     topicsAndMethods: 'Physical sensing; 音響; 🧠; "quoted" methods; \\ signal processing.\n',
@@ -29,17 +31,18 @@ function fixture(exampleCount = 0, adaptation = false) {
       values('${search}','${owner}','Synthetic single response startup',${json(criteria)},
         '{"frequency":"daily","intervalHours":24,"weekdays":[],"time":"08:00","timezone":"UTC","runImmediately":false}');
     update public.opportunity_search_adaptive_release set enabled=true,project_ref='${project}' where singleton;
-    ${opportunities.map((id, index) => `insert into public.opportunities(id,opportunity_key,title,topics,personal_fit)
+    ${opportunities.map((id, index) => `insert into public.opportunities(id,opportunity_key,title,topics,personal_fit,research_summary)
       values('${id}','brief-${id}','Synthetic sensing role ${index}',array['Acoustics','BCI'],
-        '{"score":9,"scale_min":0,"scale_max":10,"summary":"Synthetic project alignment."}');
+        '{"score":9,"scale_min":0,"scale_max":10,"summary":"Synthetic project alignment."}',${json(researchSummary)}#>>'{}');
       insert into public.opportunity_reviews(user_id,opportunity_id,state,interest_rating,comment)
         values('${owner}','${id}','${index < 8 ? 'strong_interest' : 'not_interested'}',${index < 8 ? 9 : 2},
-          'SYNTHETIC_BRIEF_FEEDBACK_${index}: Prefer physical sensing with evidence of practical prototypes.');`).join('\n')}`);
+          ${json(index === 0 ? sharedFeedback : `SYNTHETIC_BRIEF_FEEDBACK_${index}: Prefer physical sensing with evidence of practical prototypes.`)}#>>'{}');`).join('\n')}`);
   sql(actor(owner, `select public.set_opportunity_search_runner_authorization('${search}','${project}',true,0);
     ${adaptation ? `select public.save_opportunity_search_adaptation('${search}',true,false,0);` : ''}
     select public.save_opportunity_search_source('${search}','${registry}',
       '{"listing_url":"https://example.invalid/ResearchJobs","enabled":true,"pinned":true}');`));
-  return { owner, search, run, registry, opportunities, criteria, scope: { project_ref: project, search_id: search, run_id: run } };
+  return { owner, search, run, registry, opportunities, criteria, researchSummary, sharedFeedback,
+    scope: { project_ref: project, search_id: search, run_id: run } };
 }
 function cleanup(f: ReturnType<typeof fixture>) {
   sql(`delete from auth.users where id='${f.owner}';
@@ -73,11 +76,48 @@ test('single startup response preserves the executable contract, 16 feedback exa
       assert.deepEqual(brief[field], original[field], `${field} changed at the response boundary`);
     }
     assert.equal(brief.feedback.examples.length, 16);
-    assert.deepEqual(brief.feedback.examples, original.feedback.examples, 'The transport must not reallocate or truncate examples');
+    const semanticFields = ['opportunity_id', 'title', 'institution', 'topics', 'interest_score', 'interest_origin', 'interest_gap',
+      'review_state', 'metric_version', 'confirmed_submission', 'reasons', 'search_feedback_summary', 'technical_issue_category', 'manually_archived'];
+    brief.feedback.examples.forEach((example: Record<string, unknown>, index: number) => {
+      const complete = original.feedback.examples[index];
+      for (const field of semanticFields) assert.deepEqual(example[field], complete[field], `Example ${index} lost ${field}`);
+      assert.equal(example.predicted_interest_score, complete.original_prediction?.score ?? null);
+      assert.equal(example.research_summary, Array.from(f.researchSummary).slice(0, 240).join(''));
+      assert.equal(example.research_summary_truncated, true);
+      assert.equal(complete.research_summary, f.researchSummary, 'Internal snapshots must retain the complete research context');
+      assert.deepEqual(example.summary_inclusion, complete.summary_inclusion && {
+        source_length: complete.summary_inclusion.source_length, truncated: complete.summary_inclusion.truncated,
+      });
+      for (const field of ['opportunity_key', 'official_url', 'source_url', 'original_prediction', 'feedback_updated_at']) {
+        assert.equal(field in example, false, `Example ${index} unnecessarily exposed ${field}`);
+      }
+    });
+    const shared = brief.feedback.examples.find((example: { opportunity_id: string }) => example.opportunity_id === f.opportunities[0]);
+    assert.ok(Array.from(f.sharedFeedback).length > 600);
+    const includedFeedback = Array.from(f.sharedFeedback).slice(0, 600).join('');
+    assert.equal(shared.search_feedback_summary, includedFeedback, 'The brief must retain all included user feedback without applying its research-preview limit');
+    assert.deepEqual(shared.summary_inclusion, { source_length: Array.from(f.sharedFeedback).length, truncated: true });
+    const originalShared = original.feedback.examples.find((example: { opportunity_id: string }) => example.opportunity_id === f.opportunities[0]);
+    assert.equal(originalShared.search_feedback_summary, includedFeedback);
+    assert.equal(originalShared.summary_inclusion.source_hash, createHash('sha256').update(f.sharedFeedback).digest('hex'));
+    assert.equal(originalShared.summary_inclusion.summary_hash, createHash('sha256').update(includedFeedback).digest('hex'));
+    assert.equal(sql(`select comment=${json(f.sharedFeedback)}#>>'{}' from public.opportunity_reviews
+      where user_id='${f.owner}' and opportunity_id='${f.opportunities[0]}';`), 't', 'The full private evaluation must remain stored');
+    assert.deepEqual(brief.feedback.example_projection, {
+      version: 1, selected_ids_and_order_preserved: true, research_summary_preview_max_characters: 240,
+    });
     assert.deepEqual(brief.feedback.counts, original.feedback.counts);
-    for (const field of ['policy', 'allocation', 'priorities', 'blocked_core_queries', 'refresh_required']) {
+    assert.deepEqual(brief.feedback.aggregates, Object.fromEntries(Object.entries(original.feedback.aggregates).filter(([key]) => key !== 'groups')));
+    for (const field of ['policy', 'allocation', 'blocked_core_queries', 'refresh_required']) {
       assert.deepEqual(brief.planning[field], original.planning[field], `Planning ${field} lost research obligations`);
     }
+    const actionable = original.planning.priorities.filter((priority: { basis: string; provisional: boolean; direction: string }) =>
+      priority.basis === 'approved' || priority.provisional === false && ['increase', 'decrease'].includes(priority.direction));
+    assert.deepEqual(brief.planning.priorities, actionable);
+    assert.deepEqual(brief.planning.priority_projection, {
+      policy: 'approved-and-supported-directions-v1', included_count: actionable.length,
+      omitted_advisory_count: original.planning.priorities.length - actionable.length,
+    });
     assert.equal('approved_rules' in brief.planning, false);
     assert.equal('approved_preferences' in brief.planning, false);
     assert.equal('approved_preferences' in brief.feedback, false);

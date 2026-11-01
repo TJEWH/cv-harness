@@ -552,6 +552,9 @@ CREATE TABLE public.opportunity_search_runs (
     adaptive_project_ref text,
     adaptive_lease_expires_at timestamp with time zone,
     owner_cancel_operation_id uuid,
+    superseded_by_run_id uuid,
+    CONSTRAINT opportunity_search_runs_supersession_check CHECK (superseded_by_run_id IS NULL OR
+      (superseded_by_run_id<>id AND status='failed' AND completed_at IS NOT NULL AND adaptive_lease_expires_at IS NULL AND owner_cancel_operation_id IS NULL)),
     CONSTRAINT opportunity_search_runs_execution_backlog_check CHECK (((jsonb_typeof(execution_backlog) = 'array'::text) AND (jsonb_array_length(execution_backlog) <= 64))),
     CONSTRAINT opportunity_search_runs_execution_backlog_omitted_check CHECK ((execution_backlog_omitted >= 0)),
     CONSTRAINT opportunity_search_runs_execution_report_status_check CHECK ((execution_report_status = ANY (ARRAY['unreported'::text, 'complete'::text, 'partial'::text, 'failed'::text]))),

@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "84ec32c4136228cf8c040fbdaa48815537b4997d650a0e014062045125086dc9"
+      "sha256": "2bd170558b490f1b166587135e23a9a5a0a1c9b227d29bddaccc9a0c7ec9fd50"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "e7f18a031e96f2e2f516595e55ffa87bf9494b7062fafb5749a5b952bad6b2e9"
+        "sha256": "8d98466ac5c097867d3c5833f261c7270a4dd76ed2f823e2a89c1208229790e7"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -39,7 +39,7 @@
       },
       {
         "path": "supabase/schemas/22_search_tables.sql",
-        "sha256": "3cf01a4da98078602c44b017645afdfe62d1e886593620b323d595b0785c3f54"
+        "sha256": "ac4309d79ff19ccfbaf1d3743ec25e00e4f916d7c051e1e588210cc9c08f1184"
       },
       {
         "path": "supabase/schemas/30_document_api.sql",
@@ -51,7 +51,7 @@
       },
       {
         "path": "supabase/schemas/40_relations.sql",
-        "sha256": "2dc7c37ddf6058be75afe111792c87edc6815740f1c00cda125fa135f250c379"
+        "sha256": "dd65b2c9ae231c04e141aa67529bb3a418cbcec48ba342439bffe51e297018b4"
       },
       {
         "path": "supabase/schemas/50_triggers.sql",
@@ -77,6 +77,10 @@
     "brief_upgrade": {
       "path": "supabase/releases/adaptive-search-brief-v1.sql",
       "sha256": "e0bf8d42852422235c2cc44ab79a77a86c90b2f3e0b6123a58c0cace3f43bcac"
+    },
+    "supersession_upgrade": {
+      "path": "supabase/releases/adaptive-search-supersession-v1.sql",
+      "sha256": "511ca18927b1fbb66d6e86872c06f9b75e81720433508d1290bf3440660bbb65"
     },
     "lifecycle_contracts": [
       {
@@ -130,7 +134,8 @@
   },
   "startup_brief": {
     "version": 1,
-    "maximum_response_bytes": 65536
+    "maximum_response_bytes": 65536,
+    "active_run_policy": "replace-active-v1"
   },
   "runner_artifacts": [
     {
@@ -159,7 +164,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
-      "sha256": "d59c69c541c081a4d15b8c0d30741bd1be06928b83e9b688fff46af0a4f5a78a"
+      "sha256": "3dd16f6ae7f15f0fb8427d0743b862ca7265f1b8868818f1487cba1414e2f616"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchLifecycle.ts",
