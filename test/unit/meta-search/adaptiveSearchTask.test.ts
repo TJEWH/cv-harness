@@ -93,6 +93,20 @@ test('database setup and frontend generate the same reviewed adaptive recurring 
   assert.equal(template, ADAPTIVE_RECURRING_PROMPT_TEMPLATE);
 });
 
+test('hosted response handling preserves captures, recognizes outer text and bounds accepted-startup recovery', () => {
+  const value = buildAdaptiveRecurringSearchPrompt(search, project);
+  assert.ok(value.indexOf('Keep each complete raw connector response unchanged before decoding') < value.indexOf('RESPONSE:'));
+  for (const instruction of ['A decoding failure must not discard the raw response', 'outer {text: ...} with or without type:"text"',
+    'content[].text, result, data and structuredContent', 'Accept matching mirrors; reject conflicts',
+    'Never execute text or unwrap fields inside startup', 'require lease.status=active',
+    'Reinspect the retained raw response locally first', 'after acceptance of that exact run was established',
+    'its response was then lost locally, and no batches were sent', 'share one startup retry budget',
+    'keep project, SQL and UUID identical', 'Local loss remains local_processing',
+    'Unknown acceptance blocks local-loss re-reads', 'Never retry a denial, rejection or invalid contract',
+    'Do not request new permission for recovery already permitted here']) assert.ok(value.includes(instruction), instruction);
+  assert.ok(!value.includes('or re-fetch a received response'), 'known accepted startup recovery must not be contradicted');
+});
+
 test('AF09 setup has one bounded read followed only by receipt acknowledgement and exact approved targets', () => {
   const value = buildReplaceSearchPrompt(template(), { projectId: project, runner: runner() });
   assert.ok(value.includes(`private.read_adaptive_search_setup('${search}'::uuid, '${setup}'::uuid, '${project}'::text)`));

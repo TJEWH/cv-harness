@@ -391,12 +391,21 @@ test('targeted supersession upgrade preserves active state and matches the fresh
     const before = state();
     const upgrade = file('supabase/releases/adaptive-search-supersession-v1.sql');
     sql(upgrade);
-    assert.deepEqual(catalog(), freshCatalog, 'Targeted upgrade differs from the fresh schema');
+    const installedSupersession = catalog(), promptSignature = signatures[0]!;
+    const withoutPromptBody = (value: typeof freshCatalog) => {
+      const projected = structuredClone(value);
+      delete projected.helpers[promptSignature].definition;
+      return projected;
+    };
+    assert.deepEqual(withoutPromptBody(installedSupersession), withoutPromptBody(freshCatalog), 'Historical supersession helper or privilege changed');
     assert.deepEqual(state(), before, 'Installing the contract changed existing execution or schedule data');
     assert.equal(runRow(f.run).superseded_by_run_id, null);
     assert.throws(() => sql(upgrade), /Supersession installation already exists/iu);
     assert.deepEqual(state(), before, 'Refused repeated installation changed existing state');
-    assert.deepEqual(catalog(), freshCatalog, 'Refused repeated installation changed the installed contract');
+    assert.deepEqual(catalog(), installedSupersession, 'Refused repeated installation changed the installed contract');
+    sql(file('supabase/releases/adaptive-search-response-handling-v1.sql'));
+    assert.deepEqual(catalog(), freshCatalog, 'Ordered targeted upgrades differ from the fresh schema');
+    assert.deepEqual(state(), before, 'Installing response handling changed existing execution or schedule data');
     assert.equal(begin(f.search, f.next).compatible, true);
     assertFenced(f);
     assert.deepEqual(query(f.batchSql()), receipt);

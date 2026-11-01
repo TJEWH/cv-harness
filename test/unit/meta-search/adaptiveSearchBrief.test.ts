@@ -22,7 +22,8 @@ test('targeted brief upgrade matches current definitions and grants no app-role 
   const upgrade = read('supabase/releases/adaptive-search-brief-v1.sql');
   const current = definitions(read('supabase/schemas/12_search_support.sql'));
   const installed = definitions(upgrade);
-  const later = definitions(read('supabase/releases/adaptive-search-supersession-v1.sql'));
+  const later = new Map([...definitions(read('supabase/releases/adaptive-search-supersession-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-response-handling-v1.sql'))]);
   assert.equal(installed.size, 3);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale brief upgrade: ${signature}`);
   assert.match(upgrade, new RegExp(`octet_length\\(brief::text\\)>${ADAPTIVE_BRIEF_MAX_BYTES}`, 'u'));
@@ -39,10 +40,22 @@ test('automatic replacement upgrade installs the same current fences with a defe
     .map(match => [match[1]!, match[0].replace('CREATE OR REPLACE FUNCTION ', 'CREATE FUNCTION ')]));
   const current = definitions(source), installed = definitions(upgrade);
   assert.equal(installed.size, 7);
-  for (const [signature, body] of installed) assert.equal(body, current.get(signature), `stale replacement upgrade: ${signature}`);
+  const later = definitions(read('supabase/releases/adaptive-search-response-handling-v1.sql'));
+  for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale replacement upgrade: ${signature}`);
   assert.match(upgrade, /ADD COLUMN superseded_by_run_id uuid/u);
   assert.match(upgrade, /FOREIGN KEY \(user_id,search_id,superseded_by_run_id\)[\s\S]*?REFERENCES public\.opportunity_search_runs\(user_id,search_id,id\) DEFERRABLE INITIALLY DEFERRED/u);
   assert.doesNotMatch(upgrade, /DROP TABLE|GRANT |SECURITY DEFINER/u);
   assert.match(upgrade, /Supersession installation already exists/u);
+  assert.match(upgrade, /begin;[\s\S]*commit;\s*$/u);
+});
+
+test('response-handling upgrade changes only the reviewed recurring prompt', () => {
+  const upgrade = read('supabase/releases/adaptive-search-response-handling-v1.sql');
+  const source = read('supabase/schemas/12_search_support.sql');
+  const definition = /^CREATE (?:OR REPLACE )?FUNCTION private\.adaptive_search_recurring_prompt[^\n]+\n[\s\S]*?\bAS\s+(\$[A-Za-z0-9_]*\$)[\s\S]*?\1;/mu;
+  assert.equal(upgrade.match(definition)?.[0].replace('CREATE OR REPLACE FUNCTION ', 'CREATE FUNCTION '), source.match(definition)?.[0]);
+  assert.equal((upgrade.match(/^CREATE OR REPLACE FUNCTION /gmu) ?? []).length, 1);
+  assert.doesNotMatch(upgrade, /ALTER TABLE|DROP |GRANT |REVOKE |SECURITY DEFINER|UPDATE public\.|DELETE FROM/u);
+  assert.match(upgrade, /Expected the reviewed supersession prompt/u);
   assert.match(upgrade, /begin;[\s\S]*commit;\s*$/u);
 });

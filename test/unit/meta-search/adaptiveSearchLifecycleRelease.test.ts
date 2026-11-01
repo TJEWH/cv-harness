@@ -16,7 +16,8 @@ test('the versioned lifecycle upgrade contains the reviewed current fencing and 
   // The later brief upgrade supersedes the recurring prompt. Preserve this
   // historical installer while checking the final ordered deployment state.
   const later = new Map([...definitions(read('supabase/releases/adaptive-search-brief-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-supersession-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-supersession-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-response-handling-v1.sql'))]);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale upgrade definition: ${signature}`);
   for (const name of ['begin_adaptive_opportunity_search', 'begin_opportunity_search', 'complete_opportunity_search',
     'opportunity_search_adaptive_error', 'opportunity_search_adaptive_completion_error', 'verify_and_complete_adaptive_search',

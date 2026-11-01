@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "2bd170558b490f1b166587135e23a9a5a0a1c9b227d29bddaccc9a0c7ec9fd50"
+      "sha256": "29b6175d157588d1446d792671927c870a40887b09e5983061802578aa198b18"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "8d98466ac5c097867d3c5833f261c7270a4dd76ed2f823e2a89c1208229790e7"
+        "sha256": "c81c843042533938f8bf7bd22e8d22be95c43d75d4c65b47b75e07799c1dae99"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -81,6 +81,10 @@
     "supersession_upgrade": {
       "path": "supabase/releases/adaptive-search-supersession-v1.sql",
       "sha256": "511ca18927b1fbb66d6e86872c06f9b75e81720433508d1290bf3440660bbb65"
+    },
+    "response_handling_upgrade": {
+      "path": "supabase/releases/adaptive-search-response-handling-v1.sql",
+      "sha256": "a072edac7c96b9738de5053d8bbc8c846a5532b60d3c2e0bd1313ac65b6b45fd"
     },
     "lifecycle_contracts": [
       {
@@ -148,7 +152,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTransport.ts",
-      "sha256": "a767088ae3e84846afcd5315bc45f3cf1a6afb5402aed1fcf42a5bd7d760f8fc"
+      "sha256": "3bbddf63b514e3116d9ca73e291c3a90814b14b8ec5585aa96bf4811c88c00a0"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchCheckpoint.ts",
@@ -164,7 +168,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
-      "sha256": "3dd16f6ae7f15f0fb8427d0743b862ca7265f1b8868818f1487cba1414e2f616"
+      "sha256": "b55062d769133bc48dc3bec6e3a836765815d5d5fc1b2b8856d494f6c2b88813"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchLifecycle.ts",
@@ -184,7 +188,7 @@
     },
     {
       "path": "src/features/meta-search/domain/searchPrompts.ts",
-      "sha256": "81cc0c0d7d9b153c79bcf510d448f4ec43e587e01f2d05ebad17b9a9c483f4f1"
+      "sha256": "24a4548f4c240b9d4709ac7c5bc124038e03d5670c4c86b7111a347d64c57b7c"
     },
     {
       "path": "src/features/meta-search/searchTypes.ts",

@@ -138,18 +138,29 @@ function hasFailureMetadata(value: unknown): boolean {
 }
 function connectorFailure(value: Record<string, unknown>): never {
   const metadata: Record<string, unknown>[] = [];
-  const add = (candidate: unknown) => {
+  const add = (candidate: unknown, depth = 0) => {
+    if (depth > 16) return;
+    // Inspect only bounded structured data in known connector wrappers. Error
+    // prose is not evidence of a denial and is never evaluated as code.
+    if (typeof candidate === 'string') {
+      if (candidate.length > 16384) return;
+      try { add(JSON.parse(candidate), depth + 1); } catch { /* Unstructured failures stay unclassified. */ }
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) add(item, depth + 1);
+      return;
+    }
     if (!record(candidate)) return;
     metadata.push(candidate);
-    if (record(candidate.error)) metadata.push(candidate.error);
+    if (record(candidate.error)) add(candidate.error, depth + 1);
+    for (const key of ['structuredContent', 'result', 'data']) add(candidate[key], depth + 1);
+    if (candidate.type === undefined || candidate.type === 'text') add(candidate.text, depth + 1);
+    if (Array.isArray(candidate.content)) for (const block of candidate.content) {
+      if (record(block) && block.type === 'text') add(block.text, depth + 1);
+    }
   };
-  add(value); add(value.structuredContent);
-  // Parse structured error JSON only. An arbitrary word such as "denied" in
-  // prose is not enough to attribute a platform decision or permit a retry.
-  if (Array.isArray(value.content)) for (const block of value.content) {
-    if (!record(block) || block.type !== 'text' || typeof block.text !== 'string' || block.text.length > 16384) continue;
-    try { add(JSON.parse(block.text)); } catch { /* Unstructured connector failure stays unclassified. */ }
-  }
+  add(value);
   // A generic outer HTTP status must not hide the connector's more specific
   // approval/safety/permission code in another structured representation.
   for (const item of metadata) for (const key of ['error_code', 'code', 'sqlstate', 'sql_state']) {
@@ -281,6 +292,12 @@ function sqlRows<T>(value: unknown, decoder: SqlResponseDecoder<T>, depth = 0): 
         || /^[\t ]*<\/?untrusted-data-[A-Za-z0-9-]+>[\t ]*\r?$/mu.test(text);
     });
     if (candidates.length) representations.push(candidates.flatMap(block => sqlRows((block as { text: string }).text, decoder, depth + 1)));
+  }
+  // Some connector hosts return a text envelope without the MCP type marker.
+  // Compare it with every other representation; never select a convenient one.
+  if (Object.hasOwn(value, 'text')) {
+    if (typeof value.text !== 'string' || value.type !== undefined && value.type !== 'text') failure('invalid_response');
+    representations.push(sqlRows(value.text, decoder, depth + 1));
   }
   if (value.structuredContent !== undefined && value.structuredContent !== null) representations.push(sqlRows(value.structuredContent, decoder, depth + 1));
   if (Object.hasOwn(value, 'result')) representations.push(sqlRows(value.result, decoder, depth + 1));
