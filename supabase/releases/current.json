@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "29b6175d157588d1446d792671927c870a40887b09e5983061802578aa198b18"
+      "sha256": "111ad737728cd3bd81a8aa0ed07284792a51a6819dc2c96bcefa747d38925cac"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "c81c843042533938f8bf7bd22e8d22be95c43d75d4c65b47b75e07799c1dae99"
+        "sha256": "004bab681e2689becc3d3d4d195de95a6b24b73b5f3dc38319a0ea54584b8df7"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -85,6 +85,10 @@
     "response_handling_upgrade": {
       "path": "supabase/releases/adaptive-search-response-handling-v1.sql",
       "sha256": "a072edac7c96b9738de5053d8bbc8c846a5532b60d3c2e0bd1313ac65b6b45fd"
+    },
+    "incremental_saves_upgrade": {
+      "path": "supabase/releases/adaptive-search-incremental-saves-v1.sql",
+      "sha256": "7ebe24f14137c0fd5524b30affbf681b4f524fb181c7425403555162e3f22a8c"
     },
     "lifecycle_contracts": [
       {
@@ -144,7 +148,7 @@
   "runner_artifacts": [
     {
       "path": "src/features/meta-search/domain/adaptiveSearchProtocol.ts",
-      "sha256": "bc22603f4d911ca0445a267f9798a22879894aead8ad6e533bbaffc1970ba680"
+      "sha256": "491f780725b5a0fc6a46edbc82658c4945b76450f257c19e973009beef961af1"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchBrief.ts",
@@ -168,7 +172,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
-      "sha256": "b55062d769133bc48dc3bec6e3a836765815d5d5fc1b2b8856d494f6c2b88813"
+      "sha256": "02f77e145ff5872eb1308f3110c3594665fde03c45d58cac970c281d12cb215e"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchLifecycle.ts",

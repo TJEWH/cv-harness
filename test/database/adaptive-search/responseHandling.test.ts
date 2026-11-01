@@ -14,7 +14,9 @@ const signature = 'private.adaptive_search_recurring_prompt(uuid,text)';
 test('response-handling upgrade changes only the prompt and never starts or recovers active research', () => {
   const owner = randomUUID(), search = randomUUID(), run = randomUUID(), setup = randomUUID();
   const project = 'hhhhhhhhhhhhhhhhhhhh';
-  const freshDefinition = sql('select pg_get_functiondef(' + quote(signature) + '::regprocedure);');
+  const upgrade = file('supabase/releases/adaptive-search-response-handling-v1.sql');
+  const expectedPromptBody = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(upgrade)?.[2];
+  assert.ok(expectedPromptBody, 'The historical upgrade must contain its prompt definition');
   const historical = [...file('supabase/releases/adaptive-search-supersession-v1.sql').matchAll(
     /^CREATE OR REPLACE FUNCTION ([^\n]+)\n[\s\S]*?\bAS\s+(\$[A-Za-z0-9_]*\$)[\s\S]*?\2;/gmu,
   )].find(match => match[1]!.startsWith('private.adaptive_search_recurring_prompt('));
@@ -64,9 +66,8 @@ test('response-handling upgrade changes only the prompt and never starts or reco
       assert.equal(sql(`select has_function_privilege('${role}','${signature}','execute');`), 'f');
     }
 
-    const upgrade = file('supabase/releases/adaptive-search-response-handling-v1.sql');
     sql(upgrade);
-    assert.equal(sql('select pg_get_functiondef(' + quote(signature) + '::regprocedure);'), freshDefinition);
+    assert.equal(sql('select prosrc from pg_proc where oid=' + quote(signature) + '::regprocedure;'), expectedPromptBody.trim());
     assert.deepEqual(functionState(), beforeFunctions, 'Installation changed another function or prompt privileges/properties');
     assert.deepEqual(tableState(), beforeTables, 'Deployment started, recovered or otherwise changed stored research/configuration');
     const prompt = sql(`select private.adaptive_search_recurring_prompt('${search}','${project}');`);

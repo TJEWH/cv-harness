@@ -42,6 +42,25 @@ test('AF-08 project, search and run identifiers cannot inject SQL or select a di
   }
 });
 
+test('receipt recovery prepares one scoped SQL NULL lookup using the existing batch helper', () => {
+  const input = { action: 'receipt' as const, scope, batch_id: id(5) };
+  const expected = { project_ref: scope.project_ref,
+    sql: `SELECT private.submit_adaptive_search_batch('${scope.run_id}'::uuid, '${id(5)}'::uuid, NULL::jsonb);` };
+  assert.deepEqual(buildAdaptiveSearchSqlCall(input), expected);
+  assert.deepEqual(buildAdaptiveSearchSqlCall(input), expected, 'recovery retains its original run and batch identity');
+  assert.deepEqual(buildAdaptiveSearchSqlCall({ ...input, batch_id: id(15).toUpperCase() }), {
+    ...expected, sql: `SELECT private.submit_adaptive_search_batch('${scope.run_id}'::uuid, '${id(15)}'::uuid, NULL::jsonb);`,
+  });
+  assert.notEqual(adaptiveJsonSqlLiteral(null), 'NULL::jsonb', 'JSON null must not select receipt mode');
+  assert.throws(() => buildAdaptiveSearchSqlCall({ action: 'batch', scope, batch_id: id(5), payload: null } as never));
+  for (const patch of [{ project_ref: 'other-project' }, { search_id: "';select forbidden();--" }, { run_id: '' }]) {
+    assert.throws(() => buildAdaptiveSearchSqlCall({ ...input, scope: { ...scope, ...patch } }));
+  }
+  for (const batch_id of ['', '<batch-uuid>', `${id(5)}'); SELECT forbidden();--`]) {
+    assert.throws(() => buildAdaptiveSearchSqlCall({ ...input, batch_id }));
+  }
+});
+
 test('AF-08 SQL JSON literals escape apostrophes and backslashes after serialization', () => {
   const values = { title: "O'Brien'); SELECT forbidden(); --", text: '\\path\\file\nline', injection: '$payload$; SELECT other(); --', unicode: 'BCI — 聴覚' };
   const literal = adaptiveJsonSqlLiteral(values);

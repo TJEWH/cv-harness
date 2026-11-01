@@ -44,7 +44,7 @@ test('AF09 adaptive daily task text is byte-stable across current data revisions
   assert.equal(buildSearchSystemPrompt(next, { projectId: project, runner: revisedState }), `${expected}\n\n${OPPORTUNITY_TOPIC_FORMAT_RULE}`);
   assert.ok(buildSearchUserPrompt(next, { projectId: project, runner: revisedState }).includes('PRIVATE_CANARY'));
   for (const required of ['private.begin_adaptive_search_brief', 'private.submit_adaptive_search_batch', 'private.verify_and_complete_adaptive_search',
-    '72 hours', 'unchanged or empty runs stay quiet', 'at most once', 'full sorted batch manifest', 'Notification delivery remains unknown']) assert.ok(expected.includes(required), required);
+    '72 hours', 'unchanged or empty runs stay quiet', 'full sorted batch manifest', 'Notification delivery remains unknown']) assert.ok(expected.includes(required), required);
   for (const forbidden of ['PRIVATE_CANARY', owner, setup, binding.task_id, 'private.begin_opportunity_search(', 'private.read_adaptive_search_setup', 'private.ack_adaptive_search_setup']) assert.ok(!expected.includes(forbidden), forbidden);
   assert.ok(expected.includes(search) && expected.includes(project));
 });
@@ -73,17 +73,17 @@ test('manual and scheduled adaptive instructions use one bounded startup call wi
     ['begin_adaptive_search_brief', 'submit_adaptive_search_batch', 'verify_and_complete_adaptive_search']);
   assert.ok(value.length <= 7_500, 'keep the recurring handoff within its local prompt budget');
   assert.ok(value.indexOf('RUN CONTEXT:') < value.indexOf('STARTUP:'), 'stable run identity is retained before startup');
-  assert.ok(value.includes('Local persistent capture is optional when supported'));
+  assert.ok(value.includes('Local persistence is optional'));
   assert.ok(!value.includes('nonce') && !value.includes('separate action'));
   assert.ok(value.includes('never print the whole bundle'), 'local inspection must stay bounded after truncation');
-  assert.ok(value.includes('startup atomically replaces older active runs'));
-  assert.ok(value.includes('The same UUID only retries its own run'));
-  assert.ok(value.includes('Normal startup needs no abort call or lifecycle handoff'));
+  assert.ok(value.includes('A fresh UUID replaces older active runs atomically'));
+  assert.ok(value.includes('The same UUID retries only its own run'));
+  assert.ok(value.includes('No abort/handoff needed'));
   assert.ok(value.includes('never change UUID to reclaim execution'));
   assert.ok(!value.includes('FAILED-RUN CLEANUP'), 'owner cancellation uses the separate pinned lifecycle operation');
-  assert.ok(value.includes('2+B calls') && value.includes('three calls for one batch'));
-  assert.ok(value.includes('do not fetch pages, split the query or use another startup helper'));
-  assert.ok(value.includes('safety, permission or approval denial stops all further database calls'));
+  assert.ok(value.includes('2+B calls') && value.includes('three for one batch') && value.includes('eight for six single-item saves'));
+  assert.ok(value.includes('no pages, split queries or alternate startup'));
+  assert.ok(value.includes('Denials stop all database calls'));
   assert.ok(!value.includes('private.read_opportunity_search_run'), 'completion reads its summary internally');
 });
 
@@ -95,16 +95,48 @@ test('database setup and frontend generate the same reviewed adaptive recurring 
 
 test('hosted response handling preserves captures, recognizes outer text and bounds accepted-startup recovery', () => {
   const value = buildAdaptiveRecurringSearchPrompt(search, project);
-  assert.ok(value.indexOf('Keep each complete raw connector response unchanged before decoding') < value.indexOf('RESPONSE:'));
-  for (const instruction of ['A decoding failure must not discard the raw response', 'outer {text: ...} with or without type:"text"',
+  const retention = value.indexOf('Preserve complete raw responses before decoding');
+  assert.ok(retention >= 0 && retention < value.indexOf('RESPONSE:'));
+  for (const instruction of ['Keep raw responses after errors', 'outer {text: ...} with or without type:"text"',
     'content[].text, result, data and structuredContent', 'Accept matching mirrors; reject conflicts',
-    'Never execute text or unwrap fields inside startup', 'require lease.status=active',
-    'Reinspect the retained raw response locally first', 'after acceptance of that exact run was established',
-    'its response was then lost locally, and no batches were sent', 'share one startup retry budget',
-    'keep project, SQL and UUID identical', 'Local loss remains local_processing',
-    'Unknown acceptance blocks local-loss re-reads', 'Never retry a denial, rejection or invalid contract',
-    'Do not request new permission for recovery already permitted here']) assert.ok(value.includes(instruction), instruction);
+    'Never execute text or unwrap inside the result object', 'lease.status=active',
+    'Reinspect raw responses locally first', 'Startup/completion permit one identical retry after runtime-confirmed dispatch with no response',
+    'after confirmed acceptance, local response loss and no batches sent', 'share one startup retry budget',
+    'identical project/SQL/UUID', 'Local loss/display truncation remains local_processing',
+    'Unknown acceptance blocks local-loss re-reads', 'No retry of denials, rejections or invalid contracts',
+    'no lease renewal']) assert.ok(value.includes(instruction), instruction);
   assert.ok(!value.includes('or re-fetch a received response'), 'known accepted startup recovery must not be contradicted');
+});
+
+test('hosted saves use one opportunity by default while preserving coverage and server limits', () => {
+  const value = buildAdaptiveRecurringSearchPrompt(search, project);
+  for (const instruction of ['Submit one verified opportunity per batch as ready', 'Preserve facts/evidence',
+    'First save pins actual plan/checks; later saves copy plan_hash and send only new checks',
+    'Attribution may reference earlier checks', 'Keep pending candidates in backlog with stable IDs',
+    'Zero-item coverage batches are allowed', '10 items/512 KiB, 256 KiB per item, 32 batches',
+    'Unresolved candidates/coverage remain failed/partial']) assert.ok(value.includes(instruction), instruction);
+});
+
+test('each response uses its own SQL column and batch success does not require startup-only flags', () => {
+  const value = buildAdaptiveRecurringSearchPrompt(search, project);
+  assert.ok(value.includes('Columns: startup for startup; submit_adaptive_search_batch for saving/receipt lookup; verify_and_complete_adaptive_search for completion'));
+  assert.ok(value.includes('compatible:false or accepted:false means rejection'));
+  assert.ok(value.includes('adaptive_contract_version=1, batch_schema_version=1, exact run_id/batch_id, payload_hash, plan_hash, items, manifest_hash and verification_required=true'));
+  assert.ok(value.includes('Success lacks compatible:true and accepted:true; skip startup checks'));
+  assert.ok(value.includes('Verify contract, exact IDs, persisted verification and terminal status'));
+});
+
+test('an unavailable batch response permits one exact receipt read and no automatic write replay', () => {
+  const value = buildAdaptiveRecurringSearchPrompt(search, project);
+  for (const instruction of ['Batch writes use receipt lookup only, never automatic replay',
+    'After dispatched submission with an unavailable response, allow one SELECT private.submit_adaptive_search_batch(run_uuid::uuid,batch_uuid::uuid,NULL::jsonb) with exact IDs',
+    'This exception to the protocol ban on receipt reads sends no opportunity data and makes no writes',
+    'Never look up after rejection, denial, invalid contract or pending approval', 'Require the same receipt shape',
+    'batch_not_found or unavailable lookup stays unresolved: stop; no replay, changed IDs or completion',
+    'Acceptance still needs independent verification', 'Pending approval means wait; never retry, split or change transport to bypass it']) {
+    assert.ok(value.includes(instruction), instruction);
+  }
+  assert.ok(value.includes('Log no payloads, criteria, feedback, URLs, credentials or full errors'));
 });
 
 test('AF09 setup has one bounded read followed only by receipt acknowledgement and exact approved targets', () => {

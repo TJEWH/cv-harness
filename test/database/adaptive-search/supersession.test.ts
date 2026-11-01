@@ -403,8 +403,13 @@ test('targeted supersession upgrade preserves active state and matches the fresh
     assert.throws(() => sql(upgrade), /Supersession installation already exists/iu);
     assert.deepEqual(state(), before, 'Refused repeated installation changed existing state');
     assert.deepEqual(catalog(), installedSupersession, 'Refused repeated installation changed the installed contract');
-    sql(file('supabase/releases/adaptive-search-response-handling-v1.sql'));
-    assert.deepEqual(catalog(), freshCatalog, 'Ordered targeted upgrades differ from the fresh schema');
+    const responseUpgrade = file('supabase/releases/adaptive-search-response-handling-v1.sql');
+    sql(responseUpgrade);
+    assert.deepEqual(withoutPromptBody(catalog()), withoutPromptBody(freshCatalog), 'Historical upgrades changed current helper or privilege definitions');
+    const expectedPromptBody = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(
+      definitions(responseUpgrade).get('private.adaptive_search_recurring_prompt')!)?.[2];
+    assert.ok(expectedPromptBody);
+    assert.equal(sql(`select prosrc from pg_proc where oid='${promptSignature}'::regprocedure;`), expectedPromptBody.trim());
     assert.deepEqual(state(), before, 'Installing response handling changed existing execution or schedule data');
     assert.equal(begin(f.search, f.next).compatible, true);
     assertFenced(f);

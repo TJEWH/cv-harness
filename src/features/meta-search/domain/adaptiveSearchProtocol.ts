@@ -178,6 +178,7 @@ export function validateAdaptiveCompletionEnvelope(value: unknown): asserts valu
 /** Pure transport preparation; it never sends a request, changes a task or chooses another project. */
 export function buildAdaptiveSearchSqlCall(input: { action: 'startup'; scope: AdaptiveSearchCallScope }
   | { action: 'batch'; scope: AdaptiveSearchCallScope; batch_id: string; payload: AdaptiveBatchPayload }
+  | { action: 'receipt'; scope: AdaptiveSearchCallScope; batch_id: string }
   | { action: 'complete'; scope: AdaptiveSearchCallScope; payload: AdaptiveCompletionPayload }): Readonly<{ project_ref: string; sql: string }> {
   const exact = scope(input.scope);
   let statement: string;
@@ -185,6 +186,8 @@ export function buildAdaptiveSearchSqlCall(input: { action: 'startup'; scope: Ad
     case 'startup': statement = buildAdaptiveStartupBriefSql(exact); break;
     case 'batch': validateAdaptiveBatchEnvelope(input.payload);
       statement = `SELECT private.submit_adaptive_search_batch('${exact.run_id}'::uuid, '${identity(input.batch_id)}'::uuid, ${adaptiveJsonSqlLiteral(input.payload)});`; break;
+    case 'receipt':
+      statement = `SELECT private.submit_adaptive_search_batch('${exact.run_id}'::uuid, '${identity(input.batch_id)}'::uuid, NULL::jsonb);`; break;
     case 'complete': validateAdaptiveCompletionEnvelope(input.payload);
       statement = `SELECT private.verify_and_complete_adaptive_search('${exact.run_id}'::uuid, ${adaptiveJsonSqlLiteral(input.payload)});`; break;
     default: throw new TypeError('Unsupported adaptive helper.');
