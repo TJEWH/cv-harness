@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { reactive } from 'vue';
 import { ADAPTIVE_BATCH_CAPABILITIES } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
-import { buildAdaptiveRecurringSearchPrompt, loadAdaptiveSearchRunnerState, readAdaptiveSearchRunnerState, requestAdaptiveSearchRunner,
+import { ADAPTIVE_RECURRING_PROMPT_TEMPLATE, buildAdaptiveRecurringSearchPrompt, loadAdaptiveSearchRunnerState, readAdaptiveSearchRunnerState, requestAdaptiveSearchRunner,
   usesAdaptiveSearchRunner, type AdaptiveSearchRunnerState } from '../../../src/features/meta-search/domain/adaptiveSearchTask';
 import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSetupReadSql, buildSearchSystemPrompt, buildSearchUserPrompt } from '../../../src/features/meta-search/domain/searchPrompts';
 import { saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../../../src/features/meta-search/data/searchTemplateCloud';
@@ -58,6 +59,27 @@ test('AF09 legacy mode remains legacy until explicit migration and an unavailabl
   original.userPrompt += '; pending unsaved draft';
   assert.ok(buildSearchSystemPrompt(original, { projectId: project, runner: runner() }).includes('EXECUTION NOT READY'));
   assert.throws(() => buildReplaceSearchPrompt(original, { projectId: project, runner: runner() }), /Save the current/);
+});
+
+test('adaptive runner retains complete responses and resolves display truncation without another database call', () => {
+  const value = buildAdaptiveRecurringSearchPrompt(search, project);
+  for (const required of ['Retain each complete raw connector response and decoded value locally',
+    'MCP content[].text, JSON strings and result wrappers as data', 'standalone boundary lines',
+    'exactly one SQL row containing the helper result', 'startup.protocol_text and startup.result_schema completely in bounded local slices',
+    'scope, capabilities and execution_contract, before research or writes', 'Never print the entire bundle',
+    'A truncated local display requires local reinspection, not a database retry',
+    'Only a genuinely lost or unusable transport response permits the one identical retry',
+    'never retry invalid contracts or security, permission or approval denials', 'Handle batch and completion receipts the same way']) {
+    assert.ok(value.includes(required), required);
+  }
+  assert.equal((value.match(/First call: SELECT /gu) || []).length, 1);
+  assert.ok(!value.includes('private.read_opportunity_search_run'), 'local inspection must not extend the three-helper allowlist');
+});
+
+test('database setup and frontend generate the same reviewed adaptive recurring prompt', () => {
+  const sql = readFileSync(new URL('../../../supabase/schemas/12_search_support.sql', import.meta.url), 'utf8');
+  const template = /\$adaptive_recurring\$([\s\S]+?)\$adaptive_recurring\$/u.exec(sql)?.[1];
+  assert.equal(template, ADAPTIVE_RECURRING_PROMPT_TEMPLATE);
 });
 
 test('AF09 setup has one bounded read followed only by receipt acknowledgement and exact approved targets', () => {
