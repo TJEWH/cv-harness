@@ -2151,6 +2151,57 @@ begin
  return d;
 end $_$;
 
+-- private.opportunity_search_schema_error_path(jsonb, jsonb, jsonb, integer)
+-- Locate an invalid schema node without returning input values or unknown keys.
+-- The existing validator remains authoritative; this helper only diagnoses it.
+CREATE FUNCTION private.opportunity_search_schema_error_path(v jsonb, s jsonb, root_schema jsonb, depth integer DEFAULT 0) RETURNS text
+    LANGUAGE plpgsql STABLE
+    SET search_path TO ''
+    AS $_$
+declare k text;child jsonb;expected jsonb;n integer:=0;path text;kind text:=jsonb_typeof(v);
+  branch_path text;matched boolean:=false;consistent boolean:=true;first_branch boolean:=true;
+begin
+  if private.opportunity_payload_schema_valid(v,s,root_schema) then return null;end if;
+  if depth>=24 or s is null then return '';end if;
+  if s?'$ref' then
+    if s->>'$ref' not like '#/%' then return '';end if;
+    s:=root_schema#>string_to_array(substring(s->>'$ref' from 3),'/');
+  end if;
+  if s?'type' and not (case when jsonb_typeof(s->'type')='array' then s->'type' else jsonb_build_array(s->'type') end)?kind then return '';end if;
+  if s?'anyOf' then
+    for child in select value from jsonb_array_elements(s->'anyOf') loop
+      path:=private.opportunity_search_schema_error_path(v,child,root_schema,depth+1);
+      if path is null then matched:=true;exit;end if;
+      if first_branch then branch_path:=path;first_branch:=false;
+      elsif branch_path is distinct from path then consistent:=false;end if;
+    end loop;
+    -- Name a child only when every rejected alternative identifies that child.
+    if not matched then return case when consistent then coalesce(branch_path,'') else '' end;end if;
+  end if;
+  if kind='object' then
+    for k in select jsonb_array_elements_text(coalesce(s->'required','[]')) loop
+      if not v?k then return '/'||replace(replace(k,'~','~0'),'/','~1');end if;
+    end loop;
+    for k,child in select * from jsonb_each(v) order by key loop
+      if not (s->'properties')?k then
+        if s->'additionalProperties'='false'::jsonb then return '/<unknown>';end if;
+        continue;
+      end if;
+      expected:=s->'properties'->k;
+      path:=private.opportunity_search_schema_error_path(child,expected,root_schema,depth+1);
+      if path is not null then return '/'||replace(replace(k,'~','~0'),'/','~1')||path;end if;
+    end loop;
+  elsif kind='array' and s?'items' then
+    for child in select value from jsonb_array_elements(v) loop
+      path:=private.opportunity_search_schema_error_path(child,s->'items',root_schema,depth+1);
+      if path is not null then return '/'||n::text||path;end if;
+      n:=n+1;
+    end loop;
+  end if;
+  return '';
+end;
+$_$;
+
 -- private.opportunity_search_schema_valid(jsonb, jsonb)
 CREATE FUNCTION private.opportunity_search_schema_valid(v jsonb, s jsonb) RETURNS boolean
     LANGUAGE sql STABLE
@@ -3190,10 +3241,13 @@ declare scope jsonb;prior private.opportunity_search_adaptive_batches;run public
   payload_hash text;item_hash text;item_id_value uuid;ids uuid[]:='{}';deferred text[];code text;root text;field text;missing_expected boolean;correction_deferred boolean;
   primary_id uuid;primary_check jsonb;reported_shrunk boolean:=false;retention_deferred_value boolean;ordinal_value integer;manifest jsonb;batch_receipt_result jsonb;source_url text;source_registry uuid;
   diagnostic_stage text:='scope';
+  diagnostic_sqlstate text;safe_diagnostics jsonb;diagnostic_path text;diagnostic_item record;result_error jsonb;schema jsonb;
+  diagnostic_context text;diagnostic_location text[];diagnostic_function_hash text;
 begin
+  begin
   scope:=private.require_adaptive_search_scope(p_run_id,false);
   diagnostic_stage:='envelope';
-  if p_batch_id is null then return private.adaptive_batch_error('invalid_batch');end if;
+  if p_batch_id is null then raise exception 'Batch UUID required' using errcode='22023';end if;
   -- SQL NULL is an exact run/batch receipt lookup, never a write or retry.
   -- The scope guard waits for intake already holding the same lock. Absence
   -- cannot rule out a request still queued at the connector or awaiting a lock.
@@ -3371,12 +3425,52 @@ exception when insufficient_privilege then return private.adaptive_batch_error('
       return private.adaptive_batch_error('scope_unavailable');
     exception when insufficient_privilege then return private.adaptive_batch_error('authorization_revoked');end;
   when object_not_in_prerequisite_state then return private.adaptive_batch_error('inactive_run');
-  when program_limit_exceeded then return private.adaptive_batch_error('scope_oversized')
-    ||jsonb_build_object('diagnostics',jsonb_build_object('stage',diagnostic_stage,'sqlstate',SQLSTATE));
+  when program_limit_exceeded then
+    code:='scope_oversized';diagnostic_sqlstate:=SQLSTATE;
+    get stacked diagnostics diagnostic_context=PG_EXCEPTION_CONTEXT;
   when serialization_failure then return private.adaptive_batch_error('idempotency_conflict');
   when deadlock_detected then raise;
-  when others then return private.adaptive_batch_error('invalid_batch')
-    ||jsonb_build_object('diagnostics',jsonb_build_object('stage',diagnostic_stage,'sqlstate',SQLSTATE));
+  when others then
+    code:='invalid_batch';diagnostic_sqlstate:=SQLSTATE;
+    get stacked diagnostics diagnostic_context=PG_EXCEPTION_CONTEXT;
+  end;
+  -- The intake subtransaction has rolled back. Preserve bounded evidence only
+  -- after reacquiring current authorization and the active-run lock.
+  safe_diagnostics:=jsonb_build_object('stage',diagnostic_stage,'sqlstate',diagnostic_sqlstate);
+  begin
+    -- Only the first PostgreSQL stack line is eligible. Never retain the full
+    -- context: later lines can contain SQL and submitted values.
+    diagnostic_location:=regexp_match(diagnostic_context,'^PL/pgSQL function ((?:private|public)[.][a-z_][a-z0-9_]*)[(][^()\r\n]*[)] line ([0-9]{1,6}) at ');
+    if diagnostic_location is not null then
+      select case when count(*)=1 then min(md5(p.prosrc)) end into diagnostic_function_hash
+        from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+        where n.nspname=split_part(diagnostic_location[1],'.',1) and p.proname=split_part(diagnostic_location[1],'.',2);
+      if diagnostic_function_hash is not null then
+        safe_diagnostics:=safe_diagnostics||jsonb_build_object('function',diagnostic_location[1],'line',diagnostic_location[2]::integer,'source_hash',diagnostic_function_hash);
+      end if;
+    end if;
+    if diagnostic_stage='canonical_validation' then
+      schema:=private.opportunity_search_result_schema();
+      for diagnostic_item in select value,ordinality-1 as item_index from jsonb_array_elements(p_payload->'opportunities') with ordinality loop
+        diagnostic_path:=private.opportunity_search_schema_error_path(diagnostic_item.value->'opportunity',schema,schema);
+        if diagnostic_path is not null then
+          safe_diagnostics:=safe_diagnostics||jsonb_build_object('field_path',left('/opportunities/'||diagnostic_item.item_index::text||'/opportunity'||diagnostic_path,512));
+          exit;
+        end if;
+      end loop;
+    end if;
+  exception when others then null; -- A diagnostic failure must not mask the rejection.
+  end;
+  result_error:=private.adaptive_batch_error(code)||jsonb_build_object('diagnostics',safe_diagnostics);
+  if scope is null or diagnostic_stage='scope' or p_payload is null then return result_error;end if;
+  begin
+    perform private.require_adaptive_search_scope(p_run_id,true);
+    update public.opportunity_search_runs set last_batch_rejection=jsonb_build_object(
+      'version',1,'batch_id',p_batch_id,'recorded_at',clock_timestamp(),'code',code,'diagnostics',safe_diagnostics)
+      where id=p_run_id;
+  exception when others then return result_error; -- No audit write after revocation, expiry or supersession.
+  end;
+  return result_error;
 end;
 $_$;
 

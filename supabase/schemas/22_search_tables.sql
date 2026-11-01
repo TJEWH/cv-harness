@@ -553,6 +553,30 @@ CREATE TABLE public.opportunity_search_runs (
     adaptive_lease_expires_at timestamp with time zone,
     owner_cancel_operation_id uuid,
     superseded_by_run_id uuid,
+    last_batch_rejection jsonb,
+    CONSTRAINT opportunity_search_runs_batch_rejection_check CHECK (last_batch_rejection IS NULL OR (
+      jsonb_typeof(last_batch_rejection)='object' AND octet_length(last_batch_rejection::text)<=2048
+      AND last_batch_rejection-array['version','batch_id','recorded_at','code','diagnostics']='{}'::jsonb
+      AND last_batch_rejection?&array['version','batch_id','recorded_at','code','diagnostics']
+      AND last_batch_rejection->'version'='1'::jsonb
+      AND (last_batch_rejection->'batch_id'='null'::jsonb OR last_batch_rejection->>'batch_id'~'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+      AND jsonb_typeof(last_batch_rejection->'recorded_at')='string'
+      AND last_batch_rejection->>'code' IN ('invalid_batch','scope_oversized')
+      AND jsonb_typeof(last_batch_rejection->'diagnostics')='object'
+      AND (last_batch_rejection->'diagnostics')-array['stage','sqlstate','field_path','function','line','source_hash']='{}'::jsonb
+      AND (last_batch_rejection->'diagnostics')?&array['stage','sqlstate']
+      AND last_batch_rejection#>>'{diagnostics,stage}' IN ('envelope','receipt','canonical_validation','proposal_validation','lease','startup','plan','execution_validation','item_validation','execution_write','batch_write','item_write','proposal_write')
+      AND last_batch_rejection#>>'{diagnostics,sqlstate}'~'^[A-Z0-9]{5}$'
+      AND (NOT ((last_batch_rejection->'diagnostics')?|array['function','line','source_hash']) OR (
+        (last_batch_rejection->'diagnostics')?&array['function','line','source_hash']
+        AND last_batch_rejection#>>'{diagnostics,function}'~'^(private|public)[.][a-z_][a-z0-9_]{0,100}$'
+        AND jsonb_typeof(last_batch_rejection#>'{diagnostics,line}')='number'
+        AND last_batch_rejection#>>'{diagnostics,line}'~'^[1-9][0-9]{0,5}$'
+        AND last_batch_rejection#>>'{diagnostics,source_hash}'~'^[0-9a-f]{32}$'
+      ))
+      AND (NOT ((last_batch_rejection->'diagnostics')?'field_path') OR
+        (jsonb_typeof(last_batch_rejection#>'{diagnostics,field_path}')='string' AND length(last_batch_rejection#>>'{diagnostics,field_path}')<=512))
+    ) IS TRUE),
     CONSTRAINT opportunity_search_runs_supersession_check CHECK (superseded_by_run_id IS NULL OR
       (superseded_by_run_id<>id AND status='failed' AND completed_at IS NOT NULL AND adaptive_lease_expires_at IS NULL AND owner_cancel_operation_id IS NULL)),
     CONSTRAINT opportunity_search_runs_execution_backlog_check CHECK (((jsonb_typeof(execution_backlog) = 'array'::text) AND (jsonb_array_length(execution_backlog) <= 64))),

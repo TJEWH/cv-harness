@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "111ad737728cd3bd81a8aa0ed07284792a51a6819dc2c96bcefa747d38925cac"
+      "sha256": "b214cc308ddef7a70478c1c582eef5b9cf43da78d21d3ef5d09500cff2332f94"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "004bab681e2689becc3d3d4d195de95a6b24b73b5f3dc38319a0ea54584b8df7"
+        "sha256": "0e2cd7adc7f92b435b039a377110491720e3d08b8f414066c6988a3477c64fbd"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -39,7 +39,7 @@
       },
       {
         "path": "supabase/schemas/22_search_tables.sql",
-        "sha256": "ac4309d79ff19ccfbaf1d3743ec25e00e4f916d7c051e1e588210cc9c08f1184"
+        "sha256": "675a208459c3e624791019345a8bd0ddd6f3c27b5a81bebf39476b832c3b9652"
       },
       {
         "path": "supabase/schemas/30_document_api.sql",
@@ -59,7 +59,7 @@
       },
       {
         "path": "supabase/schemas/60_security.sql",
-        "sha256": "634159eeb20c9f408aa4403b29b3cc63161163882efa19bb8f24528abea7dbca"
+        "sha256": "f53717a2af7b743f9c63a15d9b9a887994fe5c664747cc3399c9b6a61aa81b3d"
       },
       {
         "path": "supabase/schemas/70_reference_data.sql",
@@ -89,6 +89,10 @@
     "incremental_saves_upgrade": {
       "path": "supabase/releases/adaptive-search-incremental-saves-v1.sql",
       "sha256": "7ebe24f14137c0fd5524b30affbf681b4f524fb181c7425403555162e3f22a8c"
+    },
+    "batch_diagnostics_upgrade": {
+      "path": "supabase/releases/adaptive-search-batch-diagnostics-v1.sql",
+      "sha256": "ad8101ea091fa11ba3364e9935d0eae0a40e2e63a205ab29bf4857bc23b422f6"
     },
     "lifecycle_contracts": [
       {

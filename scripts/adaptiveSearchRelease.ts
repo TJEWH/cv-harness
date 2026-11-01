@@ -29,6 +29,7 @@ export function buildAdaptiveSearchReleaseManifest() {
       supersession_upgrade: artifact('supabase/releases/adaptive-search-supersession-v1.sql'),
       response_handling_upgrade: artifact('supabase/releases/adaptive-search-response-handling-v1.sql'),
       incremental_saves_upgrade: artifact('supabase/releases/adaptive-search-incremental-saves-v1.sql'),
+      batch_diagnostics_upgrade: artifact('supabase/releases/adaptive-search-batch-diagnostics-v1.sql'),
       lifecycle_contracts: ['supabase/contracts/adaptive-search-lifecycle.request.schema.json',
         'supabase/contracts/adaptive-search-lifecycle.response.schema.json'].map(artifact),
     },

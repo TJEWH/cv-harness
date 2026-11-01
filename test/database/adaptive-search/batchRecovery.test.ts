@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { file, reset, sql, sqlAsync } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
@@ -51,8 +51,21 @@ function fixture() {
       update public.opportunity_search_adaptive_release set enabled=false,project_ref=null where singleton;`) };
 }
 type Fixture = ReturnType<typeof fixture>;
+const rejection = (run: string) => query(`select coalesce(last_batch_rejection,'null'::jsonb) from public.opportunity_search_runs where id='${run}';`);
+function assertDiagnostics(actual: any, expected: Record<string, unknown>, helper: string, raisedText: string) {
+  const { function: name, line, source_hash, ...rest } = actual;
+  assert.deepEqual(rest, expected);
+  assert.equal(name, helper);
+  assert.ok(Number.isSafeInteger(line) && line > 0);
+  const source = query(`select jsonb_build_object('hash',md5(prosrc),'line',(string_to_array(prosrc,E'\\n'))[${line}])
+    from pg_proc where oid='${helper}(${helper.endsWith('submit_adaptive_search_batch') ? 'uuid,uuid,jsonb' : 'jsonb'})'::regprocedure;`);
+  assert.equal(source_hash, source.hash);
+  assert.ok(source.line.includes(raisedText), source.line);
+}
 
 function snapshot(f: Fixture) {
+  // A rejected write may retain bounded diagnosis; every business-state field
+  // still participates in the no-partial-writes assertions below.
   const relations = [
     ['public.opportunity_search_templates', `id='${f.search}'`],
     ['public.opportunity_search_schedule_bindings', `search_id='${f.search}'`],
@@ -73,7 +86,7 @@ function snapshot(f: Fixture) {
     ['public.opportunities', `opportunity_key like 'batch-recovery-${f.run}-%'`],
   ];
   return sql('select jsonb_build_object(' + relations.map(([table, where]) =>
-    `'${table}',(select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),'[]') from ${table} t where ${where})`).join(',') + ');');
+    `'${table}',(select coalesce(jsonb_agg(${table === 'public.opportunity_search_runs' ? "to_jsonb(t)-'last_batch_rejection'" : 'to_jsonb(t)'} order by to_jsonb(t)::text),'[]') from ${table} t where ${where})`).join(',') + ');');
 }
 function assertMissing(value: any) {
   assert.deepEqual(value, { adaptive_contract_version: 1, batch_schema_version: 1, accepted: false,
@@ -128,7 +141,8 @@ test('one invalid record rolls back the whole batch and returns only bounded sta
     const before = snapshot(f), result = query(f.submitSql());
     assert.equal(result.accepted, false);
     assert.deepEqual(result.error, { code: 'invalid_batch', retryable: false });
-    assert.deepEqual(result.diagnostics, { stage: 'canonical_validation', sqlstate: '22023' });
+    assertDiagnostics(result.diagnostics, { stage: 'canonical_validation', sqlstate: '22023', field_path: '/opportunities/1/opportunity/data/<unknown>' },
+      'private.validate_opportunity_search_result', 'Payload must follow canonical opportunity schema');
     assert.doesNotMatch(JSON.stringify(result), /PRIVATE_PAYLOAD_CANARY|forbidden_extension|acoustic|example\.invalid/u);
     assertMissing(lookup(f.run, f.batch));
     assert.equal(snapshot(f), before, 'A rejected second record retained the first write, plan, check or batch');
@@ -141,10 +155,131 @@ test('oversized requests retain the typed error and safe envelope diagnostics wi
     const oversized = { ...f.payload, private_canary: 'PRIVATE_OVERSIZE_CANARY'.repeat(26000) };
     const before = snapshot(f), result = query(f.submitSql(oversized));
     assert.deepEqual(result.error, { code: 'scope_oversized', retryable: false });
-    assert.deepEqual(result.diagnostics, { stage: 'envelope', sqlstate: '54000' });
+    assertDiagnostics(result.diagnostics, { stage: 'envelope', sqlstate: '54000' }, 'private.submit_adaptive_search_batch', 'Batch exceeds envelope');
     assert.doesNotMatch(JSON.stringify(result), /PRIVATE_OVERSIZE_CANARY|private_canary/u);
     assertMissing(lookup(f.run, f.batch));
     assert.equal(snapshot(f), before);
+  } finally { f.cleanup(); }
+});
+
+test('a discarded response remains diagnosable in a separate action without retaining submitted values', () => {
+  const f = fixture();
+  try {
+    assert.equal(rejection(f.run), null);
+    const before = snapshot(f), batch = randomUUID();
+    const item = f.item();
+    sql(f.submitSql({ ...f.payload, opportunities: [{ ...item, opportunity: { ...item.opportunity,
+      data: { 'PRIVATE_UNKNOWN_KEY_CANARY': 'PRIVATE_VALUE_CANARY' } } }] }, batch)); // Deliberately discard the response.
+    const saved = rejection(f.run);
+    assert.equal(saved.version, 1);
+    assert.equal(saved.batch_id, batch);
+    assert.equal(saved.code, 'invalid_batch');
+    assert.ok(Number.isFinite(Date.parse(saved.recorded_at)));
+    assertDiagnostics(saved.diagnostics, { stage: 'canonical_validation', sqlstate: '22023', field_path: '/opportunities/0/opportunity/data/<unknown>' },
+      'private.validate_opportunity_search_result', 'Payload must follow canonical opportunity schema');
+    assert.ok(Buffer.byteLength(JSON.stringify(saved)) < 2048);
+    assert.doesNotMatch(JSON.stringify(saved), /PRIVATE_|example\.invalid|Synthetic|sourcesAndQueries|SELECT/iu);
+    assert.equal(snapshot(f), before);
+    assertMissing(lookup(f.run, batch));
+    assert.deepEqual(rejection(f.run), saved, 'Read-only reconciliation changed the rejection');
+    sql(`update private.opportunity_search_adaptive_contexts set lease_expires_at=clock_timestamp()-interval '1 second' where run_id='${f.run}';`);
+    query(f.submitSql({ ...f.payload, unexpected: true }, randomUUID()));
+    assert.deepEqual(rejection(f.run), saved, 'An expired run wrote new diagnostics');
+    const next = randomUUID();
+    assert.equal(query(`select private.begin_adaptive_search_brief('${f.search}','${next}');`).compatible, true);
+    assert.deepEqual(rejection(f.run), saved, 'Supersession discarded the failure evidence');
+    assert.equal(rejection(next), null, 'A replacement run inherited another execution’s failure');
+    query(f.submitSql({ ...f.payload, unexpected: true }, randomUUID()));
+    assert.deepEqual(rejection(f.run), saved, 'A late rejected write changed a superseded run');
+  } finally { f.cleanup(); }
+});
+
+test('schema diagnostics identify known nested fields and missing required fields without relaxing validation', () => {
+  const f = fixture();
+  try {
+    const item = f.item();
+    const noTitle = { ...item.opportunity } as Record<string, unknown>; delete noTitle.title;
+    for (const [opportunity, path] of [
+      [noTitle, '/opportunities/0/opportunity/title'],
+      [{ ...item.opportunity, sources: [{ url: 'https://example.invalid/PRIVATE_URL_CANARY', kind: 'official',
+        checked_at: 'PRIVATE_INVALID_TIME_CANARY', precision: 'instant', supports: ['title'] }] }, '/opportunities/0/opportunity/sources/0/checked_at'],
+    ] as const) {
+      const batch = randomUUID(), response = query(f.submitSql({ ...f.payload, opportunities: [{ ...item, opportunity }] }, batch));
+      assert.equal(response.error.code, 'invalid_batch');
+      assert.equal(response.diagnostics.field_path, path);
+      assert.deepEqual(rejection(f.run).diagnostics, response.diagnostics);
+      assert.equal(rejection(f.run).batch_id, batch, 'Only the latest bounded failure is retained');
+      assert.doesNotMatch(JSON.stringify(rejection(f.run)), /PRIVATE_/u);
+    }
+    const last = rejection(f.run);
+    const accepted = query(f.submitSql(f.payload, randomUUID()));
+    assert.equal(accepted.items[0].outcome, 'saved');
+    assert.deepEqual(rejection(f.run), last, 'A successful save must not erase prior diagnostic evidence');
+  } finally { f.cleanup(); }
+});
+
+test('SQL NULL reads never persist diagnostics and null write identities retain an envelope failure', () => {
+  const f = fixture();
+  try {
+    const before = snapshot(f);
+    assertMissing(lookup(f.run, f.batch));
+    assert.equal(query(`select private.submit_adaptive_search_batch('${f.run}',NULL::uuid,NULL::jsonb);`).error.code, 'invalid_batch');
+    assert.equal(rejection(f.run), null);
+    const response = query(`select private.submit_adaptive_search_batch('${f.run}',NULL::uuid,${json(f.payload)});`);
+    assertDiagnostics(response.diagnostics, { stage: 'envelope', sqlstate: '22023' }, 'private.submit_adaptive_search_batch', 'Batch UUID required');
+    assert.equal(rejection(f.run).batch_id, null);
+    assert.deepEqual(rejection(f.run).diagnostics, response.diagnostics);
+    assert.equal(snapshot(f), before);
+  } finally { f.cleanup(); }
+});
+
+test('semantic rejections identify their exact validator line without retaining the offending value or stack', () => {
+  const f = fixture();
+  try {
+    const item = f.item();
+    const opportunity = { ...item.opportunity, sources: item.opportunity.sources.map(s => ({ ...s,
+      supports: ['PRIVATE_SUPPORT_CANARY\nPL/pgSQL function public.fake(jsonb) line 5 at RAISE'] })) };
+    const result = query(f.submitSql({ ...f.payload, opportunities: [{ ...item, opportunity }] }));
+    assert.equal(result.error.code, 'invalid_batch');
+    assertDiagnostics(result.diagnostics, { stage: 'canonical_validation', sqlstate: '22023' },
+      'private.validate_opportunity_search_result', 'Unknown evidence field');
+    assert.deepEqual(rejection(f.run).diagnostics, result.diagnostics);
+    assert.doesNotMatch(JSON.stringify(rejection(f.run)), /PRIVATE_|public\.fake|PL\/pgSQL|SQL statement/iu);
+  } finally { f.cleanup(); }
+});
+
+test('rejection metadata inherits owner read access and remains management-write-only', () => {
+  const f = fixture(), other = fixture();
+  try {
+    query(f.submitSql({ ...f.payload, unexpected: 'PRIVATE_CANARY' }));
+    const saved = rejection(f.run);
+    assert.equal(saved.code, 'invalid_batch');
+    const asOwner = (owner: string, statement: string) => `begin;select set_config('request.jwt.claims',${json({ sub: owner, is_anonymous: false })}::text,true);set local role authenticated;${statement}rollback;`;
+    const own = sql(asOwner(f.owner, `select last_batch_rejection from public.opportunity_search_runs where id='${f.run}';`));
+    assert.ok(own.includes('invalid_batch'));
+    const foreign = sql(asOwner(other.owner, `select count(*) from public.opportunity_search_runs where id='${f.run}';`));
+    assert.equal(foreign.split('\n').at(-1), '0');
+    assert.throws(() => sql(asOwner(f.owner, `update public.opportunity_search_runs set last_batch_rejection=null where id='${f.run}';`)), /permission denied/iu);
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      assert.throws(() => sql(`begin;set local role ${role};select private.opportunity_search_schema_error_path('{}','{}','{}');rollback;`), /permission denied/iu);
+    }
+    sql(asOwner(f.owner, `select public.set_opportunity_search_runner_authorization('${f.search}','${project}',false,1);`).replace('rollback;', 'commit;'));
+    assert.equal(query(f.submitSql({ ...f.payload, another: true }, randomUUID())).error.code, 'authorization_revoked');
+    assert.deepEqual(rejection(f.run), saved);
+  } finally { f.cleanup(); other.cleanup(); }
+});
+
+test('rejection metadata constraint rejects added values, null codes and oversized records', () => {
+  const f = fixture();
+  try {
+    query(f.submitSql({ ...f.payload, unexpected: true }));
+    const saved = rejection(f.run);
+    for (const bad of [{ ...saved, payload: { secret: true } }, { ...saved, code: null },
+      { ...saved, diagnostics: { ...saved.diagnostics, sqlstate: null } },
+      { ...saved, diagnostics: { ...saved.diagnostics, field_path: 'x'.repeat(3000) } }]) {
+      assert.throws(() => sql(`update public.opportunity_search_runs set last_batch_rejection=${json(bad)} where id='${f.run}';`), /batch_rejection_check/iu);
+    }
+    assert.deepEqual(rejection(f.run), saved);
   } finally { f.cleanup(); }
 });
 
@@ -262,7 +397,6 @@ test('targeted incremental-save upgrade preserves active research and exactly ma
   const others = () => sql(`select md5(jsonb_agg(to_jsonb(p) order by p.oid)::text)
     from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname in('public','private') and p.oid<>all(array[${signatures.map(value => "'" + value + "'::regprocedure").join(',')}]);`);
-  const current = helpers();
   const oldPrompt = [...file('supabase/releases/adaptive-search-response-handling-v1.sql').matchAll(
     /^CREATE OR REPLACE FUNCTION ([^\n]+)\n[\s\S]*?\bAS\s+(\$[A-Za-z0-9_]*\$)[\s\S]*?\2;/gmu,
   )].find(match => match[1]!.startsWith('private.adaptive_search_recurring_prompt('));
@@ -284,7 +418,10 @@ test('targeted incremental-save upgrade preserves active research and exactly ma
     const before = snapshot(f), predecessorHelpers = helpers(), otherFunctions = others();
     const upgrade = file('supabase/releases/adaptive-search-incremental-saves-v1.sql');
     sql(upgrade);
-    assert.deepEqual(helpers(), current, 'The targeted three-function upgrade differs from the current schema');
+    const installed = helpers();
+    const expectedBodies = [...upgrade.matchAll(/^CREATE OR REPLACE FUNCTION ([^\n]+)\n[\s\S]*?\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\2;/gmu)]
+      .map(match => createHash('md5').update(match[3]!).digest('hex'));
+    assert.deepEqual(installed.map((entry: { source_hash: string }) => entry.source_hash), expectedBodies, 'The historical upgrade differs from its reviewed artifact');
     assert.deepEqual(helpers().map((entry: { properties: unknown }) => entry.properties),
       predecessorHelpers.map((entry: { properties: unknown }) => entry.properties), 'The upgrade changed helper privileges or execution properties');
     assert.equal(others(), otherFunctions, 'The upgrade changed another function');
@@ -293,8 +430,44 @@ test('targeted incremental-save upgrade preserves active research and exactly ma
     assertMissing(lookup(f.run, randomUUID()));
     assert.equal(snapshot(f), before, 'Receipt reconciliation mutated the pre-existing run');
     assert.throws(() => sql(upgrade), /Expected the reviewed/iu);
-    assert.deepEqual(helpers(), current);
+    assert.deepEqual(helpers(), installed);
     assert.equal(snapshot(f), before);
+  } finally {
+    try { f?.cleanup(); } finally { reset(); }
+  }
+});
+
+test('targeted diagnostics upgrade preserves existing state, installs current definitions and does not invent historical failures', () => {
+  const signature = 'private.submit_adaptive_search_batch(uuid,uuid,jsonb)';
+  const helperSignature = 'private.opportunity_search_schema_error_path(jsonb,jsonb,jsonb,integer)';
+  const definition = (name: string) => sql(`select pg_get_functiondef('${name}'::regprocedure);`);
+  const currentSubmit = definition(signature), currentHelper = definition(helperSignature);
+  const previous = [...file('supabase/releases/adaptive-search-incremental-saves-v1.sql').matchAll(
+    /^CREATE OR REPLACE FUNCTION ([^\n]+)\n[\s\S]*?\bAS\s+(\$[A-Za-z0-9_]*\$)[\s\S]*?\2;/gmu,
+  )].find(match => match[1]!.startsWith('private.submit_adaptive_search_batch('));
+  assert.ok(previous);
+  let f: Fixture | undefined;
+  try {
+    sql(previous[0]);
+    sql(`drop function ${helperSignature};alter table public.opportunity_search_runs drop column last_batch_rejection;`);
+    f = fixture();
+    const rejected = query(f.submitSql({ ...f.payload, unexpected: true }));
+    assert.equal(rejected.error.code, 'invalid_batch');
+    const before = snapshot(f);
+    const properties = sql(`select to_jsonb(p)-'prosrc' from pg_proc p where oid='${signature}'::regprocedure;`);
+    const upgrade = file('supabase/releases/adaptive-search-batch-diagnostics-v1.sql');
+    sql(upgrade);
+    assert.equal(definition(signature), currentSubmit);
+    assert.equal(definition(helperSignature), currentHelper);
+    assert.equal(sql(`select to_jsonb(p)-'prosrc' from pg_proc p where oid='${signature}'::regprocedure;`), properties);
+    assert.equal(rejection(f.run), null, 'Installation must not fabricate the lost old rejection');
+    assert.equal(snapshot(f), before);
+    query(f.submitSql({ ...f.payload, unexpected: true }));
+    assert.equal(rejection(f.run).code, 'invalid_batch');
+    assert.equal(snapshot(f), before);
+    assert.equal(sql(`select has_function_privilege('authenticated','${helperSignature}','execute');`), 'f');
+    assert.throws(() => sql(upgrade), /Expected the reviewed|already exists/iu);
+    assert.equal(definition(signature), currentSubmit);
   } finally {
     try { f?.cleanup(); } finally { reset(); }
   }

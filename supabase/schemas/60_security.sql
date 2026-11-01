@@ -50,6 +50,10 @@ COMMENT ON FUNCTION public.read_opportunity_search_dashboard(p_search_id uuid, p
 COMMENT ON FUNCTION public.read_opportunity_search_metrics(p_search_id uuid) IS 'Owner-private observed quality metrics. Overlapping groups are not additive and generated recommendations never prove delivery.';
 
 -- private.TABLE opportunity_search_adaptive_batches
+REVOKE ALL ON FUNCTION private.opportunity_search_schema_error_path(jsonb,jsonb,jsonb,integer) FROM PUBLIC,anon,authenticated,service_role;
+
+COMMENT ON COLUMN public.opportunity_search_runs.last_batch_rejection IS 'Latest authorized active-run batch validation failure. Bounded codes, schema paths and identities only; no submitted values, SQL or error text. Historical failures are not backfilled.';
+
 COMMENT ON TABLE private.opportunity_search_adaptive_batches IS 'Immutable safe batch manifest/receipt metadata. No raw input payload, canonical snapshot, people or nested decision paths are exported.';
 
 -- private.TABLE opportunity_search_adaptive_contexts
