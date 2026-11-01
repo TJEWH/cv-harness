@@ -34,6 +34,8 @@ Batch acknowledgement is pending verification; completion independently verifies
 
 Limits remain 30 queries, 64 sources, 128 checks, 64 backlog entries, a 512-KiB report, a 256-KiB bundle and 64-KiB feedback packet. New recommendations require at least 72 hours before the verified deadline. Query/source execution claims need actual checks; saved plans do not provide execution credit. Delivery remains unknown. Unchanged or empty runs stay quiet.
 
+Startup recovery has a separately testable [offline reference implementation and diagnosis](adaptive-search-startup-diagnostics.md). The hosted task receives instructions and SQL templates; it does not automatically execute the repository's TypeScript collector or checkpoint adapter. Source fingerprints and offline tests cannot confirm hosted checkpoint retention or resolve an approval, permission or safety denial.
+
 Setup is separate from daily execution. The owner-checked readiness API and exact setup UUID identify the current operation. `private.read_adaptive_search_setup` returns the safe handoff; `private.ack_adaptive_search_setup` records an actual successful task-tool receipt. A lost response may retry the exact acknowledgement. Neither helper belongs to the daily runner allowlist.
 
 Current explicit runner modes and feature rollback remain supported. Changing mode requires the appropriate owner action and a real task acknowledgement. Release enablement, owner runner authorization, adaptation, pause and source reuse are independent controls. Saving intent, generating prompts and installing schema do not acknowledge a task change or enable a run.
