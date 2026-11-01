@@ -342,7 +342,7 @@ Use protocol payloads/stable IDs; limits: 10 items/512 KiB per batch, 256 KiB pe
 
 After batches, call private.verify_and_complete_adaptive_search(run_uuid,completion_json) separately with a stable completion UUID and full sorted batch manifest. Claim saves only from current persisted verification and its separately read terminal summary. Unresolved writes/coverage are failed or partial. Normal budget: manifest + N pages + B batches + completion = 2+N+B calls.
 
-FAILED-RUN CLEANUP: After a verified compatible manifest establishes exact project/search/run scope, abandonment before any batch REQUEST may close the same run via the completion helper with {"schema_version":1,"completion_id":"<one-stable-completion-uuid>","batch_ids":[],"status":"failed"}. With accepted batches, include their full sorted manifest; never guess after an uncertain batch response. Retain the receipt and verify persisted failed status; never claim empty success. No cleanup after scope/security/permission/approval/safety denial or unknown compatibility/scope. Retry only under the lost-response rule.
+BLOCKED OR INTERRUPTED: run_in_progress and abandoned research do not authorize cancellation or restart. Stop, report the exact outcome and retain the run UUID. The owner uses the separate execution lifecycle controls. Never invent an empty batch manifest or submit a failed completion as cancellation. No exploratory database reads or additional helpers.
 
 New opportunities may be reported or recommended only when at least 72 hours remain until the official application deadline at the actual run time. Resolve the advertised local date, time and timezone from official evidence. For a date-only deadline, use 00:00 at the start of that date in the established local timezone for this eligibility calculation, without inventing a stored deadline time. Explicit rolling or open-until-filled vacancies without a fixed date are eligible when officially verified as open. Verify ambiguous deadlines; do not recommend an unverified deadline or one less than 72 hours away. This reporting filter does not prohibit verified catalogue writes under the installed protocol. Existing catalogue records may still receive verified updates, including closure or deadline corrections, without becoming recommendations.
 
@@ -491,6 +491,10 @@ begin
     return private.opportunity_search_adaptive_error('incompatible_release');end if;
   perform pg_advisory_xact_lock(hashtextextended(runner_authorization.user_id::text||':'||p_search_id::text||':adaptive-lease',0));
   perform pg_advisory_xact_lock(hashtextextended('search-run:'||p_run_id::text,0));
+  if exists(select 1 from public.opportunity_search_runs where id=p_run_id and owner_cancel_operation_id is not null) then return private.opportunity_search_adaptive_error('run_aborted');end if;
+  if exists(select 1 from private.opportunity_search_lifecycle_operations where restart_run_id=p_run_id and(outcome<>'aborted' or verified_at is null)) then
+    return private.opportunity_search_adaptive_error('abort_verification_required');end if;
+  perform private.guard_adaptive_search_lifecycle_start(p_search_id,p_run_id);
   select * into cached from private.opportunity_search_adaptive_contexts where run_id=p_run_id for update;
   is_retry:=found;
   if is_retry and(cached.user_id,cached.search_id,cached.project_ref) is distinct from(runner_authorization.user_id,p_search_id,release.project_ref) then
@@ -647,6 +651,7 @@ begin
   return bundle;
 exception when program_limit_exceeded then return private.opportunity_search_adaptive_error('scope_oversized');
   when feature_not_supported then return private.opportunity_search_adaptive_error('incompatible_release');
+  when object_not_in_prerequisite_state then return private.opportunity_search_adaptive_error('restart_unavailable');
   when deadlock_detected then raise;
   when insufficient_privilege then return private.opportunity_search_adaptive_error('authorization_revoked');
   when others then return private.opportunity_search_adaptive_error('invalid_bundle');
@@ -663,9 +668,14 @@ declare template public.opportunity_search_templates; run public.opportunity_sea
 begin
   if current_user<>'postgres' then raise exception 'Administrative SQL access is required.' using errcode='42501'; end if;
   if p_search_id is null or p_run_id is null then raise exception 'Stable search and run UUIDs are required.' using errcode='22023'; end if;
+  select * into template from public.opportunity_search_templates where id=p_search_id for share;
+  if not found then raise exception 'Search template not found.' using errcode='P0002';end if;
+  perform pg_advisory_xact_lock(hashtextextended(template.user_id::text||':'||p_search_id::text||':adaptive-lease',0));
+  perform private.guard_adaptive_search_lifecycle_start(p_search_id,p_run_id);
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('search-run:'||p_run_id::text,0));
   select * into run from public.opportunity_search_runs where id=p_run_id;
   if found then
+    if run.owner_cancel_operation_id is not null then raise exception 'Run was cancelled by its owner' using errcode='55000';end if;
     if run.search_id<>p_search_id then raise exception 'Run ID belongs to another search.' using errcode='23505'; end if;
     -- Another run can win publication while this run generates queries. A retry
     -- attaches that exact immutable revision without changing any pinned inputs.
@@ -678,6 +688,9 @@ begin
   end if;
   select * into template from public.opportunity_search_templates where id=p_search_id for share;
   if not found then raise exception 'Search template not found.' using errcode='P0002'; end if;
+  if exists(select 1 from public.opportunity_search_runner_authorizations where user_id=template.user_id and search_id=p_search_id and enabled)
+    and exists(select 1 from public.opportunity_search_runs where user_id=template.user_id and search_id=p_search_id and status='running') then
+    raise exception 'Another search run is active' using errcode='55000';end if;
   select p.* into protocol from private.opportunity_search_protocols p join private.opportunity_search_settings s on s.active_protocol_version=p.version;
   if protocol.version is null or protocol.contract_version<>1 then
     raise exception 'Install a compatible opportunity search protocol (bootstrap 1).' using errcode='22023';
@@ -761,6 +774,7 @@ CREATE FUNCTION private.complete_opportunity_search(p_run_id uuid, p_summary jso
     AS $_$
 declare run public.opportunity_search_runs; v_summary jsonb; state text; unresolved integer;
 begin
+  perform private.guard_search_run_not_aborted(p_run_id);
   if current_user<>'postgres' then raise exception 'Administrative SQL access is required.' using errcode='42501'; end if;
   select * into run from public.opportunity_search_runs where id=p_run_id for update;
   if not found then raise exception 'Search run not found.' using errcode='P0002'; end if;
@@ -1053,7 +1067,7 @@ CREATE FUNCTION private.opportunity_search_adaptive_completion_error(p_code text
     SET search_path TO ''
     AS $$
   select jsonb_build_object('adaptive_contract_version',1,'compatible',false,'error',jsonb_build_object('code',case when p_code in(
-    'authorization_revoked','scope_unavailable','incompatible_release','invalid_payload','scope_oversized','manifest_mismatch','completion_payload_mismatch') then p_code else 'invalid_payload' end,'retryable',false))
+    'authorization_revoked','scope_unavailable','incompatible_release','invalid_payload','scope_oversized','manifest_mismatch','completion_payload_mismatch','run_aborted') then p_code else 'invalid_payload' end,'retryable',false))
 $$;
 
 -- private.opportunity_search_adaptive_completion_immutable()
@@ -1072,6 +1086,7 @@ CREATE FUNCTION private.opportunity_search_adaptive_current_verification(p_run_i
 declare item record;receipt record;audit record;proof jsonb;discovery_proof jsonb;status text;verified boolean;changed boolean;rolled boolean;
   items jsonb:='[]';saved_count integer:=0;verified_count integer:=0;missing_count integer:=0;changed_count integer:=0;rolled_count integer:=0;unresolved_count integer:=0;
 begin
+  perform private.guard_search_run_not_aborted(p_run_id);
   if current_user<>'postgres' then raise exception 'Management verification access is required' using errcode='42501';end if;
   -- Serialize canonical writers and approved rollback, then hold each live row
   -- against direct concurrent updates until the final persisted summary read.
@@ -1132,7 +1147,8 @@ CREATE FUNCTION private.opportunity_search_adaptive_error(p_code text) RETURNS j
     SET search_path TO ''
     AS $$
   select jsonb_build_object('adaptive_contract_version',1,'compatible',false,'error',jsonb_build_object('code',case when p_code in(
-    'runner_disabled','authorization_revoked','scope_unavailable','incompatible_release','invalid_bundle','scope_oversized','setup_conversion_required','run_in_progress','lease_expired') then p_code else 'invalid_bundle' end,'retryable',false))
+    'runner_disabled','authorization_revoked','scope_unavailable','incompatible_release','invalid_bundle','scope_oversized','setup_conversion_required','run_in_progress','lease_expired',
+    'run_aborted','abort_verification_required','restart_unavailable') then p_code else 'invalid_bundle' end,'retryable',false))
 $$;
 
 -- private.opportunity_search_adaptive_execution_contract()
@@ -2186,6 +2202,7 @@ CREATE FUNCTION private.pin_opportunity_feedback_snapshot(p_user_id uuid, p_sear
     AS $$
 declare run public.opportunity_search_runs; packet jsonb;
 begin
+  perform private.guard_search_run_not_aborted(p_run_id);
   select * into run from public.opportunity_search_runs where id=p_run_id and user_id=p_user_id and search_id=p_search_id for update;
   if not found then raise exception 'Search run unavailable' using errcode='42501'; end if;
   if run.feedback_snapshot_revision is null then
@@ -2215,6 +2232,7 @@ CREATE FUNCTION private.pin_opportunity_search_plan(p_user_id uuid, p_search_id 
     AS $$
 declare run public.opportunity_search_runs;
 begin
+  perform private.guard_search_run_not_aborted(p_run_id);
   select * into run from public.opportunity_search_runs where id=p_run_id and user_id=p_user_id and search_id=p_search_id for update;
   if not found then raise exception 'Search run unavailable' using errcode='42501'; end if;
   if run.query_plan_id is not null then return private.read_opportunity_search_plan(p_user_id,p_search_id,run.query_plan_id); end if;
@@ -2234,6 +2252,7 @@ CREATE FUNCTION private.prepare_opportunity_search_execution(p_run_id uuid) RETU
     AS $$
 declare run public.opportunity_search_runs;plan public.opportunity_search_query_plans;expectations jsonb;
 begin
+  perform private.guard_search_run_not_aborted(p_run_id);
   select * into run from public.opportunity_search_runs where id=p_run_id for update;
   if not found then raise exception 'Search run unavailable' using errcode='42501'; end if;
   expectations:=run.execution_expectations;
@@ -2850,6 +2869,7 @@ declare scope jsonb;run public.opportunity_search_runs;context private.opportuni
   ids text[];allowed text[];privacy boolean;protected_revoked boolean:=false;reason text;
 begin
   scope:=private.require_adaptive_search_scope(p_run_id,false);
+  perform private.guard_search_run_not_aborted(p_run_id);
   select * into run from public.opportunity_search_runs where id=p_run_id;
   select * into context from private.opportunity_search_adaptive_contexts where run_id=p_run_id;
   select * into settings from public.opportunity_search_adaptive_settings where user_id=run.user_id and search_id=run.search_id;
@@ -3007,6 +3027,7 @@ declare a record; current_row jsonb; current_state jsonb; current_ids jsonb; sim
   blockers jsonb:='[]'; count_items integer:=0; k text; assignments text;
 begin
  if current_user<>'postgres' then raise exception 'Administrative SQL access is required.' using errcode='42501'; end if;
+ if p_apply then perform private.guard_search_run_not_aborted(p_run_id);end if;
  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('opportunity-search-catalogue-v1',0));
  if exists(select 1 from public.opportunity_search_runs where id=p_run_id and status='running') then
    raise exception 'Finish/stop the run before rollback.' using errcode='23514'; end if;
@@ -3607,6 +3628,7 @@ begin
   owner_id:=(scope->>'user_id')::uuid;search_id_value:=(scope->>'search_id')::uuid;
   select * into run from public.opportunity_search_runs where id=p_run_id and user_id=owner_id and search_id=search_id_value for update;
   if not found then return private.opportunity_search_adaptive_completion_error('scope_unavailable');end if;
+  if run.owner_cancel_operation_id is not null then return private.opportunity_search_adaptive_completion_error('run_aborted');end if;
   select * into prior from private.opportunity_search_adaptive_completions where run_id=p_run_id;
   if found and(prior.completion_id<>completion_uuid or prior.payload_hash<>fingerprint) then
     return private.opportunity_search_adaptive_completion_error('completion_payload_mismatch');
@@ -3724,6 +3746,7 @@ CREATE FUNCTION private.verify_opportunity_search_discovery(p_run_id uuid, p_ite
     AS $$
 declare saved public.opportunity_search_discoveries;receipt record;audit record;
 begin
+  perform private.guard_search_run_not_aborted(p_run_id);
   select * into saved from public.opportunity_search_discoveries where run_id=p_run_id and item_id=p_item_id for update;
   if not found then raise exception 'Discovery attribution unavailable' using errcode='42501';end if;
   select r.verified_at,nullif(r.payload->'personal_fit','null'::jsonb) original_assessment into receipt from public.opportunity_search_receipts r
@@ -3747,6 +3770,7 @@ CREATE FUNCTION private.verify_opportunity_search_result(p_run_id uuid, p_item_i
     AS $$
 declare r public.opportunity_search_receipts; current_row jsonb; ids uuid[];
 begin
+  perform private.guard_search_run_not_aborted(p_run_id);
  if current_user<>'postgres' then raise exception 'Administrative SQL access is required.' using errcode='42501'; end if;
  select * into r from public.opportunity_search_receipts where run_id=p_run_id and item_id=p_item_id for update;
  if not found then raise exception 'No saved receipt.' using errcode='P0002'; end if;
@@ -4026,11 +4050,19 @@ CREATE FUNCTION public.job_workspace_adaptive_run_pins() RETURNS trigger
     SET search_path TO ''
     AS $$
 begin
+  if tg_op='UPDATE' and old.owner_cancel_operation_id is not null and new is distinct from old then
+    raise exception 'Owner-cancelled runs are immutable' using errcode='55000';end if;
+  if new.owner_cancel_operation_id is not null and(tg_op='INSERT' or old.owner_cancel_operation_id is null) then
+    if current_user<>'postgres' or not exists(select 1 from private.opportunity_search_lifecycle_operations o where o.operation_id=new.owner_cancel_operation_id
+      and o.target_run_id=new.id and o.user_id=new.user_id and o.search_id=new.search_id and o.outcome='prepared') then
+      raise exception 'Pinned owner lifecycle operation required' using errcode='42501';end if;
+    if new.status<>'failed' or new.adaptive_lease_expires_at is not null then raise exception 'Cancellation must terminalize and fence the run' using errcode='23514';end if;
+  end if;
   if tg_op='INSERT' then
     if current_user<>'postgres' then new.adaptive_contract_version:=null;new.preference_snapshot_revision:=null;new.adaptive_authorization_revision:=null;new.adaptive_project_ref:=null;new.adaptive_lease_expires_at:=null;end if;
   elsif current_user<>'postgres' or old.adaptive_contract_version is not null then
     new.adaptive_contract_version:=old.adaptive_contract_version;new.preference_snapshot_revision:=old.preference_snapshot_revision;
-    new.adaptive_authorization_revision:=old.adaptive_authorization_revision;new.adaptive_project_ref:=old.adaptive_project_ref;new.adaptive_lease_expires_at:=old.adaptive_lease_expires_at;
+    new.adaptive_authorization_revision:=old.adaptive_authorization_revision;new.adaptive_project_ref:=old.adaptive_project_ref;if new.owner_cancel_operation_id is null then new.adaptive_lease_expires_at:=old.adaptive_lease_expires_at;end if;
   end if;
   return new;
 end;
@@ -4936,3 +4968,200 @@ begin
   return jsonb_build_object('search_id',saved.search_id,'project_ref',saved.project_ref,'enabled',saved.enabled,'authorization_revision',saved.authorization_revision,'authorized_at',saved.authorized_at);
 end;
 $$;
+
+-- Versioned owner lifecycle. These bounded operations never read a research bundle or alter task configuration.
+CREATE FUNCTION private.adaptive_search_lifecycle_error(p_code text) RETURNS jsonb
+LANGUAGE sql IMMUTABLE SET search_path TO '' AS $function$
+  SELECT jsonb_build_object('lifecycle_contract_version',1,'compatible',false,'error',jsonb_build_object('code',p_code,'retryable',false));
+$function$;
+
+CREATE FUNCTION private.guard_search_run_not_aborted(p_run_id uuid) RETURNS void
+LANGUAGE plpgsql SET search_path TO '' AS $function$
+DECLARE cancelled uuid;
+BEGIN
+  IF current_user<>'postgres' THEN RAISE EXCEPTION 'Management run access required' USING ERRCODE='42501'; END IF;
+  SELECT owner_cancel_operation_id INTO cancelled FROM public.opportunity_search_runs WHERE id=p_run_id FOR UPDATE;
+  IF cancelled IS NOT NULL THEN RAISE EXCEPTION 'Run was cancelled by its owner' USING ERRCODE='55000'; END IF;
+END;
+$function$;
+
+CREATE FUNCTION private.adaptive_search_lifecycle_target_version(p_run_id uuid) RETURNS text
+LANGUAGE sql STABLE SET search_path TO '' AS $function$
+  SELECT encode(sha256(convert_to(jsonb_build_array(r.id,r.user_id,r.search_id,extract(epoch FROM r.created_at),r.recovery_count,r.template_revision,r.protocol_version,r.adaptive_project_ref,
+    r.adaptive_authorization_revision,extract(epoch FROM r.adaptive_lease_expires_at),c.authorization_epoch,c.authorization_revision,
+    extract(epoch FROM c.lease_expires_at))::text,'UTF8')),'hex')
+  FROM public.opportunity_search_runs r LEFT JOIN private.opportunity_search_adaptive_contexts c ON c.run_id=r.id WHERE r.id=p_run_id;
+$function$;
+
+CREATE FUNCTION private.adaptive_search_lifecycle_receipt(p_operation_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SET search_path TO '' AS $function$
+DECLARE op private.opportunity_search_lifecycle_operations; target public.opportunity_search_runs; restarted public.opportunity_search_runs;
+  lease_released boolean:=false; restart_status text; abort_status text; writes jsonb;
+BEGIN
+  SELECT * INTO op FROM private.opportunity_search_lifecycle_operations WHERE operation_id=p_operation_id;
+  IF NOT FOUND THEN RETURN private.adaptive_search_lifecycle_error('operation_unavailable'); END IF;
+  SELECT * INTO target FROM public.opportunity_search_runs WHERE id=op.target_run_id;
+  SELECT * INTO restarted FROM public.opportunity_search_runs WHERE id=op.restart_run_id AND user_id=op.user_id AND search_id=op.search_id;
+  lease_released:=target.owner_cancel_operation_id=op.operation_id AND target.status='failed' AND target.adaptive_lease_expires_at IS NULL
+    AND NOT EXISTS(SELECT 1 FROM private.opportunity_search_adaptive_contexts WHERE run_id=op.target_run_id AND lease_expires_at>clock_timestamp());
+  abort_status:=CASE op.outcome WHEN 'aborted' THEN 'aborted' WHEN 'no_active_run' THEN 'not_required'
+    WHEN 'prepared' THEN 'not_applied' ELSE 'conflict' END;
+  restart_status:=CASE WHEN op.mode='abort' THEN 'not_requested' WHEN op.outcome<>'aborted' THEN 'blocked'
+    WHEN restarted.status='complete' AND EXISTS(SELECT 1 FROM private.opportunity_search_adaptive_completions WHERE run_id=op.restart_run_id) THEN 'complete'
+    WHEN restarted.status='failed' THEN 'failed' WHEN restarted.id IS NOT NULL THEN 'startup_accepted'
+    WHEN NOT EXISTS(SELECT 1 FROM public.opportunity_search_schedule_bindings WHERE user_id=op.user_id AND search_id=op.search_id AND task_id=op.task_id AND runner_capability='adaptive-batch-v1')
+      OR NOT EXISTS(SELECT 1 FROM public.opportunity_search_runner_authorizations WHERE user_id=op.user_id AND search_id=op.search_id AND enabled
+        AND project_ref=op.project_ref AND authorization_epoch=op.authorization_epoch AND authorization_revision=op.authorization_revision)
+      OR NOT EXISTS(SELECT 1 FROM public.opportunity_search_adaptive_release WHERE singleton AND enabled AND project_ref=op.project_ref AND adaptive_contract_version=1 AND capability_version='adaptive-batch-v1') THEN 'blocked'
+    WHEN EXISTS(SELECT 1 FROM public.opportunity_search_runs r LEFT JOIN private.opportunity_search_adaptive_contexts c ON c.run_id=r.id
+      WHERE r.user_id=op.user_id AND r.search_id=op.search_id AND r.status='running' AND (c.run_id IS NULL OR c.lease_expires_at>clock_timestamp())) THEN 'blocked'
+    ELSE 'reserved_not_dispatched' END;
+  SELECT jsonb_build_object('accepted_batches',(SELECT count(*) FROM private.opportunity_search_adaptive_batches WHERE run_id=op.target_run_id),
+    'saved_items',count(*),'verified_items',count(*) FILTER(WHERE verified_at IS NOT NULL)) INTO writes FROM public.opportunity_search_receipts WHERE run_id=op.target_run_id;
+  RETURN jsonb_build_object('lifecycle_contract_version',1,'compatible',true,'operation_id',op.operation_id,'mode',op.mode,
+    'scope',jsonb_build_object('user_id',op.user_id,'search_id',op.search_id,'project_ref',op.project_ref,'task_id',op.task_id),'outcome',op.outcome,
+    'target',CASE WHEN op.target_run_id IS NULL THEN NULL ELSE jsonb_build_object('run_id',op.target_run_id,'version',op.target_version,'status',target.status,'lease_expires_at',target.adaptive_lease_expires_at) END,
+    'writes',writes,'abort',jsonb_build_object('status',abort_status,'verified',op.verified_at IS NOT NULL AND coalesce(lease_released,false),
+      'reason',CASE WHEN op.outcome='aborted' THEN 'owner_cancelled' ELSE NULL END,'lease_released',coalesce(lease_released,false)),
+    'restart',jsonb_build_object('run_id',op.restart_run_id,'status',restart_status,'dispatch_receipt',NULL),
+    'worker_termination','unknown','delivery_status','unknown');
+END;
+$function$;
+
+CREATE FUNCTION public.prepare_adaptive_search_lifecycle(p_search_id uuid,p_project_ref text,p_mode text,p_operation_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $function$
+DECLARE actor uuid:=auth.uid(); release public.opportunity_search_adaptive_release; grant_row public.opportunity_search_runner_authorizations;
+  binding public.opportunity_search_schedule_bindings; op private.opportunity_search_lifecycle_operations; target public.opportunity_search_runs;
+  total integer; target_id uuid; outcome_value text; restart_id uuid;
+BEGIN
+  IF actor IS NULL OR coalesce((auth.jwt()->>'is_anonymous')::boolean,false) THEN RAISE EXCEPTION 'Authenticated owner required' USING ERRCODE='42501'; END IF;
+  IF p_operation_id IS NULL OR p_mode IS NULL OR p_mode NOT IN('abort','abort_and_restart') OR p_project_ref IS NULL OR p_project_ref!~'^[a-z0-9]{20}$'
+    THEN RETURN private.adaptive_search_lifecycle_error('invalid_operation'); END IF;
+  SELECT * INTO release FROM public.opportunity_search_adaptive_release WHERE singleton FOR SHARE;
+  PERFORM 1 FROM public.opportunity_search_templates WHERE id=p_search_id AND user_id=actor FOR SHARE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Owned search required' USING ERRCODE='42501'; END IF;
+  SELECT * INTO grant_row FROM public.opportunity_search_runner_authorizations WHERE user_id=actor AND search_id=p_search_id FOR SHARE;
+  IF NOT coalesce(grant_row.enabled,false) OR grant_row.project_ref IS DISTINCT FROM p_project_ref OR release.project_ref IS DISTINCT FROM p_project_ref
+    THEN RAISE EXCEPTION 'Exact owner authorization required' USING ERRCODE='42501'; END IF;
+  IF NOT release.enabled OR release.adaptive_contract_version<>1 OR release.capability_version<>'adaptive-batch-v1'
+    THEN RETURN private.adaptive_search_lifecycle_error('runner_disabled'); END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(actor::text||':'||p_search_id::text||':adaptive-lease',0));
+  SELECT * INTO binding FROM public.opportunity_search_schedule_bindings WHERE user_id=actor AND search_id=p_search_id FOR SHARE;
+  IF NOT FOUND OR binding.runner_capability IS DISTINCT FROM 'adaptive-batch-v1' THEN RETURN private.adaptive_search_lifecycle_error('binding_unavailable'); END IF;
+  SELECT * INTO op FROM private.opportunity_search_lifecycle_operations WHERE operation_id=p_operation_id FOR UPDATE;
+  IF FOUND THEN
+    IF (op.user_id,op.search_id,op.project_ref,op.mode,op.task_id) IS DISTINCT FROM(actor,p_search_id,p_project_ref,p_mode,binding.task_id)
+      THEN RETURN private.adaptive_search_lifecycle_error('idempotency_conflict'); END IF;
+    RETURN private.adaptive_search_lifecycle_receipt(p_operation_id);
+  END IF;
+  SELECT count(*),min(r.id::text)::uuid INTO total,target_id FROM public.opportunity_search_runs r
+    LEFT JOIN private.opportunity_search_adaptive_contexts c ON c.run_id=r.id
+    WHERE r.user_id=actor AND r.search_id=p_search_id AND r.status='running'
+      AND (c.run_id IS NULL OR c.lease_expires_at>clock_timestamp() AND c.project_ref=p_project_ref
+        AND c.authorization_epoch=grant_row.authorization_epoch AND c.authorization_revision=grant_row.authorization_revision
+        AND (c.bundle#>>'{release,release_revision}')::bigint=release.release_revision);
+  outcome_value:=CASE WHEN total=0 THEN 'no_active_run' WHEN total=1 THEN 'prepared' ELSE 'ambiguous_active_run' END;
+  IF total<>1 THEN target_id:=NULL; ELSE
+    SELECT * INTO target FROM public.opportunity_search_runs WHERE id=target_id FOR UPDATE;
+    IF p_mode='abort_and_restart' THEN restart_id:=gen_random_uuid(); END IF;
+  END IF;
+  INSERT INTO private.opportunity_search_lifecycle_operations(operation_id,user_id,search_id,project_ref,task_id,mode,target_run_id,target_version,
+    target_lease_expires_at,authorization_epoch,authorization_revision,restart_run_id,outcome)
+    VALUES(p_operation_id,actor,p_search_id,p_project_ref,binding.task_id,p_mode,target_id,private.adaptive_search_lifecycle_target_version(target_id),
+      target.adaptive_lease_expires_at,grant_row.authorization_epoch,grant_row.authorization_revision,restart_id,outcome_value);
+  RETURN private.adaptive_search_lifecycle_receipt(p_operation_id);
+END;
+$function$;
+
+CREATE FUNCTION private.apply_adaptive_search_lifecycle(p_operation_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SET search_path TO '' AS $function$
+DECLARE op private.opportunity_search_lifecycle_operations; target public.opportunity_search_runs; grant_row public.opportunity_search_runner_authorizations;
+BEGIN
+  IF current_user<>'postgres' THEN RAISE EXCEPTION 'Management lifecycle access required' USING ERRCODE='42501'; END IF;
+  SELECT * INTO op FROM private.opportunity_search_lifecycle_operations WHERE operation_id=p_operation_id;
+  IF NOT FOUND THEN RETURN private.adaptive_search_lifecycle_error('operation_unavailable'); END IF;
+  PERFORM 1 FROM public.opportunity_search_adaptive_release WHERE singleton AND project_ref=op.project_ref FOR SHARE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Configured lifecycle project changed' USING ERRCODE='42501'; END IF;
+  PERFORM 1 FROM public.opportunity_search_templates WHERE id=op.search_id AND user_id=op.user_id FOR SHARE;
+  SELECT * INTO grant_row FROM public.opportunity_search_runner_authorizations WHERE user_id=op.user_id AND search_id=op.search_id FOR SHARE;
+  IF NOT coalesce(grant_row.enabled,false) OR (grant_row.project_ref,grant_row.authorization_epoch,grant_row.authorization_revision)
+    IS DISTINCT FROM(op.project_ref,op.authorization_epoch,op.authorization_revision) THEN RAISE EXCEPTION 'Owner lifecycle authorization revoked' USING ERRCODE='42501'; END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(op.user_id::text||':'||op.search_id::text||':adaptive-lease',0));
+  SELECT * INTO op FROM private.opportunity_search_lifecycle_operations WHERE operation_id=p_operation_id FOR UPDATE;
+  IF op.outcome<>'prepared' THEN RETURN private.adaptive_search_lifecycle_receipt(p_operation_id); END IF;
+  PERFORM 1 FROM public.opportunity_search_schedule_bindings WHERE user_id=op.user_id AND search_id=op.search_id AND task_id=op.task_id AND runner_capability='adaptive-batch-v1' FOR SHARE;
+  IF NOT FOUND THEN
+    UPDATE private.opportunity_search_lifecycle_operations SET outcome='binding_changed' WHERE operation_id=p_operation_id;
+    RETURN private.adaptive_search_lifecycle_receipt(p_operation_id);
+  END IF;
+  SELECT * INTO target FROM public.opportunity_search_runs WHERE id=op.target_run_id AND user_id=op.user_id AND search_id=op.search_id FOR UPDATE;
+  IF NOT FOUND OR target.status<>'running' OR target.owner_cancel_operation_id IS NOT NULL
+    OR private.adaptive_search_lifecycle_target_version(target.id) IS DISTINCT FROM op.target_version THEN
+    UPDATE private.opportunity_search_lifecycle_operations SET outcome='target_changed' WHERE operation_id=p_operation_id;
+    RETURN private.adaptive_search_lifecycle_receipt(p_operation_id);
+  END IF;
+  UPDATE public.opportunity_search_runs SET status='failed',completed_at=clock_timestamp(),execution_report_status='partial',
+    owner_cancel_operation_id=op.operation_id,adaptive_lease_expires_at=NULL,
+    summary=jsonb_build_object('adaptive_status','owner_cancelled','coverage','partial','lifecycle_operation_id',op.operation_id,'status','failed') WHERE id=op.target_run_id;
+  UPDATE private.opportunity_search_adaptive_contexts SET lease_expires_at=least(lease_expires_at,clock_timestamp()) WHERE run_id=op.target_run_id;
+  UPDATE private.opportunity_search_lifecycle_operations SET outcome='aborted',aborted_at=clock_timestamp(),aborted_transaction_id=txid_current() WHERE operation_id=p_operation_id;
+  RETURN private.adaptive_search_lifecycle_receipt(p_operation_id);
+END;
+$function$;
+
+CREATE FUNCTION private.read_adaptive_search_lifecycle(p_operation_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SET search_path TO '' AS $function$
+DECLARE op private.opportunity_search_lifecycle_operations;
+BEGIN
+  IF current_user<>'postgres' THEN RAISE EXCEPTION 'Management lifecycle read required' USING ERRCODE='42501'; END IF;
+  SELECT * INTO op FROM private.opportunity_search_lifecycle_operations WHERE operation_id=p_operation_id;
+  IF NOT FOUND THEN RETURN private.adaptive_search_lifecycle_error('operation_unavailable'); END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(op.user_id::text||':'||op.search_id::text||':adaptive-lease',0));
+  SELECT * INTO op FROM private.opportunity_search_lifecycle_operations WHERE operation_id=p_operation_id FOR UPDATE;
+  IF op.outcome='aborted' AND op.aborted_transaction_id IS DISTINCT FROM txid_current() AND EXISTS(SELECT 1 FROM public.opportunity_search_runs WHERE id=op.target_run_id AND status='failed'
+    AND owner_cancel_operation_id=op.operation_id AND adaptive_lease_expires_at IS NULL)
+    AND NOT EXISTS(SELECT 1 FROM private.opportunity_search_adaptive_contexts WHERE run_id=op.target_run_id AND lease_expires_at>clock_timestamp()) THEN
+    UPDATE private.opportunity_search_lifecycle_operations SET verified_at=coalesce(verified_at,clock_timestamp()) WHERE operation_id=p_operation_id;
+  END IF;
+  RETURN private.adaptive_search_lifecycle_receipt(p_operation_id);
+END;
+$function$;
+
+CREATE FUNCTION public.apply_adaptive_search_lifecycle(p_operation_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $function$
+BEGIN
+  IF auth.uid() IS NULL OR coalesce((auth.jwt()->>'is_anonymous')::boolean,false)
+    OR NOT EXISTS(SELECT 1 FROM private.opportunity_search_lifecycle_operations WHERE operation_id=p_operation_id AND user_id=auth.uid())
+    THEN RAISE EXCEPTION 'Authenticated operation owner required' USING ERRCODE='42501'; END IF;
+  RETURN private.apply_adaptive_search_lifecycle(p_operation_id);
+END;
+$function$;
+
+CREATE FUNCTION public.read_adaptive_search_lifecycle(p_operation_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $function$
+BEGIN
+  IF auth.uid() IS NULL OR coalesce((auth.jwt()->>'is_anonymous')::boolean,false)
+    OR NOT EXISTS(SELECT 1 FROM private.opportunity_search_lifecycle_operations WHERE operation_id=p_operation_id AND user_id=auth.uid())
+    THEN RAISE EXCEPTION 'Authenticated operation owner required' USING ERRCODE='42501'; END IF;
+  RETURN private.read_adaptive_search_lifecycle(p_operation_id);
+END;
+$function$;
+
+CREATE FUNCTION private.guard_adaptive_search_lifecycle_start(p_search_id uuid,p_run_id uuid) RETURNS void
+LANGUAGE plpgsql SET search_path TO '' AS $function$
+DECLARE op private.opportunity_search_lifecycle_operations;
+BEGIN
+  SELECT * INTO op FROM private.opportunity_search_lifecycle_operations WHERE restart_run_id=p_run_id;
+  IF op.operation_id IS NOT NULL THEN
+    PERFORM 1 FROM public.opportunity_search_schedule_bindings WHERE user_id=op.user_id AND search_id=op.search_id
+      AND task_id=op.task_id AND runner_capability='adaptive-batch-v1' FOR SHARE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'The restart task binding changed' USING ERRCODE='55000'; END IF;
+  END IF;
+  IF op.operation_id IS NOT NULL AND (op.search_id<>p_search_id OR op.outcome<>'aborted' OR op.verified_at IS NULL
+    OR NOT EXISTS(SELECT 1 FROM public.opportunity_search_adaptive_release WHERE singleton AND enabled AND project_ref=op.project_ref)
+    OR NOT EXISTS(SELECT 1 FROM public.opportunity_search_runner_authorizations WHERE search_id=op.search_id AND user_id=op.user_id AND enabled
+      AND project_ref=op.project_ref AND authorization_epoch=op.authorization_epoch AND authorization_revision=op.authorization_revision)) THEN
+    RAISE EXCEPTION 'The reserved restart requires a separately verified abort' USING ERRCODE='55000';
+  END IF;
+END;
+$function$;

@@ -50,7 +50,8 @@ const faultCodes = new Set(['checkpoint_scope_invalid', 'checkpoint_preflight_re
   'invalid_section_utf8', 'invalid_section_json', 'invalid_section_shape', 'invalid_context', 'invalid_base64', 'invalid_page_length',
   'response_nesting', 'response_oversized',
   'invalid_server_error', 'connector_error', 'authorization_revoked', 'scope_unavailable', 'incompatible_release', 'runner_disabled',
-  'run_in_progress', 'lease_expired', 'permission_denied', 'approval_denied', 'safety_denied']);
+  'run_in_progress', 'lease_expired', 'run_aborted', 'abort_verification_required', 'restart_unavailable',
+  'permission_denied', 'approval_denied', 'safety_denied']);
 function fail(code: string): never { throw new AdaptiveStartupTransportError(code); }
 function binding(value: AdaptiveStartupCheckpointBinding): AdaptiveStartupCheckpointBinding {
   if (!record(value) || !record(value.scope) || typeof value.profile_id !== 'string' || !uuid.test(value.profile_id)

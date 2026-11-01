@@ -11,7 +11,8 @@ const categories: readonly AdaptiveStartupFailureCategory[] = ['local_processing
   'approval_denial', 'permission_denial', 'safety_denial', 'connector_unclassified'];
 const diagnosticCodes = new Set([
   'runner_disabled', 'authorization_revoked', 'scope_unavailable', 'incompatible_release', 'invalid_bundle', 'scope_oversized',
-  'setup_conversion_required', 'run_in_progress', 'lease_expired', 'approval_denied', 'approval_rejected', 'approval_required',
+  'setup_conversion_required', 'run_in_progress', 'lease_expired', 'run_aborted', 'abort_verification_required', 'restart_unavailable',
+  'approval_denied', 'approval_rejected', 'approval_required',
   'permission_denied', 'insufficient_privilege', 'access_denied', 'unauthorized', 'forbidden', '401', '403', '42501',
   'safety_denied', 'safety_blocked', 'safety_block', 'blocked_by_safety', 'safety_policy_denied',
   'invalid_observation', 'response_not_received', 'local_display_truncated', 'connector_error', 'invalid_server_error',
@@ -26,6 +27,8 @@ const diagnosticCodes = new Set([
   'checkpoint_request_changed', 'checkpoint_response_unreconciled',
   'checkpoint_retry_exhausted', 'checkpoint_response_mismatch', 'checkpoint_local_readback_required',
   'checkpoint_lease_expired', 'checkpoint_readback_failed', 'checkpoint_not_verified', 'checkpoint_stale',
+  'invalid_lifecycle_contract', 'lifecycle_operation_stopped', 'lifecycle_checkpoint_invalid', 'lifecycle_checkpoint_unavailable',
+  'lifecycle_capture_invalid', 'lifecycle_capture_oversized', 'lifecycle_capture_unavailable',
 ]);
 const count = (value: number | undefined, maximum = ADAPTIVE_STARTUP_MAX_PAGES) =>
   Number.isSafeInteger(value) && value! >= 0 && value! <= maximum ? value! : null;

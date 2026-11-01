@@ -14,7 +14,7 @@ const reuse = process.argv.includes('--reuse-server');
 const htmlOnly = process.argv.includes('--html-only'), driversOnly = process.argv.includes('--drivers-only');
 assert(!(htmlOnly && driversOnly), 'Choose --html-only or --drivers-only, not both.');
 assert(process.argv.slice(2).every(argument => ['--reuse-server', '--html-only', '--drivers-only'].includes(argument)), 'Unknown browser-runner option.');
-const drivers = ['adaptiveSearch', 'letterInterests', 'manualOpportunityPast', 'notifications', 'opportunityFeedback'];
+const drivers = ['adaptiveSearch', 'adaptiveLifecycle', 'letterInterests', 'manualOpportunityPast', 'notifications', 'opportunityFeedback'];
 let server, serverLog = '', browser;
 const results = [];
 await mkdir(output, { recursive: true });

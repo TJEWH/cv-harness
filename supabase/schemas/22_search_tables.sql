@@ -551,6 +551,7 @@ CREATE TABLE public.opportunity_search_runs (
     adaptive_authorization_revision bigint,
     adaptive_project_ref text,
     adaptive_lease_expires_at timestamp with time zone,
+    owner_cancel_operation_id uuid,
     CONSTRAINT opportunity_search_runs_execution_backlog_check CHECK (((jsonb_typeof(execution_backlog) = 'array'::text) AND (jsonb_array_length(execution_backlog) <= 64))),
     CONSTRAINT opportunity_search_runs_execution_backlog_omitted_check CHECK ((execution_backlog_omitted >= 0)),
     CONSTRAINT opportunity_search_runs_execution_report_status_check CHECK ((execution_report_status = ANY (ARRAY['unreported'::text, 'complete'::text, 'partial'::text, 'failed'::text]))),
@@ -581,3 +582,28 @@ CREATE TABLE public.opportunity_search_setup_claims (
     setup_id uuid NOT NULL,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL
 );
+
+-- An explicit authenticated owner command pins one target forever. No research payload is stored here.
+CREATE TABLE private.opportunity_search_lifecycle_operations (
+    operation_id uuid PRIMARY KEY,
+    user_id uuid NOT NULL,
+    search_id uuid NOT NULL,
+    project_ref text NOT NULL CHECK (project_ref ~ '^[a-z0-9]{20}$'),
+    task_id text NOT NULL CHECK (char_length(task_id) BETWEEN 1 AND 500),
+    mode text NOT NULL CHECK (mode IN ('abort','abort_and_restart')),
+    target_run_id uuid,
+    target_version text,
+    target_lease_expires_at timestamptz,
+    authorization_epoch uuid NOT NULL,
+    authorization_revision bigint NOT NULL,
+    restart_run_id uuid UNIQUE,
+    outcome text NOT NULL CHECK (outcome IN ('prepared','no_active_run','ambiguous_active_run','target_changed','binding_changed','aborted')),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    aborted_at timestamptz,
+    aborted_transaction_id bigint,
+    verified_at timestamptz,
+    CHECK ((target_run_id IS NULL) = (target_version IS NULL)),
+    CHECK (target_version IS NULL OR target_version ~ '^[0-9a-f]{64}$'),
+    CHECK (restart_run_id IS NULL OR (mode='abort_and_restart' AND target_run_id IS NOT NULL))
+);
+CREATE INDEX opportunity_search_lifecycle_operations_search_idx ON private.opportunity_search_lifecycle_operations(user_id,search_id);

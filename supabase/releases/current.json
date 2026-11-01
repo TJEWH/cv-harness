@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "78ff6184b98acdf4ce3fae668133d81a0935739acd861754db7948b676b6cd0b"
+      "sha256": "4123148988a2e7bc0158fae1e830b9ac3ab11ea699dc12cfafd9828d1dbedf80"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "2c4729739e667aadc593adf64678e9739990e7f46e3f5059d883c01bd899b90f"
+        "sha256": "f96ecfe6cba28ef656a912dca6cb5af6318430dcaaa94844d0c36a1fecfa405a"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -39,7 +39,7 @@
       },
       {
         "path": "supabase/schemas/22_search_tables.sql",
-        "sha256": "6c2c06a9c7d100f329893adfc507dcd3aade727a032d348026aff810edb3570b"
+        "sha256": "3cf01a4da98078602c44b017645afdfe62d1e886593620b323d595b0785c3f54"
       },
       {
         "path": "supabase/schemas/30_document_api.sql",
@@ -51,7 +51,7 @@
       },
       {
         "path": "supabase/schemas/40_relations.sql",
-        "sha256": "727ff1ab6ffbe3b4241fe478457f2846baa961a17a3fa30db8637f23948d86c4"
+        "sha256": "2dc7c37ddf6058be75afe111792c87edc6815740f1c00cda125fa135f250c379"
       },
       {
         "path": "supabase/schemas/50_triggers.sql",
@@ -59,7 +59,7 @@
       },
       {
         "path": "supabase/schemas/60_security.sql",
-        "sha256": "942a062847bf510159b34fb91139b1691402136edea22b7d75d7f8b284ba2f1a"
+        "sha256": "3a412d80322322519a214bb8654e81fe6dc7bc9d28077d8191a5636c021a4a9d"
       },
       {
         "path": "supabase/schemas/70_reference_data.sql",
@@ -69,7 +69,21 @@
     "contract": {
       "path": "supabase/contracts/opportunity.schema.json",
       "sha256": "88fa565dc597f349e010e6a7d90188eb9947aea453779f94154fd441a8904095"
-    }
+    },
+    "lifecycle_upgrade": {
+      "path": "supabase/releases/adaptive-search-lifecycle-v1.sql",
+      "sha256": "1c3ca24926c2dbf98039c3cba490488db6bf4836390ac4a2e29f2856c8f62d00"
+    },
+    "lifecycle_contracts": [
+      {
+        "path": "supabase/contracts/adaptive-search-lifecycle.request.schema.json",
+        "sha256": "04b8b0f6ee9821dd56646e3d419b46f2fe149e05912061943b343910a10ab2a6"
+      },
+      {
+        "path": "supabase/contracts/adaptive-search-lifecycle.response.schema.json",
+        "sha256": "603d0ce98c292a95c063b94d34314c62338c149655aff5189391669a18e3505c"
+      }
+    ]
   },
   "versions": {
     "canonical_schema": 6,
@@ -82,7 +96,8 @@
     "query_policy": "adaptive-query-v3",
     "summary_inclusion": "included-unless-excluded-v1",
     "setup_contract": 1,
-    "rollback_contract": 1
+    "rollback_contract": 1,
+    "lifecycle_contract": 1
   },
   "defaults": {
     "adaptive_release_enabled": false,
@@ -115,15 +130,15 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTransport.ts",
-      "sha256": "51cffb2b691c461d30b0f7eacccaac536cede683d11e19da0ed04850a9b0b248"
+      "sha256": "a767088ae3e84846afcd5315bc45f3cf1a6afb5402aed1fcf42a5bd7d760f8fc"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchCheckpoint.ts",
-      "sha256": "88deef8198a526632bc1c655bb0dea17e60da4523bfeea00fbb36194dc220208"
+      "sha256": "118bd29e1943d1f0a8db95eb80d5306614c6a3babaaf7cc9d2191ad3798f3f8c"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchDiagnostics.ts",
-      "sha256": "ea5a01037dadb5c9ed71bf710e82c0b49134bac9ef1ef32af2b9e6be498b1793"
+      "sha256": "9ba0fc2dfba94538d8981a70ddd09daf8ddc54d4086e712c31a97b5d274cf6e3"
     },
     {
       "path": "scripts/lib/adaptiveSearchCheckpointFile.ts",
@@ -131,11 +146,19 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
-      "sha256": "96939ad41fee8cc07798b134462cb5750b295d5b1cdf4f6fd12bb7f81c8bcefa"
+      "sha256": "47ed168828c8c3f4d1a8e1759874c84b5d5b39b3290d21374bd6d14cd6928088"
+    },
+    {
+      "path": "src/features/meta-search/domain/adaptiveSearchLifecycle.ts",
+      "sha256": "b7d250c1456f72b75fd3a9902df90b1bbeeb5f83f348787a050c75533ab93142"
+    },
+    {
+      "path": "src/features/meta-search/components/AdaptiveSearchLifecycleControls.vue",
+      "sha256": "94ec5bb09c2734bbcf89bcd1ab08af71eaa6a5c1829dc9afcb48fc6bd20f8ebe"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchStartup.ts",
-      "sha256": "67995cf87ae3a7f872a86c2520306245c005e5120d97b781c4d49c20c6d8d545"
+      "sha256": "a042da423a8c484abeff8f9757c866bc9da3fba8d07fab8f82e20221b919e4e7"
     },
     {
       "path": "src/features/meta-search/domain/searchSchedule.ts",
@@ -207,7 +230,7 @@
     },
     {
       "path": "src/features/meta-search/components/AdaptiveSearchDashboard.vue",
-      "sha256": "4e9203b15d90d4427122c4d1b1c536a68597856a086f1c42277b6d1f5006f95b"
+      "sha256": "f722916bfa6f41a7f67651325978f219eb17f64fc9fe4bc91343a239f5d3c904"
     },
     {
       "path": "src/features/meta-search/components/AdaptiveSearchPolicyHint.vue",

@@ -10,7 +10,7 @@ const opportunity = '10000000-0000-4000-8000-000000000002';
 const actor = `set local role authenticated;set local request.jwt.claim.sub='${owner}';`;
 
 test('atomic current installation has owner RLS and no retired feedback approval or conversion tables', () => {
-  assert.equal(sql(`select count(*) from pg_tables where schemaname in('public','private');`), '44');
+  assert.equal(sql(`select count(*) from pg_tables where schemaname in('public','private');`), '45');
   assert.equal(sql(`select bool_and(c.relrowsecurity) from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname in('public','private') and c.relkind='r';`), 't');
   assert.equal(sql("select to_regclass('public.opportunity_feedback_summary_approvals') is null and to_regclass('private.opportunity_payload_archive') is null;"), 't');

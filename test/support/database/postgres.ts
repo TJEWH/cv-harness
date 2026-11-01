@@ -48,7 +48,7 @@ const projectRoot = new URL('../../../', import.meta.url);
 export function file(path: string): string { return readFileSync(new URL(path, projectRoot), 'utf8'); }
 export function reset() {
   if (sql('select current_database();') !== database) throw new Error('Unexpected fixture database.');
-  sql(`drop schema if exists private cascade; drop schema if exists auth cascade; drop schema public cascade;
+  sql(`drop schema if exists private cascade; drop schema if exists auth cascade; drop schema if exists public cascade;
     create schema auth;
     do $$ begin
       if not exists(select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;

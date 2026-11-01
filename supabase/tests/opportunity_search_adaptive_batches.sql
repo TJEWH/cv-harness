@@ -29,9 +29,14 @@ create function pg_temp.af08_batch_opportunity(p_key text,p_title text default '
       'precision','instant','supports',jsonb_build_array('title','official_url','personal_fit','requirements','required_documents'))))
 $$;
 create function pg_temp.af08_seed_canonical(p_fixture jsonb,p_payload jsonb) returns uuid language plpgsql as $$
-declare seed_run uuid:=gen_random_uuid();seed_item uuid:=gen_random_uuid();saved jsonb;
+declare seed_search uuid:=gen_random_uuid();seed_run uuid:=gen_random_uuid();seed_item uuid:=gen_random_uuid();saved jsonb;
 begin
-  perform private.begin_opportunity_search((p_fixture->>'search_id')::uuid,seed_run);
+  -- Canonical prehistory belongs to an independent synthetic search owned by
+  -- the same actor. Do not start another execution of the active test search.
+  insert into public.opportunity_search_templates(id,user_id,name,criteria,schedule)
+    select seed_search,user_id,'Synthetic canonical prehistory',criteria,schedule
+      from public.opportunity_search_templates where id=(p_fixture->>'search_id')::uuid;
+  perform private.begin_opportunity_search(seed_search,seed_run);
   perform private.save_opportunity_search_queries(seed_run,jsonb_build_array(jsonb_build_object('query',p_fixture#>>'{body,query_plan,queries,0,query}')));
   saved:=private.submit_opportunity_search_result(seed_run,seed_item,p_payload);
   perform private.verify_opportunity_search_result(seed_run,seed_item);
@@ -44,7 +49,7 @@ do $$
 declare f jsonb;other jsonb;body jsonb;bad jsonb;result jsonb;again jsonb;opportunity jsonb;prior_context jsonb;prior_contacts jsonb;original_plan jsonb;
   run_uuid uuid;batch_uuid uuid;item_a uuid;item_b uuid;target uuid;application_uuid uuid;plan_uuid uuid;shared_uuid uuid;new_batch uuid;proposal_uuid uuid;
   root record;before_rows integer;before_plans integer;before_checks integer;before_prefs bigint;n integer;changed boolean;
-  prior_row jsonb;prior_state jsonb;seed_run uuid;historical_document jsonb;historical_id uuid;historical_query uuid;
+  prior_row jsonb;prior_state jsonb;historical_document jsonb;historical_id uuid;historical_query uuid;
 begin
   -- Validate the whole batch before saving even its first valid opportunity or
   -- publishing its first query plan/execution record.
@@ -218,13 +223,15 @@ begin
   update private.opportunity_search_adaptive_contexts set bundle=jsonb_set(bundle,'{query_plan}',bad),plan_pointer_captured=false,expected_shared_plan_id=null where run_id=run_uuid;
   update private.opportunity_search_adaptive_contexts set bundle_hash=encode(sha256(convert_to(bundle::text,'UTF8')),'hex') where run_id=run_uuid;
   update public.opportunity_search_templates set revision=revision+1,criteria='{"topicsAndMethods":"New explicit owner base"}' where id=(f->>'search_id')::uuid;
-  seed_run:=gen_random_uuid();perform private.begin_opportunity_search((f->>'search_id')::uuid,seed_run);
-  result:=private.save_opportunity_search_queries(seed_run,'[{"query":"new explicit owner base query"}]');plan_uuid:=(result->>'id')::uuid;
+  -- This is future owner-planning metadata, not permission for a second active
+  -- research run. Seed its immutable revision without bypassing run fencing.
+  insert into public.opportunity_search_query_revisions(search_id,user_id,template_revision,protocol_version,queries)
+    values((f->>'search_id')::uuid,(f->>'user_id')::uuid,2,'opportunity-search-v1-canonical-6',
+      '[{"query":"new explicit owner base query"}]') returning id into plan_uuid;
   bad:=jsonb_build_object('schema_version',2,'queries',jsonb_build_array(jsonb_build_object('query_id',gen_random_uuid(),'query','new explicit owner base query','role','core','manual',false,
     'text_hash',encode(sha256(convert_to('new explicit owner base query','UTF8')),'hex'))));
   result:=private.publish_opportunity_search_plan((f->>'user_id')::uuid,(f->>'search_id')::uuid,plan_uuid,bad,2,
     (select feedback_snapshot_revision from public.opportunity_search_runs where id=run_uuid),0,'opportunity-search-v1-canonical-6');shared_uuid:=(result->>'id')::uuid;
-  perform private.complete_opportunity_search(seed_run,'{"status":"failed","notes":"Synthetic future-base seed only","unresolvedCount":0}');
   body:=jsonb_set(f->'body','{query_plan}',historical_document);
   body:=jsonb_set(body,'{execution,checks,0,query_id}',to_jsonb(historical_query));
   result:=private.submit_adaptive_search_batch(run_uuid,(f->>'batch_id')::uuid,body);

@@ -110,8 +110,7 @@ function serverRejection(value: unknown): void {
   if (record(value) && value.compatible === false) {
     if (!record(value.error) || typeof value.error.code !== 'string' || !/^[a-z_]{1,80}$/u.test(value.error.code)
       || value.error.retryable !== false) failure('invalid_server_error');
-    const category = denialCategory(value.error.code) ?? 'sql_application_rejection';
-    throw new AdaptiveStartupTransportError(value.error.code, 'server', category);
+    throw createAdaptiveSearchContractError(value.error.code);
   }
 }
 const denialCodes: Record<string, AdaptiveStartupFailureCategory> = {
@@ -125,6 +124,10 @@ const denialCodes: Record<string, AdaptiveStartupFailureCategory> = {
 function denialCategory(code: string): AdaptiveStartupFailureCategory | undefined {
   const key = code.toLowerCase();
   return Object.hasOwn(denialCodes, key) ? denialCodes[key] : undefined;
+}
+/** Known contract denials share one classification across research and lifecycle operations. */
+export function createAdaptiveSearchContractError(code: string): AdaptiveStartupTransportError {
+  return new AdaptiveStartupTransportError(code, 'server', denialCategory(code) ?? 'sql_application_rejection', 'server_contract');
 }
 const sqlstateCode = (value: unknown): value is string => typeof value === 'string' && /^[0-9A-Z]{5}$/u.test(value);
 function hasFailureMetadata(value: unknown): boolean {
@@ -222,40 +225,44 @@ function page(value: unknown): AdaptiveStartupPage {
     || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(h.row.data_base64)) failure('invalid_page');
   return { transport_version: 1, compatible: true, scope: h.scope, bundle_hash: h.bundle_hash, ...d, index: h.row.index, data_base64: h.row.data_base64 };
 }
-function parseString(value: string): unknown {
-  if (value.length > 2 * 1024 * 1024) failure('response_oversized');
+function parseString(value: string, maximumCharacters: number): unknown {
+  if (value.length > maximumCharacters) failure('response_oversized');
   try { return JSON.parse(value); } catch { /* Connector warnings surround the actual SQL JSON. */ }
   const matches = [...value.matchAll(/^[\t ]*<untrusted-data-([A-Za-z0-9-]+)>[\t ]*\r?\n([\s\S]*?)\r?\n[\t ]*<\/untrusted-data-\1>[\t ]*$/gmu)];
   const boundaries = [...value.matchAll(/^[\t ]*<\/?untrusted-data-[A-Za-z0-9-]+>[\t ]*\r?$/gmu)];
   if (matches.length !== 1 || boundaries.length !== 2) failure('invalid_response');
   try { return JSON.parse(matches[0]![2]!); } catch { return failure('invalid_response'); }
 }
-function decodedRow(value: unknown, column: 'startup_manifest' | 'startup_page'): AdaptiveStartupManifest | AdaptiveStartupPage {
+interface SqlResponseDecoder<T> { column: string; normalize: (row: unknown) => T; maximumCharacters: number }
+function decodedRow<T>(value: unknown, decoder: SqlResponseDecoder<T>): T {
   let decoded = value, depth = 0;
   while (typeof decoded === 'string') {
     if (++depth > 16) failure('response_nesting');
-    decoded = parseString(decoded);
+    decoded = parseString(decoded, decoder.maximumCharacters);
   }
-  return column === 'startup_manifest' ? manifest(decoded) : page(decoded);
+  return decoder.normalize(decoded);
 }
-function mirroredRows(representations: unknown[][], column: 'startup_manifest' | 'startup_page'): unknown[] {
+function mirroredRows<T>(representations: unknown[][], decoder: SqlResponseDecoder<T>): unknown[] {
   if (representations.length === 0) failure('invalid_response');
   if (representations.length === 1) return representations[0]!;
   if (representations.some(rows => rows.length !== 1)) failure('ambiguous_rows');
   // MCP normally mirrors the same row in content and structuredContent. Compare
   // validated, normalized rows so key order and JSON-string wrapping do not
   // select one representation over a conflicting result.
-  const rows = representations.map(values => decodedRow(values[0], column));
-  const canonical = JSON.stringify(rows[0]);
-  if (rows.some(row => JSON.stringify(row) !== canonical)) failure('ambiguous_rows');
+  const rows = representations.map(values => decodedRow(values[0], decoder));
+  const canonical = (row: unknown) => JSON.stringify(row, (_key, entry: unknown) => record(entry)
+    ? Object.fromEntries(Object.keys(entry).sort().map(key => [key, entry[key]])) : entry);
+  const first = canonical(rows[0]);
+  if (rows.some(row => canonical(row) !== first)) failure('ambiguous_rows');
   return [rows[0]];
 }
-function sqlRows(value: unknown, column: 'startup_manifest' | 'startup_page', depth = 0): unknown[] {
+function sqlRows<T>(value: unknown, decoder: SqlResponseDecoder<T>, depth = 0): unknown[] {
+  const column = decoder.column;
   if (depth > 16) failure('response_nesting');
-  if (typeof value === 'string') return sqlRows(parseString(value), column, depth + 1);
+  if (typeof value === 'string') return sqlRows(parseString(value, decoder.maximumCharacters), decoder, depth + 1);
   if (Array.isArray(value)) {
     if (value.length > 1) failure('ambiguous_rows');
-    return value.flatMap(row => sqlRows(row, column, depth + 1));
+    return value.flatMap(row => sqlRows(row, decoder, depth + 1));
   }
   if (!record(value)) failure('invalid_response');
   if (value.isError === true || hasFailureMetadata(value) || hasFailureMetadata(value.structuredContent)) connectorFailure(value);
@@ -273,20 +280,31 @@ function sqlRows(value: unknown, column: 'startup_manifest' | 'startup_page', de
       return ['[', '{', '"'].some(prefix => text.trimStart().startsWith(prefix))
         || /^[\t ]*<\/?untrusted-data-[A-Za-z0-9-]+>[\t ]*\r?$/mu.test(text);
     });
-    if (candidates.length) representations.push(candidates.flatMap(block => sqlRows((block as { text: string }).text, column, depth + 1)));
+    if (candidates.length) representations.push(candidates.flatMap(block => sqlRows((block as { text: string }).text, decoder, depth + 1)));
   }
-  if (value.structuredContent !== undefined && value.structuredContent !== null) representations.push(sqlRows(value.structuredContent, column, depth + 1));
-  if (Object.hasOwn(value, 'result')) representations.push(sqlRows(value.result, column, depth + 1));
-  if (Object.hasOwn(value, 'data')) representations.push(sqlRows(value.data, column, depth + 1));
-  return mirroredRows(representations, column);
+  if (value.structuredContent !== undefined && value.structuredContent !== null) representations.push(sqlRows(value.structuredContent, decoder, depth + 1));
+  if (Object.hasOwn(value, 'result')) representations.push(sqlRows(value.result, decoder, depth + 1));
+  if (Object.hasOwn(value, 'data')) representations.push(sqlRows(value.data, decoder, depth + 1));
+  return mirroredRows(representations, decoder);
+}
+/** Shared bounded SQL/MCP decoder. normalize must validate and project a closed DTO; no returned text is executed. */
+export function decodeAdaptiveSearchSqlResponse<T>(value: unknown, column: string, normalize: (row: unknown) => T,
+  maximumCharacters = 2 * 1024 * 1024): T {
+  if (!/^[a-z_]{1,64}$/u.test(column) || !Number.isSafeInteger(maximumCharacters) || maximumCharacters < 1
+    || maximumCharacters > 2 * 1024 * 1024) failure('invalid_row');
+  let serialized: string | undefined;
+  try { serialized = JSON.stringify(value); } catch { return failure('invalid_response'); }
+  if (serialized === undefined) failure('invalid_response');
+  if (serialized.length > maximumCharacters) failure('response_oversized');
+  const decoder = { column, normalize, maximumCharacters }, rows = sqlRows(value, decoder);
+  if (rows.length !== 1) failure('ambiguous_rows');
+  return decodedRow(rows[0], decoder);
 }
 export function decodeAdaptiveStartupTransportResponse(value: unknown, column: 'startup_manifest'): AdaptiveStartupManifest;
 export function decodeAdaptiveStartupTransportResponse(value: unknown, column: 'startup_page'): AdaptiveStartupPage;
 export function decodeAdaptiveStartupTransportResponse(value: unknown, column: 'startup_manifest' | 'startup_page'): AdaptiveStartupManifest | AdaptiveStartupPage {
   if (!['startup_manifest', 'startup_page'].includes(column)) failure('invalid_row');
-  const rows = sqlRows(value, column);
-  if (rows.length !== 1) failure('ambiguous_rows');
-  return decodedRow(rows[0], column);
+  return decodeAdaptiveSearchSqlResponse(value, column, row => column === 'startup_manifest' ? manifest(row) : page(row));
 }
 const sameScope = (a: AdaptiveStartupServerScope, b: AdaptiveStartupServerScope) => a.project_ref === b.project_ref && a.search_id === b.search_id
   && a.run_id === b.run_id && a.user_id === b.user_id && a.authorization_epoch === b.authorization_epoch && a.authorization_revision === b.authorization_revision;

@@ -684,3 +684,10 @@ ALTER TABLE ONLY public.application_refinement_state
 -- public.application_refinement_state refinement_current_request_fk
 ALTER TABLE ONLY public.application_refinement_state
     ADD CONSTRAINT refinement_current_request_fk FOREIGN KEY (user_id, application_id, current_request_id) REFERENCES public.application_refinement_requests(user_id, application_id, id) DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE private.opportunity_search_lifecycle_operations
+  ADD CONSTRAINT opportunity_search_lifecycle_owner_search_fkey FOREIGN KEY (user_id,search_id)
+  REFERENCES public.opportunity_search_templates(user_id,id) ON DELETE CASCADE;
+ALTER TABLE private.opportunity_search_lifecycle_operations
+  ADD CONSTRAINT opportunity_search_lifecycle_target_scope_fkey FOREIGN KEY (user_id,search_id,target_run_id)
+  REFERENCES public.opportunity_search_runs(user_id,search_id,id) ON DELETE CASCADE;

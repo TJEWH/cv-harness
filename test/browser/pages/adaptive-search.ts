@@ -7,6 +7,7 @@ import { searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../../
 import type { SearchCloudTemplate } from '../../../src/features/meta-search/searchTypes';
 import type { AdaptiveSearchRunnerState } from '../../../src/features/meta-search/domain/adaptiveSearchTask';
 import type { AdaptiveSearchDashboardData } from '../../../src/features/meta-search/composables/adaptiveSearchDashboard';
+import type { AdaptiveLifecycleOperation } from '../../../src/features/meta-search/domain/adaptiveSearchLifecycle';
 import { createSearchBreadthPolicy } from '../../../src/features/meta-search/domain/adaptiveSearchPlanner';
 import dashboardFixture from '../fixtures/adaptive-dashboard.fixture.json';
 import '../../../src/assets/cv.css';
@@ -52,6 +53,8 @@ const calls: { name: string; args: Record<string, unknown> }[] = [];
 const copied = ref(''), saveCount = ref(0), requestCount = ref(0);
 const lang = ref('en');
 const actionReceipts = new Map<string, unknown>();
+const lifecycleOperations = new Map<string, AdaptiveLifecycleOperation>();
+let lifecycleDenial = false, lifecycleNoActive = false;
 let loseSourceResponse = false;
 let loseSettingsResponse = false;
 let holdRequest = false, releaseRequest: (() => void) | null = null, failSave = false;
@@ -61,6 +64,32 @@ const client = { from: (name: string) => {
   return { select: () => ({ eq: () => ({ order: async () => ({ data: [structuredClone(row)], error: null }) }) }) };
 }, rpc: async (name: string, args: Record<string, unknown>) => {
   calls.push({ name, args: structuredClone(args) });
+  if (name === 'prepare_adaptive_search_lifecycle') {
+    const operationId = String(args.p_operation_id), mode = args.p_mode as AdaptiveLifecycleOperation['mode'];
+    if (!lifecycleOperations.has(operationId)) lifecycleOperations.set(operationId, {
+      lifecycle_contract_version: 1, compatible: true, operation_id: operationId, mode,
+      scope: { user_id: owner, search_id: search, project_ref: project, task_id: 'synthetic-existing-task' },
+      outcome: lifecycleNoActive ? 'no_active_run' : 'prepared',
+      target: lifecycleNoActive ? null : { run_id: '91000000-0000-4000-8000-000000000004', version: 'a'.repeat(64), status: 'running', lease_expires_at: '2035-01-01T12:00:00Z' },
+      writes: { accepted_batches: 2, saved_items: 1, verified_items: 0 },
+      abort: { status: lifecycleNoActive ? 'not_required' : 'not_applied', verified: false, reason: null, lease_released: false },
+      restart: { run_id: mode === 'abort_and_restart' && !lifecycleNoActive ? '91000000-0000-4000-8000-000000000005' : null,
+        status: mode === 'abort_and_restart' && !lifecycleNoActive ? 'reserved_not_dispatched' : 'not_requested', dispatch_receipt: null },
+      worker_termination: 'unknown', delivery_status: 'unknown',
+    });
+    return { data: structuredClone(lifecycleOperations.get(operationId)), error: null };
+  }
+  if (name === 'apply_adaptive_search_lifecycle' || name === 'read_adaptive_search_lifecycle') {
+    if (lifecycleDenial) return { data: null, error: { code: 'PERMISSION_DENIED' } };
+    const operation = lifecycleOperations.get(String(args.p_operation_id));
+    if (!operation) return { data: { lifecycle_contract_version: 1, compatible: false, error: { code: 'operation_unavailable', retryable: false } }, error: null };
+    if (name === 'apply_adaptive_search_lifecycle' && operation.target) {
+      operation.outcome = 'aborted'; operation.target.status = 'failed';
+      operation.abort = { status: 'aborted', verified: false, reason: 'owner_cancelled', lease_released: true };
+    }
+    if (name === 'read_adaptive_search_lifecycle' && operation.outcome === 'aborted') operation.abort.verified = true;
+    return { data: structuredClone(operation), error: null };
+  }
   if (name === 'read_opportunity_search_dashboard') return { data: { ...structuredClone(dashboard), readiness: structuredClone(state) }, error: null };
   if (name === 'patch_opportunity_search_settings') {
     const id = String(args.p_action_id);
@@ -126,6 +155,7 @@ Object.assign(window, { adaptiveFixture: {
   failSave: () => { failSave = true; }, failReadiness: (value: boolean) => { failReadiness = value; },
   loseSourceResponse: () => { loseSourceResponse = true; },
   loseSettingsResponse: () => { loseSettingsResponse = true; },
+  denyLifecycle: () => { lifecycleDenial = true; }, noActiveLifecycle: () => { lifecycleNoActive = true; },
   snapshot: () => structuredClone({ row, state, dashboard, calls, copied: copied.value }),
 } });
 createApp({ setup() { return () => h('main', { style: 'height:100vh;display:flex;flex-direction:column' }, [

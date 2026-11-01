@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Adaptive search lifecycle v1 request",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "p_search_id",
+        "p_project_ref",
+        "p_mode",
+        "p_operation_id"
+      ],
+      "properties": {
+        "p_search_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "p_project_ref": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{20}$"
+        },
+        "p_mode": {
+          "enum": [
+            "abort",
+            "abort_and_restart"
+          ]
+        },
+        "p_operation_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "p_operation_id"
+      ],
+      "properties": {
+        "p_operation_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  ]
+}

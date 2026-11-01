@@ -10,6 +10,7 @@ import { commitPendingTextareas } from '../../../shared/editing/textareaCommit';
 import InfoHint from '../../../shared/ui/InfoHint.vue';
 import AutosaveTextarea from '../../../shared/ui/AutosaveTextarea.vue';
 import AdaptiveSearchPolicyHint from './AdaptiveSearchPolicyHint.vue';
+import AdaptiveSearchLifecycleControls from './AdaptiveSearchLifecycleControls.vue';
 
 const props = defineProps<{ ownerId: string; searchId: string; projectRef: string; client: SupabaseClient | null; lang?: string; embedded?: boolean }>();
 const emit = defineEmits<{ 'runner-changed': [] }>();
@@ -289,6 +290,7 @@ onBeforeUnmount(() => controller.value?.dispose());
       </fieldset>
     </template>
     <slot name="task-setup" />
+    <AdaptiveSearchLifecycleControls :client="client" :owner-id="ownerId" :search-id="searchId" :project-ref="projectRef" :lang="lang" />
     <template v-if="data">
       <details class="adaptive-section">
         <summary><span class="adaptive-section-title">{{ text('Automation authorization','Autorisierung der automatischen Suche') }}</span><FontAwesomeIcon :icon="faChevronDown" class="adaptive-chevron" aria-hidden="true" /></summary>

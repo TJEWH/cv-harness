@@ -5,7 +5,7 @@ import { ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT } from '
 import {
   ADAPTIVE_STARTUP_PAGE_BYTES, ADAPTIVE_STARTUP_SECTIONS, AdaptiveStartupCollector, AdaptiveStartupTransportError,
   buildAdaptiveStartupManifestSql, buildAdaptiveStartupPageSql, decodeAdaptiveStartupTransportResponse,
-  canRetryAdaptiveStartupRequest, createAdaptiveStartupFailure, isAdaptiveStartupDenial,
+  canRetryAdaptiveStartupRequest, createAdaptiveStartupFailure, isAdaptiveStartupDenial, decodeAdaptiveSearchSqlResponse,
   type AdaptiveStartupManifest, type AdaptiveStartupPage, type AdaptiveStartupSection,
 } from '../../../src/features/meta-search/domain/adaptiveSearchTransport';
 
@@ -204,6 +204,21 @@ test('MCP mirrors normalize identical rows and reject conflicting content, struc
   assert.deepEqual(decodeAdaptiveStartupTransportResponse({ result: pageRows, data: pageRows }, 'startup_page'), first);
   assert.throws(() => decodeAdaptiveStartupTransportResponse({ result: pageRows,
     data: [{ startup_page: { ...first, bundle_hash: 'c'.repeat(64) } }] }, 'startup_page'), rejectsCode('ambiguous_rows'));
+});
+
+test('shared SQL decoding bounds lifecycle metadata and compares closed mirrored rows without key-order assumptions', () => {
+  const row = { version: 1, operation: { id: id(900), status: 'prepared' } };
+  const reversed = { operation: { status: 'prepared', id: id(900) }, version: 1 };
+  const normalize = (value: unknown) => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).sort().join('|') !== 'operation|version') {
+      throw new AdaptiveStartupTransportError('invalid_test_contract');
+    }
+    return structuredClone(value);
+  };
+  assert.deepEqual(decodeAdaptiveSearchSqlResponse({ result: [{ lifecycle: row }], data: [{ lifecycle: reversed }] }, 'lifecycle', normalize, 1024), row);
+  assert.throws(() => decodeAdaptiveSearchSqlResponse({ result: [{ lifecycle: row }], data: [{ lifecycle: { ...row, secret: true } }] }, 'lifecycle', normalize, 1024), rejectsCode('invalid_test_contract'));
+  assert.throws(() => decodeAdaptiveSearchSqlResponse([{ lifecycle: row }], 'lifecycle', normalize, 16), rejectsCode('response_oversized'));
+  assert.throws(() => decodeAdaptiveSearchSqlResponse([{ lifecycle: row }], 'unchecked; SELECT', normalize), rejectsCode('invalid_row'));
 });
 
 test('structured connector denials retain exact safe codes and never become retryable transport loss', () => {

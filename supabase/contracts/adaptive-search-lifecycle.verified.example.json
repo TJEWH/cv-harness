@@ -1,0 +1,37 @@
+{
+  "lifecycle_contract_version": 1,
+  "compatible": true,
+  "operation_id": "92000000-0000-4000-8000-000000000006",
+  "mode": "abort_and_restart",
+  "scope": {
+    "user_id": "92000000-0000-4000-8000-000000000001",
+    "search_id": "92000000-0000-4000-8000-000000000002",
+    "project_ref": "abcdefghijklmnopqrst",
+    "task_id": "synthetic-lifecycle-task"
+  },
+  "outcome": "aborted",
+  "target": {
+    "run_id": "92000000-0000-4000-8000-000000000004",
+    "version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "failed",
+    "lease_expires_at": null
+  },
+  "writes": {
+    "accepted_batches": 2,
+    "saved_items": 1,
+    "verified_items": 0
+  },
+  "abort": {
+    "status": "aborted",
+    "verified": true,
+    "reason": "owner_cancelled",
+    "lease_released": true
+  },
+  "restart": {
+    "run_id": "92000000-0000-4000-8000-000000000005",
+    "status": "reserved_not_dispatched",
+    "dispatch_receipt": null
+  },
+  "worker_termination": "unknown",
+  "delivery_status": "unknown"
+}

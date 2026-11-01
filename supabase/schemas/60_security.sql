@@ -1471,3 +1471,22 @@ GRANT ALL PRIVILEGES ON TABLE public.opportunities TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public.opportunity_reviews TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public.applications TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public.cv_variants TO service_role;
+
+-- Lifecycle operations are private owner-authorized commands, never an executable research packet.
+ALTER TABLE private.opportunity_search_lifecycle_operations ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE private.opportunity_search_lifecycle_operations FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.adaptive_search_lifecycle_error(text) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.guard_search_run_not_aborted(uuid) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.guard_adaptive_search_lifecycle_start(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.adaptive_search_lifecycle_target_version(uuid) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.adaptive_search_lifecycle_receipt(uuid) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.apply_adaptive_search_lifecycle(uuid) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.read_adaptive_search_lifecycle(uuid) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION public.prepare_adaptive_search_lifecycle(uuid,text,text,uuid) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION public.apply_adaptive_search_lifecycle(uuid) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION public.read_adaptive_search_lifecycle(uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.prepare_adaptive_search_lifecycle(uuid,text,text,uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.apply_adaptive_search_lifecycle(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.read_adaptive_search_lifecycle(uuid) TO authenticated;
+COMMENT ON TABLE private.opportunity_search_lifecycle_operations IS 'Authenticated owner-prepared, immutable target binding for controlled abort and at most one reserved restart. No research payload or provider dispatch receipt.';
+COMMENT ON COLUMN public.opportunity_search_runs.owner_cancel_operation_id IS 'Permanent mutation fence and audit link for an owner-cancelled execution. Cancellation is represented as failed with partial coverage, never successful completion.';

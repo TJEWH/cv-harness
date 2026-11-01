@@ -82,6 +82,7 @@ try {
     assert.equal(await breadth.getAttribute('aria-valuetext'), '60% · Adventurous');
     assert.equal(await page.evaluate(() => window.adaptiveFixture.snapshot().calls.length), beforeBreadth.calls.length, 'Dragging only changes a local draft');
     const allocationInfo = page.getByRole('button', { name: 'Information: Search breadth', exact: true });
+    await allocationInfo.scrollIntoViewIfNeeded();
     await allocationInfo.focus(); await allocationInfo.press('Enter');
     const allocationTooltip = page.getByRole('tooltip');
     await allocationTooltip.waitFor({ state: 'visible' });

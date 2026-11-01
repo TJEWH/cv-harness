@@ -11,7 +11,8 @@ declare owner_a uuid:=gen_random_uuid();owner_b uuid:=gen_random_uuid();search_a
     'opportunity_search_runner_authorizations','opportunity_search_adaptive_proposals','opportunity_search_runner_config',
     'opportunity_search_setup_claims','opportunity_feedback_prediction_proofs','opportunity_search_dashboard_actions','opportunity_search_rollback_requests'];
   private_tables text[]:=array['opportunity_search_adaptive_contexts','opportunity_search_adaptive_batches','opportunity_search_adaptive_items',
-    'opportunity_search_adaptive_completions','opportunity_search_setup_operations','opportunity_search_setup_acknowledgements'];
+    'opportunity_search_adaptive_completions','opportunity_search_setup_operations','opportunity_search_setup_acknowledgements',
+    'opportunity_search_lifecycle_operations'];
   cadence jsonb:='{"frequency":"daily","intervalHours":24,"weekdays":[],"time":"08:00","timezone":"UTC","runImmediately":false}';
 begin
   assert current_database()='adaptive_feedback_test','Only the isolated adaptive fixture is allowed';
@@ -35,8 +36,21 @@ begin
   assert not has_function_privilege('authenticated','private.begin_adaptive_opportunity_search(uuid,uuid)','EXECUTE')
     and not has_function_privilege('service_role','private.submit_adaptive_search_batch(uuid,uuid,jsonb)','EXECUTE')
     and not has_function_privilege('authenticated','private.ack_adaptive_search_rollback(uuid,uuid,jsonb)','EXECUTE'),'Management helper runtime grant';
+  -- Native lifecycle is an explicit owner capability. Its three narrow RPCs
+  -- cross into private operation storage; research helpers remain invoker-only.
   assert not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.prosecdef and n.nspname in('public','private')
-    and(p.proname like '%adaptive_search%' or p.proname like '%opportunity_feedback%' or p.proname like '%opportunity_search_dashboard%')),'Adaptive definer helper found';
+    and(p.proname like '%adaptive_search%' or p.proname like '%opportunity_feedback%' or p.proname like '%opportunity_search_dashboard%')
+    and p.oid not in('public.prepare_adaptive_search_lifecycle(uuid,text,text,uuid)'::regprocedure,
+      'public.apply_adaptive_search_lifecycle(uuid)'::regprocedure,'public.read_adaptive_search_lifecycle(uuid)'::regprocedure)),
+    'Unreviewed adaptive definer helper found';
+  foreach relation in array array['public.prepare_adaptive_search_lifecycle(uuid,text,text,uuid)',
+    'public.apply_adaptive_search_lifecycle(uuid)','public.read_adaptive_search_lifecycle(uuid)'] loop
+    assert(select p.prosecdef and p.proconfig @> array['search_path=""'] from pg_proc p where p.oid=relation::regprocedure),
+      'Lifecycle owner bridge must pin an empty search path: '||relation;
+    assert has_function_privilege('authenticated',relation,'EXECUTE')
+      and not has_function_privilege('anon',relation,'EXECUTE') and not has_function_privilege('service_role',relation,'EXECUTE'),
+      'Lifecycle RPC must be authenticated-only: '||relation;
+  end loop;
 
   insert into auth.users(id) values(owner_a),(owner_b);
   insert into public.opportunity_search_templates(id,user_id,name,criteria,schedule) values

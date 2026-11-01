@@ -81,7 +81,8 @@ export interface AdaptiveSearchStartupBundle {
   execution_contract: typeof ADAPTIVE_STARTUP_EXECUTION_CONTRACT | typeof ADAPTIVE_BATCH_EXECUTION_CONTRACT;
 }
 export type AdaptiveStartupErrorCode = 'runner_disabled' | 'authorization_revoked' | 'scope_unavailable' | 'incompatible_release'
-  | 'invalid_bundle' | 'scope_oversized' | 'setup_conversion_required' | 'run_in_progress' | 'lease_expired';
+  | 'invalid_bundle' | 'scope_oversized' | 'setup_conversion_required' | 'run_in_progress' | 'lease_expired'
+  | 'run_aborted' | 'abort_verification_required' | 'restart_unavailable';
 export type AdaptiveSearchStartupResult = AdaptiveSearchStartupBundle | {
   adaptive_contract_version: 1; compatible: false; error: { code: AdaptiveStartupErrorCode; retryable: false };
 };
@@ -367,7 +368,7 @@ export async function projectAdaptiveSearchStartup(value: unknown, context: {
     const authorized = binding(context.binding), expectedRun = identity(context.expected_run_id), initialPrivacy = privacy(context.privacy), raw = object(value);
     if (raw.compatible === false) {
       const code = object(raw.error).code;
-      if (['runner_disabled', 'authorization_revoked', 'scope_unavailable', 'incompatible_release', 'invalid_bundle', 'scope_oversized', 'setup_conversion_required', 'run_in_progress', 'lease_expired'].includes(code as string)) fail(code as AdaptiveStartupErrorCode);
+      if (['runner_disabled', 'authorization_revoked', 'scope_unavailable', 'incompatible_release', 'invalid_bundle', 'scope_oversized', 'setup_conversion_required', 'run_in_progress', 'lease_expired', 'run_aborted', 'abort_verification_required', 'restart_unavailable'].includes(code as string)) fail(code as AdaptiveStartupErrorCode);
       fail('invalid_bundle');
     }
     const scope = object(raw.scope), release = object(raw.release);
