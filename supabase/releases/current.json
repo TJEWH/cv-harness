@@ -114,6 +114,10 @@
       "sha256": "86c38223950cdbf0bdb73f02e9a1a88e071f1bf55740d43f9355012729fa8128"
     },
     {
+      "path": "src/features/meta-search/domain/adaptiveSearchTransport.ts",
+      "sha256": "58a025ae05d4053e393c693721f4cba1ace3e5a790e785dca28831a09a786f9a"
+    },
+    {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
       "sha256": "909835d4c797b25c4b5c1fdbf11e376efbcf22c6786bc931b82a7ff71f0a8cff"
     },

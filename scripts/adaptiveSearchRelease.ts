@@ -33,7 +33,7 @@ export function buildAdaptiveSearchReleaseManifest() {
     execution_contract: { maximum_queries:30, maximum_sources:64, maximum_checks:128, maximum_backlog:64,
       maximum_report_bytes:524288, maximum_bundle_bytes:262144, maximum_feedback_bytes:65536, minimum_deadline_hours:72,
       maximum_batch_opportunities:10, maximum_batch_bytes:524288, maximum_opportunity_bytes:262144, maximum_run_batches:32 },
-    runner_artifacts: ['src/features/meta-search/domain/adaptiveSearchProtocol.ts','src/features/meta-search/domain/adaptiveSearchTask.ts',
+    runner_artifacts: ['src/features/meta-search/domain/adaptiveSearchProtocol.ts','src/features/meta-search/domain/adaptiveSearchTransport.ts','src/features/meta-search/domain/adaptiveSearchTask.ts',
       'src/features/meta-search/domain/adaptiveSearchStartup.ts','src/features/meta-search/domain/searchSchedule.ts','src/features/meta-search/domain/searchPrompts.ts','src/features/meta-search/searchTypes.ts','src/features/meta-search/data/searchTemplateRepository.ts','src/features/opportunities/domain/opportunityResultSchema.ts','supabase/contracts/opportunity.schema.json',
       'src/features/opportunities/domain/opportunityFeedback.ts','src/features/opportunities/domain/opportunityFeedbackPrivacy.ts','src/features/opportunities/domain/opportunityTopics.ts','src/features/meta-search/domain/adaptiveFeedbackSnapshots.ts',
       'src/features/meta-search/domain/adaptiveSearchPlans.ts','src/features/meta-search/domain/adaptiveSearchPlanner.ts','src/features/meta-search/domain/adaptiveSearchSources.ts',

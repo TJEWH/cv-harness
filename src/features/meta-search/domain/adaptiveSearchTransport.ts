@@ -1,0 +1,257 @@
+/** Bounded transport projections; all reads use the existing authorized startup helper. */
+export const ADAPTIVE_STARTUP_PAGE_BYTES = 4096;
+export const ADAPTIVE_STARTUP_MAX_PAGES = 70;
+export const ADAPTIVE_STARTUP_MAX_BYTES = 262144;
+export const ADAPTIVE_STARTUP_SECTIONS = ['context', 'planning', 'protocol_text', 'result_schema', 'feedback'] as const;
+export type AdaptiveStartupSection = typeof ADAPTIVE_STARTUP_SECTIONS[number];
+export interface AdaptiveStartupTransportScope { project_ref: string; search_id: string; run_id: string }
+export interface AdaptiveStartupServerScope extends AdaptiveStartupTransportScope {
+  user_id: string; authorization_epoch: string; authorization_revision: number;
+}
+export interface AdaptiveStartupSectionDescriptor {
+  section: AdaptiveStartupSection; byte_length: number; sha256: string; page_count: number;
+}
+export interface AdaptiveStartupManifest {
+  transport_version: 1; compatible: true; scope: AdaptiveStartupServerScope; bundle_hash: string;
+  sections: AdaptiveStartupSectionDescriptor[];
+}
+export interface AdaptiveStartupPage extends AdaptiveStartupSectionDescriptor {
+  transport_version: 1; compatible: true; scope: AdaptiveStartupServerScope; bundle_hash: string;
+  index: number; data_base64: string;
+}
+
+/** Fixed templates are also embedded in the reviewed recurring instruction. */
+export const ADAPTIVE_STARTUP_MANIFEST_SQL_TEMPLATE = `WITH startup AS MATERIALIZED (SELECT private.begin_adaptive_opportunity_search('{{search_id}}'::uuid,'<run-uuid>'::uuid) AS b)
+SELECT CASE WHEN b->'compatible'='true'::jsonb THEN jsonb_build_object('transport_version',1,'compatible',true,'scope',b->'scope','bundle_hash',encode(sha256(convert_to(b::text,'UTF8')),'hex'),'sections',(SELECT jsonb_agg(jsonb_build_object('section',section,'byte_length',octet_length(v::text),'sha256',encode(sha256(convert_to(v::text,'UTF8')),'hex'),'page_count',(octet_length(v::text)+4095)/4096) ORDER BY n) FROM (VALUES ('context',b-ARRAY['planning','protocol_text','result_schema','feedback'],1),('planning',b->'planning',2),('protocol_text',b->'protocol_text',3),('result_schema',b->'result_schema',4),('feedback',b->'feedback',5)) AS s(section,v,n))) ELSE jsonb_build_object('transport_version',1,'compatible',false,'error',b->'error') END AS startup_manifest FROM startup;`;
+
+export const ADAPTIVE_STARTUP_PAGE_SQL_TEMPLATE = `WITH startup AS MATERIALIZED (SELECT private.begin_adaptive_opportunity_search('{{search_id}}'::uuid,'<run-uuid>'::uuid) AS b), section_data AS (SELECT b,CASE WHEN '<section>'='context' THEN b-ARRAY['planning','protocol_text','result_schema','feedback'] ELSE b->'<section>' END AS v FROM startup)
+SELECT CASE WHEN b->'compatible'='true'::jsonb THEN jsonb_build_object('transport_version',1,'compatible',true,'scope',b->'scope','bundle_hash',encode(sha256(convert_to(b::text,'UTF8')),'hex'),'section','<section>','index',<page-index>,'byte_length',octet_length(v::text),'sha256',encode(sha256(convert_to(v::text,'UTF8')),'hex'),'page_count',(octet_length(v::text)+4095)/4096,'data_base64',replace(encode(substring(convert_to(v::text,'UTF8') FROM (<page-index>*4096+1) FOR 4096),'base64'),E'\\n','')) ELSE jsonb_build_object('transport_version',1,'compatible',false,'error',b->'error') END AS startup_page FROM section_data;`;
+
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+const hash = /^[0-9a-f]{64}$/u;
+const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+const ownKeys = (value: Record<string, unknown>, allowed: readonly string[]) => Object.keys(value).every(key => allowed.includes(key));
+function requestScope(value: AdaptiveStartupTransportScope): AdaptiveStartupTransportScope {
+  if (!record(value) || !ownKeys(value, ['project_ref', 'search_id', 'run_id']) || typeof value.project_ref !== 'string'
+    || !/^[a-z0-9]{20}$/u.test(value.project_ref) || typeof value.search_id !== 'string' || !uuid.test(value.search_id)
+    || typeof value.run_id !== 'string' || !uuid.test(value.run_id)) throw new TypeError('Use the exact authorized startup scope.');
+  return { project_ref: value.project_ref, search_id: value.search_id.toLowerCase(), run_id: value.run_id.toLowerCase() };
+}
+export function buildAdaptiveStartupManifestSql(scope: AdaptiveStartupTransportScope): string {
+  const exact = requestScope(scope);
+  return ADAPTIVE_STARTUP_MANIFEST_SQL_TEMPLATE.replaceAll('{{search_id}}', exact.search_id).replaceAll('<run-uuid>', exact.run_id);
+}
+export function buildAdaptiveStartupPageSql(scope: AdaptiveStartupTransportScope, section: AdaptiveStartupSection, index: number): string {
+  const exact = requestScope(scope);
+  if (!(ADAPTIVE_STARTUP_SECTIONS as readonly string[]).includes(section) || !Number.isSafeInteger(index) || index < 0 || index >= ADAPTIVE_STARTUP_MAX_PAGES) {
+    throw new TypeError('Use a fixed startup section and bounded page index.');
+  }
+  return ADAPTIVE_STARTUP_PAGE_SQL_TEMPLATE.replaceAll('{{search_id}}', exact.search_id).replaceAll('<run-uuid>', exact.run_id)
+    .replaceAll('<section>', section).replaceAll('<page-index>', String(index));
+}
+
+export class AdaptiveStartupTransportError extends Error {
+  constructor(readonly code: string, readonly source: 'transport' | 'server' = 'transport') {
+    super(source === 'server' ? `Startup rejected (${code}).` : `Startup transport failed (${code}).`);
+    this.name = 'AdaptiveStartupTransportError';
+  }
+}
+function failure(code: string): never { throw new AdaptiveStartupTransportError(code); }
+const keys = (value: Record<string, unknown>, allowed: readonly string[]) => ownKeys(value, allowed) && allowed.every(key => key in value);
+const integer = (value: unknown, minimum: number, maximum: number): value is number => typeof value === 'number'
+  && Number.isSafeInteger(value) && value >= minimum && value <= maximum;
+function serverRejection(value: unknown): void {
+  if (record(value) && value.compatible === false) {
+    if (!record(value.error) || typeof value.error.code !== 'string' || !/^[a-z_]{1,80}$/u.test(value.error.code)
+      || value.error.retryable !== false) failure('invalid_server_error');
+    throw new AdaptiveStartupTransportError(value.error.code, 'server');
+  }
+}
+function serverScope(value: unknown): AdaptiveStartupServerScope {
+  if (!record(value) || !keys(value, ['project_ref', 'search_id', 'run_id', 'user_id', 'authorization_epoch', 'authorization_revision'])
+    || typeof value.project_ref !== 'string' || !/^[a-z0-9]{20}$/u.test(value.project_ref)
+    || !integer(value.authorization_revision, 0, Number.MAX_SAFE_INTEGER)
+    || ['search_id', 'run_id', 'user_id', 'authorization_epoch'].some(key => typeof value[key] !== 'string' || !uuid.test(value[key] as string))) failure('invalid_scope');
+  return { project_ref: value.project_ref, search_id: (value.search_id as string).toLowerCase(), run_id: (value.run_id as string).toLowerCase(),
+    user_id: (value.user_id as string).toLowerCase(), authorization_epoch: (value.authorization_epoch as string).toLowerCase(), authorization_revision: value.authorization_revision };
+}
+function header(value: unknown): { row: Record<string, unknown>; scope: AdaptiveStartupServerScope; bundle_hash: string } {
+  serverRejection(value);
+  if (!record(value) || value.transport_version !== 1 || value.compatible !== true || typeof value.bundle_hash !== 'string' || !hash.test(value.bundle_hash)) failure('invalid_header');
+  return { row: value, scope: serverScope(value.scope), bundle_hash: value.bundle_hash };
+}
+function descriptor(value: unknown): AdaptiveStartupSectionDescriptor {
+  if (!record(value) || !keys(value, ['section', 'byte_length', 'sha256', 'page_count'])
+    || !(ADAPTIVE_STARTUP_SECTIONS as readonly unknown[]).includes(value.section)
+    || !integer(value.byte_length, 1, ADAPTIVE_STARTUP_MAX_BYTES) || typeof value.sha256 !== 'string' || !hash.test(value.sha256)
+    || !integer(value.page_count, 1, ADAPTIVE_STARTUP_MAX_PAGES)
+    || value.page_count !== Math.ceil(value.byte_length / ADAPTIVE_STARTUP_PAGE_BYTES)) failure('invalid_section');
+  return { section: value.section as AdaptiveStartupSection, byte_length: value.byte_length, sha256: value.sha256, page_count: value.page_count };
+}
+function manifest(value: unknown): AdaptiveStartupManifest {
+  const h = header(value);
+  if (!keys(h.row, ['transport_version', 'compatible', 'scope', 'bundle_hash', 'sections']) || !Array.isArray(h.row.sections)
+    || h.row.sections.length !== ADAPTIVE_STARTUP_SECTIONS.length) failure('invalid_manifest');
+  const sections = h.row.sections.map(descriptor);
+  if (sections.some((section, index) => section.section !== ADAPTIVE_STARTUP_SECTIONS[index])
+    || sections.reduce((sum, section) => sum + section.page_count, 0) > ADAPTIVE_STARTUP_MAX_PAGES
+    || sections.reduce((sum, section) => sum + section.byte_length, 0) > ADAPTIVE_STARTUP_MAX_BYTES
+    || sections.find(section => section.section === 'feedback')!.byte_length > 65536) failure('scope_oversized');
+  return { transport_version: 1, compatible: true, scope: h.scope, bundle_hash: h.bundle_hash, sections };
+}
+function page(value: unknown): AdaptiveStartupPage {
+  const h = header(value);
+  if (!keys(h.row, ['transport_version', 'compatible', 'scope', 'bundle_hash', 'section', 'index', 'byte_length', 'sha256', 'page_count', 'data_base64'])) failure('invalid_page');
+  const d = descriptor({ section: h.row.section, byte_length: h.row.byte_length, sha256: h.row.sha256, page_count: h.row.page_count });
+  if (!integer(h.row.index, 0, d.page_count - 1) || typeof h.row.data_base64 !== 'string'
+    || h.row.data_base64.length > Math.ceil(ADAPTIVE_STARTUP_PAGE_BYTES / 3) * 4
+    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(h.row.data_base64)) failure('invalid_page');
+  return { transport_version: 1, compatible: true, scope: h.scope, bundle_hash: h.bundle_hash, ...d, index: h.row.index, data_base64: h.row.data_base64 };
+}
+function parseString(value: string): unknown {
+  if (value.length > 2 * 1024 * 1024) failure('response_oversized');
+  try { return JSON.parse(value); } catch { /* Connector warnings surround the actual SQL JSON. */ }
+  const matches = [...value.matchAll(/^[\t ]*<untrusted-data-([A-Za-z0-9-]+)>[\t ]*\r?\n([\s\S]*?)\r?\n[\t ]*<\/untrusted-data-\1>[\t ]*$/gmu)];
+  if (matches.length !== 1) failure('invalid_response');
+  try { return JSON.parse(matches[0]![2]!); } catch { return failure('invalid_response'); }
+}
+function sqlRows(value: unknown, column: 'startup_manifest' | 'startup_page', depth = 0): unknown[] {
+  if (depth > 16) failure('response_nesting');
+  if (typeof value === 'string') return sqlRows(parseString(value), column, depth + 1);
+  if (Array.isArray(value)) {
+    if (value.length > 1) failure('ambiguous_rows');
+    return value.flatMap(row => sqlRows(row, column, depth + 1));
+  }
+  if (!record(value)) failure('invalid_response');
+  if (value.isError === true) failure('connector_error');
+  if (Array.isArray(value.content)) {
+    const texts = value.content.filter(block => record(block) && block.type === 'text' && typeof block.text === 'string');
+    if (texts.length) return texts.flatMap(block => sqlRows((block as { text: string }).text, column, depth + 1));
+    if (value.structuredContent !== undefined && value.structuredContent !== null) return sqlRows(value.structuredContent, column, depth + 1);
+    failure('invalid_response');
+  }
+  if (Object.hasOwn(value, column)) {
+    if (!keys(value, [column])) failure('invalid_row');
+    return [value[column]];
+  }
+  if (Object.hasOwn(value, 'result')) return sqlRows(value.result, column, depth + 1);
+  if (Object.hasOwn(value, 'data')) return sqlRows(value.data, column, depth + 1);
+  failure('invalid_response');
+}
+export function decodeAdaptiveStartupTransportResponse(value: unknown, column: 'startup_manifest'): AdaptiveStartupManifest;
+export function decodeAdaptiveStartupTransportResponse(value: unknown, column: 'startup_page'): AdaptiveStartupPage;
+export function decodeAdaptiveStartupTransportResponse(value: unknown, column: 'startup_manifest' | 'startup_page'): AdaptiveStartupManifest | AdaptiveStartupPage {
+  if (!['startup_manifest', 'startup_page'].includes(column)) failure('invalid_row');
+  const rows = sqlRows(value, column);
+  if (rows.length !== 1) failure('ambiguous_rows');
+  let decoded = rows[0], depth = 0;
+  while (typeof decoded === 'string') {
+    if (++depth > 16) failure('response_nesting');
+    decoded = parseString(decoded);
+  }
+  return column === 'startup_manifest' ? manifest(decoded) : page(decoded);
+}
+const sameScope = (a: AdaptiveStartupServerScope, b: AdaptiveStartupServerScope) => a.project_ref === b.project_ref && a.search_id === b.search_id
+  && a.run_id === b.run_id && a.user_id === b.user_id && a.authorization_epoch === b.authorization_epoch && a.authorization_revision === b.authorization_revision;
+const clone = <T>(value: T): T => structuredClone(value);
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes).buffer);
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+function decodedBytes(value: AdaptiveStartupPage): Uint8Array {
+  let raw: string;
+  try { raw = atob(value.data_base64); } catch { return failure('invalid_base64'); }
+  if (btoa(raw) !== value.data_base64 || raw.length !== Math.min(ADAPTIVE_STARTUP_PAGE_BYTES, value.byte_length - value.index * ADAPTIVE_STARTUP_PAGE_BYTES)) failure('invalid_page_length');
+  return Uint8Array.from(raw, character => character.charCodeAt(0));
+}
+const contextFields = ['adaptive_contract_version', 'bootstrap_version', 'compatible', 'scope', 'release', 'base', 'preferences', 'query_plan',
+  'legacy_core_queries', 'due_sources', 'source_context', 'refresh', 'lease', 'capabilities', 'execution_contract'] as const;
+function context(value: unknown, expected: AdaptiveStartupServerScope): Record<string, unknown> {
+  if (!record(value) || !contextFields.every(key => Object.hasOwn(value, key)) || !ownKeys(value, [...contextFields, 'source_retention'])
+    || value.adaptive_contract_version !== 1 || value.bootstrap_version !== 1 || value.compatible !== true
+    || !sameScope(serverScope(value.scope), expected) || !record(value.base) || !integer(value.base.revision, 0, Number.MAX_SAFE_INTEGER)
+    || !record(value.base.criteria) || !ownKeys(value.base.criteria, ['opportunityTypes', 'topicsAndMethods', 'locationsAndLanguages', 'fundingAndConditions', 'fitAndExclusions', 'sourcesAndQueries', 'researchAndReporting'])
+    || Object.values(value.base.criteria).some(field => typeof field !== 'string')
+    || !record(value.preferences) || !Array.isArray(value.preferences.approved_rules) || !Array.isArray(value.preferences.approved_preferences)
+    || !record(value.capabilities) || value.capabilities.capability_version !== 'adaptive-batch-v1'
+    || value.capabilities.startup !== true || value.capabilities.batch !== true || value.capabilities.completion !== true
+    || !Array.isArray(value.capabilities.allowed_helpers) || value.capabilities.allowed_helpers.join('|') !== [
+      'private.begin_adaptive_opportunity_search(uuid,uuid)', 'private.submit_adaptive_search_batch(uuid,uuid,jsonb)', 'private.verify_and_complete_adaptive_search(uuid,jsonb)',
+    ].join('|') || !record(value.execution_contract) || value.execution_contract.maximum_bundle_bytes !== ADAPTIVE_STARTUP_MAX_BYTES
+    || !record(value.release) || !record(value.refresh) || !record(value.lease)) failure('invalid_context');
+  if (value.query_plan !== null && (!record(value.query_plan) || !record(value.query_plan.document) || !Array.isArray(value.query_plan.document.queries))
+    || value.legacy_core_queries !== null && (!record(value.legacy_core_queries) || !Array.isArray(value.legacy_core_queries.queries))) failure('invalid_context');
+  for (const key of ['due_sources', 'source_context'] as const) {
+    const rows = value[key];
+    if (!Array.isArray(rows) || rows.length > 64 || rows.some(row => !record(row) || typeof row.registry_id !== 'string' || !uuid.test(row.registry_id)
+      || typeof row.listing_url !== 'string')) failure('invalid_context');
+  }
+  return value;
+}
+
+/** No network access: verified pages are collected before any research can begin. */
+export class AdaptiveStartupCollector {
+  private readonly expected: AdaptiveStartupTransportScope;
+  private current: AdaptiveStartupManifest | null = null;
+  private generation = 0;
+  private readonly pages = new Map<AdaptiveStartupSection, Map<number, { text: string; bytes: Uint8Array }>>();
+  private readonly values = new Map<AdaptiveStartupSection, unknown>();
+  constructor(scope: AdaptiveStartupTransportScope) { this.expected = requestScope(scope); }
+  reset(): void { this.generation++; this.current = null; this.pages.clear(); this.values.clear(); }
+  async acceptManifest(value: unknown): Promise<void> {
+    try {
+      const next = manifest(value);
+      if (next.scope.project_ref !== this.expected.project_ref || next.scope.search_id !== this.expected.search_id || next.scope.run_id !== this.expected.run_id) failure('scope_mismatch');
+      if (this.current && JSON.stringify(this.current) !== JSON.stringify(next)) failure('snapshot_changed');
+      this.current = next;
+    } catch (error) { this.reset(); throw error; }
+  }
+  async acceptPage(value: unknown): Promise<void> {
+    try {
+      const next = page(value), current = this.current, generation = this.generation;
+      if (!current) failure('manifest_required');
+      if (next.bundle_hash !== current.bundle_hash) failure('snapshot_changed');
+      if (!sameScope(next.scope, current.scope)) failure('scope_mismatch');
+      const expected = current.sections.find(section => section.section === next.section)!;
+      if (next.byte_length !== expected.byte_length || next.sha256 !== expected.sha256 || next.page_count !== expected.page_count) failure('section_mismatch');
+      const bytes = decodedBytes(next), known = this.pages.get(next.section) ?? new Map();
+      const prior = known.get(next.index);
+      if (prior) { if (prior.text !== next.data_base64) failure('conflicting_page'); return; }
+      known.set(next.index, { text: next.data_base64, bytes }); this.pages.set(next.section, known);
+      if (known.size === expected.page_count) {
+        const joined = new Uint8Array(expected.byte_length);
+        for (let index = 0; index < expected.page_count; index++) joined.set(known.get(index)!.bytes, index * ADAPTIVE_STARTUP_PAGE_BYTES);
+        if (await sha256(joined) !== expected.sha256) failure('section_hash_mismatch');
+        if (this.generation !== generation || this.current !== current) failure('snapshot_changed');
+        let decoded: unknown;
+        try { decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(joined)); }
+        catch { return failure('invalid_section_json'); }
+        if (next.section === 'context') context(decoded, current.scope);
+        this.values.set(next.section, decoded);
+      }
+    } catch (error) { this.reset(); throw error; }
+  }
+  async acceptResponse(value: unknown, column: 'startup_manifest' | 'startup_page'): Promise<void> {
+    try {
+      if (column === 'startup_manifest') await this.acceptManifest(decodeAdaptiveStartupTransportResponse(value, column));
+      else await this.acceptPage(decodeAdaptiveStartupTransportResponse(value, column));
+    } catch (error) { this.reset(); throw error; }
+  }
+  missingPages(): { section: AdaptiveStartupSection; index: number }[] {
+    if (!this.current) return [];
+    return this.current.sections.flatMap(section => Array.from({ length: section.page_count }, (_, index) => ({ section: section.section, index }))
+      .filter(page => !this.pages.get(page.section)?.has(page.index)));
+  }
+  getSection(section: AdaptiveStartupSection): unknown { return this.values.has(section) ? clone(this.values.get(section)) : undefined; }
+  async assemble(): Promise<Record<string, unknown>> {
+    if (!this.current || this.missingPages().length || this.values.size !== ADAPTIVE_STARTUP_SECTIONS.length) failure('incomplete_transport');
+    try {
+      const core = context(this.values.get('context'), this.current.scope);
+      const planning = this.values.get('planning'), protocol_text = this.values.get('protocol_text'), result_schema = this.values.get('result_schema'), feedback = this.values.get('feedback');
+      if (!record(planning) || typeof protocol_text !== 'string' || !protocol_text.trim() || !record(result_schema) || !record(feedback)) failure('invalid_section_shape');
+      const result = { ...core, planning, protocol_text, result_schema, feedback };
+      if (new TextEncoder().encode(JSON.stringify(result)).byteLength > ADAPTIVE_STARTUP_MAX_BYTES) failure('scope_oversized');
+      return clone(result);
+    } catch (error) { this.reset(); throw error; }
+  }
+}
