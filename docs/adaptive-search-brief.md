@@ -37,6 +37,14 @@ Keep the actual plan, checks and pending candidates during research. Finish once
 
 The old batch-saving and version-dispatch completion entrypoints reject calls with `retired_contract`. Historical receipts and audit data remain available, but no historical save format remains executable through those entrypoints. This is separate from the owner-authorized legacy-runner rollback lifecycle.
 
+## Setup testing and final reports
+
+The copied setup instruction now performs task update → confirmed acknowledgement → one foreground test. The test uses the setup UUID as its run UUID and the ordinary startup/save/verify/finish workflow. Repeating setup recovery reuses that identity, including terminal or rejected outcomes. It does not dispatch another task-service run or shift the recurring interval. A later independent manual or scheduled execution gets its own run UUID. Setup and rollback helpers remain distinct: rollback never starts research.
+
+The startup-loaded **FINAL REPORT — ALL EXECUTIONS** contract applies to setup tests, explicit manual requests and interval runs. Every run reports its actual outcome, coverage, saved/verified/deferred counts, separate bookkeeping status, eligible verified findings and blockers, including successful zero-result runs. Foreground reports return in the current chat without waiting for a status question. Scheduled runs use the same report in their execution output. Delivery remains unverified without a notification receipt.
+
+This change replaces saved task text. After deployment, prepare an instruction update and paste the newly copied setup prompt once; that paste itself performs the first test after confirmed setup. Later profile and feedback edits keep loading at startup without another paste.
+
 ## Starting again replaces an active execution
 
 A new manual or scheduled execution supplies a new run UUID. If another run is still active for that same authorized owner and saved search, the startup helper supersedes it and creates the requested run in one database transaction. ChatGPT makes the same single startup call; it does not read the blocker, prepare an abort operation or make a second startup request.

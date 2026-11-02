@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "fbfd856231b8fbeac5b3dae3d101b14b632fec6a780ea05e7e4f773ba36a65b7"
+      "sha256": "e3e9fd1cccee9ec9989b431fbb3a8f3f0fbdb932d93ad4996c9b61a7e58938c7"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "b1aed30da2b2f5074edd0f380e58828fd5908940dafc2ee6510fa9253fef6c80"
+        "sha256": "ebfa70702e01ce94615fdc8f51181927289feb810e0e674d551841b24c69c8c6"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -130,6 +130,10 @@
       "path": "supabase/releases/adaptive-search-independent-saves-v1.sql",
       "sha256": "0dbc02259c97b7e018e24602dd539f32e393bf72cd6010a5d721803d56f49460"
     },
+    "setup_test_reporting_upgrade": {
+      "path": "supabase/releases/adaptive-search-setup-test-reports-v1.sql",
+      "sha256": "9013fcd0ccdf44e953b2da2755a025970b967c5360a70ee6b622ca03a40a4ff4"
+    },
     "save_receipt_contract": {
       "path": "supabase/contracts/adaptive-search-save-receipt.schema.json",
       "sha256": "fe5cea7eec1651ac364e03e9fb3651905a152dcc0fe69306acef6e2061c32f74"
@@ -190,7 +194,7 @@
   "runner_artifacts": [
     {
       "path": "src/features/meta-search/domain/adaptiveSearchProtocol.ts",
-      "sha256": "87169db28c5557113d0a4547a89974832d29140d846bd1b62173a975d6675fde"
+      "sha256": "ff5937532d3cfaf1bab10d9cbfd0a9263b676493975d06a76da251e81b58f854"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchBrief.ts",
@@ -214,7 +218,7 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
-      "sha256": "c886deb255ea9de15c233f7d45452b9d1f8f6aee6b277bfcda8f3ebcb5ac3383"
+      "sha256": "261690c14eb6fd0422c9ae3a210e67696efb421f118fe87cb4426edc7ace9eea"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchHostedCodec.ts",
@@ -238,7 +242,7 @@
     },
     {
       "path": "src/features/meta-search/domain/searchPrompts.ts",
-      "sha256": "675d5baee7df215e1853eeb5e984afc176d530c340f23691d89fe49fea7cab3e"
+      "sha256": "1330a7b3afb428639934d68a4d18c45553c01e3c295b1b27b968d7e51682bc9f"
     },
     {
       "path": "src/features/meta-search/searchTypes.ts",
@@ -310,7 +314,7 @@
     },
     {
       "path": "src/features/meta-search/components/MetaSearchEditor.vue",
-      "sha256": "f582e13e3496d11affd07eea10e748707d0c3558b0ceec69410a0c18c86febc6"
+      "sha256": "131bc8d081097a411d43fd5e2d746e30c5075518eb1c58c66c009d44cbb9ee63"
     },
     {
       "path": "src/app/components/CloudWorkspace.vue",

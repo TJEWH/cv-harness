@@ -44,7 +44,7 @@ test('AF09 adaptive daily task text is byte-stable across current data revisions
   assert.equal(buildSearchSystemPrompt(next, { projectId: project, runner: revisedState }), `${expected}\n\n${OPPORTUNITY_TOPIC_FORMAT_RULE}`);
   assert.ok(buildSearchUserPrompt(next, { projectId: project, runner: revisedState }).includes('PRIVATE_CANARY'));
   for (const required of ['private.begin_adaptive_search_brief', 'private.save_adaptive_search_item', 'private.verify_adaptive_search_item', 'private.finish_adaptive_search',
-    '72 hours', 'unchanged or empty runs stay quiet', 'flat report described in startup.protocol_text', 'Notification delivery remains unknown']) assert.ok(expected.includes(required), required);
+    '72 hours', 'Return a final report for every run', 'flat report described in startup.protocol_text', 'Notification delivery remains unknown']) assert.ok(expected.includes(required), required);
   for (const forbidden of ['PRIVATE_CANARY', owner, setup, binding.task_id, 'private.begin_opportunity_search(', 'private.read_adaptive_search_setup', 'private.ack_adaptive_search_setup']) assert.ok(!expected.includes(forbidden), forbidden);
   assert.ok(expected.includes(search) && expected.includes(project));
 });
@@ -116,10 +116,12 @@ test('bounded recovery preserves uncertainty and never replays a save or bypasse
   assert.ok(value.includes('display truncation or local decoding failures remain local_processing'));
 });
 
-test('AF09 setup has one bounded read followed only by receipt acknowledgement and exact approved targets', () => {
+test('setup acknowledges its exact task before one explicitly authorized foreground startup', () => {
   const value = buildReplaceSearchPrompt(template(), { projectId: project, runner: runner() });
   assert.ok(value.includes(`private.read_adaptive_search_setup('${search}'::uuid, '${setup}'::uuid, '${project}'::text)`));
-  assert.equal((value.match(/SELECT /gu) || []).length, 2, 'one handoff read plus one explicitly setup-only acknowledgement');
+  assert.equal((value.match(/SELECT /gu) || []).length, 3, 'one handoff read, one acknowledgement and one foreground startup');
+  assert.ok(value.indexOf('AFTER ACKNOWLEDGEMENT') > value.indexOf('SELECT private.ack_adaptive_search_setup'));
+  assert.ok(value.includes(`private.begin_adaptive_search_brief('${search}'::uuid,'${setup}'::uuid)`));
   assert.ok(value.includes('private.ack_adaptive_search_setup') && value.includes('actual returned task ID and schedule'));
   assert.ok(value.includes("handoff's reviewed recurringPrompt"));
   assert.ok(value.includes(buildSearchSetupReadSql(search, setup, project)));
@@ -197,4 +199,42 @@ test('AF09 cloud autosave keeps one RPC, preserves explicit mode and rejects own
   assert.equal(doc.version, 1); assert.equal(doc.recurringPrompt, buildAdaptiveRecurringSearchPrompt(search, project));
   await assert.rejects(saveSearchTemplate(save, owner, original, { projectId: project, runner: runner({ user_id: setup }) }), /signed-in owner/);
   assert.equal(calls.length, 1);
+});
+
+
+test('pasting setup requests exactly one foreground test under the setup identity without re-anchoring its interval', () => {
+  for (const runImmediately of [true, false]) {
+    const value = buildReplaceSearchPrompt(template(), { projectId: project, runner: runner({
+      binding: { ...binding, schedule: { ...binding.schedule, frequency: 'hourly', intervalHours: 12, runImmediately } },
+    }) });
+    for (const required of ['perform one immediate test run in this chat', 'confirmed Supabase acknowledgement first',
+      'Perform actual web research and normal Supabase saving/independent verification for this test',
+      'acknowledged=true', `using ${setup} as its explicit test run UUID`, 'do not start it twice',
+      'A missing, rejected, unknown or pending acknowledgement means no research',
+      'Do not add an immediate scheduler occurrence or dispatch a task-service Run now as well',
+      'Preserve the saved interval, local-time anchor and next regular occurrence',
+      'even when the flag is false', 'only this setup test and all permitted recovery',
+      'An identical setup/acknowledgement retry is not permission for another test or replacement UUID',
+      'do not start a fresh test to bypass it', 'without waiting for a status question']) {
+      assert.ok(value.includes(required), required);
+    }
+    assert.equal((value.match(/SELECT private\.begin_adaptive_search_brief\(/gu) ?? []).length, 1);
+    assert.ok(!value.includes('explicit setup only; do not run research'));
+  }
+});
+
+test('manual requests and scheduled executions use the same unconditional final-report contract', () => {
+  const prompt = buildAdaptiveRecurringSearchPrompt(search, project);
+  for (const required of ['manual run-once request executes this workflow directly in the current chat',
+    'Do not merely enqueue a task-service run', 'Scheduled executions perform the same workflow and final reporting',
+    'explicitly supplied run UUID for a setup test', 'Return a final report for every run',
+    'including unchanged or empty results', 'FINAL REPORT contract in startup.protocol_text',
+    'without waiting for a status question', 'A task-service request receipt is not research completion']) {
+    assert.ok(prompt.includes(required), required);
+  }
+  for (const required of ['FINAL REPORT — ALL EXECUTIONS', 'setup test, explicit manual run and scheduled execution',
+    'outcome and run UUID; actual research coverage', 'independently verified and deferred counts',
+    'bookkeeping status', 'When there are no verified new matches', 'Say unknown when acceptance',
+    'does not prove push/email delivery', 'say the save path was not exercised']) assert.ok(ADAPTIVE_HOSTED_PROTOCOL_TEXT.includes(required), required);
+  assert.doesNotMatch(prompt, /stay quiet|only.*new.*matches quiet/iu);
 });

@@ -70,8 +70,9 @@ test('historical hosted codec upgrade preserves research and hands off its origi
     assert.equal(updated.recurring_prompt_hash, createHash('sha256').update(expected).digest('hex'));
     assert.deepEqual(updated.schedule, previous.schedule);
     assert.deepEqual(updated.target, previous.target);
-    assert.equal(updated.lifecycle.setup_only, true);
-    assert.equal(updated.lifecycle.research_allowed, false);
+    assert.equal(updated.lifecycle.phase, 'setup');
+    assert.equal(updated.lifecycle.research_after_ack.requires_acknowledged, true);
+    assert.equal(updated.lifecycle.research_after_ack.run_id, nextSetup);
     const handoffBytes = Number(sql(`select octet_length(handoff::text) from private.opportunity_search_setup_operations where setup_id='${nextSetup}';`));
     assert.ok(handoffBytes > Buffer.byteLength(expected));
     assert.ok(handoffBytes <= 65_536, `Executable setup handoff exceeds its unchanged byte bound: ${handoffBytes}`);

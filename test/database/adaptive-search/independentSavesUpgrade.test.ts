@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { file, reset, sql } from '../../support/database/postgres';
 import { historicalFunctionDefinitions } from '../../support/database/historicalAdaptiveBatch';
-import { adaptiveJsonSqlLiteral as json, ADAPTIVE_HOSTED_PROTOCOL_TEXT } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
+import { adaptiveJsonSqlLiteral as json } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
 before(() => reset());
 const query = (statement: string) => JSON.parse(sql(statement));
@@ -34,6 +34,13 @@ test('guarded independent-save upgrade preserves saved research, task prompts an
     'discoveries',(select jsonb_agg(to_jsonb(d) order by item_id) from public.opportunity_search_discoveries d where run_id='${run}'),
     'feedback',(select jsonb_agg(to_jsonb(f) order by feedback_revision) from public.opportunity_search_feedback_snapshots f where search_id='${search}'));`);
   const expected = functions(), expectedProperties = properties();
+  for (const [name, definition] of historicalFunctionDefinitions('supabase/releases/adaptive-search-independent-saves-v1.sql')) {
+    const signature = signatures.find(value => value.startsWith(name + '('));
+    const body = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(definition)![2]!;
+    if (signature) expected[signature] = createHash('md5').update(body).digest('hex');
+  }
+  const historicalProtocol = /select \$adaptive_hosted\$([\s\S]*?)\$adaptive_hosted\$/u.exec(file('supabase/releases/adaptive-search-independent-saves-v1.sql'))![1]!;
+
   try {
     const predecessors = [
       ['supabase/releases/adaptive-search-deferred-receipts-v1.sql', ['private.adaptive_search_hosted_protocol_text', 'private.save_adaptive_search_item']],
@@ -83,7 +90,7 @@ test('guarded independent-save upgrade preserves saved research, task prompts an
     assert.equal(snapshot(), before, 'The installer changed existing research, saved results or feedback');
     assert.equal(recurring(), prompt, 'The existing task must not need another paste');
     const current = query(`select private.begin_adaptive_search_brief('${search}','${run}');`);
-    assert.ok(current.protocol_text.startsWith(ADAPTIVE_HOSTED_PROTOCOL_TEXT));
+    assert.ok(current.protocol_text.startsWith(historicalProtocol));
     for (const key of ['scope','base','query_plan','legacy_core_queries','planning','preferences','feedback','result_schema','due_sources','source_context','lease']) {
       assert.deepEqual(current[key], pinned[key], `Startup research field changed: ${key}`);
     }

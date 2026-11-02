@@ -67,6 +67,8 @@ The [deferred-receipt correction](../supabase/releases/adaptive-search-deferred-
 
 The [independent-save upgrade](../supabase/releases/adaptive-search-independent-saves-v1.sql) makes the established canonical writer and verifier authoritative. It isolates discovery/feedback tracking, enforces one closed JSON save-receipt/bookkeeping schema, and reconstructs missing tracking from saved facts. It preserves startup construction, criteria, feedback selection, query policy, the recurring task and the canonical opportunity schema. The existing four-helper task receives the updated save guidance at startup without another prompt paste. Installation replaces eight function bodies and adds two private server helpers; it writes no research data or schedules.
 
+The [setup-test and reporting upgrade](../supabase/releases/adaptive-search-setup-test-reports-v1.sql) changes only the setup handoff projection and the fixed recurring/reporting text. After confirmed setup acknowledgement, the pasted instruction performs one foreground test under the setup UUID without another immediate scheduler dispatch or cadence change. Every manual, setup-test and scheduled run returns a final report, including empty results. Rollback-only handoffs remain setup-only. Installation executes no research and changes no saved task or schedule. Deploy, prepare a fresh instruction update, then paste once into the existing task’s chat to install and test this behavior.
+
 ## Verification
 
 ```sh

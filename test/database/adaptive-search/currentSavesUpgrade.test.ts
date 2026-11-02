@@ -4,7 +4,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { file, reset, sql } from '../../support/database/postgres';
 import { historicalFunctionDefinitions } from '../../support/database/historicalAdaptiveBatch';
 import { adaptiveJsonSqlLiteral as json } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
-import { buildAdaptiveRecurringSearchPrompt } from '../../../src/features/meta-search/domain/adaptiveSearchTask';
 
 before(() => reset());
 const query = (statement: string) => JSON.parse(sql(statement));
@@ -117,7 +116,9 @@ test('current-save upgrade preserves historical saves and pinned research, retir
     assert.equal(snapshot(), saved, 'Reading current instructions changed historical evidence');
     assert.equal(query(`select private.read_adaptive_search_setup('${search}','${oldSetup}','${project}');`).error.code, 'setup_stale');
     const fresh = query(`select private.read_adaptive_search_setup('${search}','${nextSetup}','${project}');`);
-    assert.equal(fresh.recurringPrompt, buildAdaptiveRecurringSearchPrompt(search, project));
+    const historicalPrompt = /\$adaptive_recurring\$([\s\S]*?)\$adaptive_recurring\$/u.exec(upgrade)![1]!
+      .replaceAll('{{search_id}}', search).replaceAll('{{project_ref}}', project);
+    assert.equal(fresh.recurringPrompt, historicalPrompt);
     assert.equal(fresh.recurring_prompt_hash, createHash('sha256').update(fresh.recurringPrompt).digest('hex'));
     assert.deepEqual(fresh.schedule, handoff.schedule); assert.deepEqual(fresh.target, handoff.target);
     assert.equal(snapshot(), saved);

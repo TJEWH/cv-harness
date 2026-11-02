@@ -360,7 +360,7 @@ onBeforeUnmount(() => { if (form.value && status.value !== 'saved') retainSearch
         <aside class="search-library" :aria-label="text('Meta research actions', 'Metasuchaktionen')">
           <div class="search-action-row">
             <button class="search-primary" type="button" :disabled="copying || preparingRunner || loadingCloud || !client" @click="copy"><FontAwesomeIcon :icon="faCopy" aria-hidden="true" />{{ copying ? text('Preparing…', 'Vorbereiten…') : text('Copy replace prompt', 'Ersetzungsanweisung kopieren') }}</button>
-            <InfoHint :lang="lang" :label="text('Replace meta search', 'Metasuche ersetzen')" :text="text('Paste this instruction into ChatGPT to update the scheduled task. Use it after changing the schedule or preparing an instruction update.', 'Füge diese Anweisung in ChatGPT ein, um die geplante Aufgabe zu aktualisieren. Nutze sie nach Zeitplanänderungen oder einer vorbereiteten Anweisungsaktualisierung.')" />
+            <InfoHint :lang="lang" :label="text('Replace meta search', 'Metasuche ersetzen')" :text="text('Paste into ChatGPT to update the task and immediately test one search. Later runs keep the saved interval.', 'Füge die Anweisung in ChatGPT ein, um die Aufgabe zu aktualisieren und sofort einen Suchlauf zu testen. Weitere Läufe folgen dem gespeicherten Intervall.')" />
           </div>
         </aside>
       </DesktopSidebarPortal>
