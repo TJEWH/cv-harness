@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "0e85ea9dbdcb24795a11d4f4c54d90b4ee360b61f42a9a68ec63535037b54118"
+      "sha256": "003adf813b3bd62706f62d8a7a6ff6bf2cb3be5ffdecfc98adc06c1bb077834a"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "71a2e8c20e55a110b8df7a8a21cbe1f9c424fba6f7c623fc0f99738afe98cb91"
+        "sha256": "70e95b8472fecd849c8768e86783e1c191a2b1f1975729c275d75a9f58a6c371"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -114,6 +114,10 @@
       "path": "supabase/releases/adaptive-search-hosted-codec-v1.sql",
       "sha256": "66757fd65379688a8a93acb2c7bd351a62b5dfab079f9306d38d74b1ee6a38e4"
     },
+    "inline_codec_upgrade": {
+      "path": "supabase/releases/adaptive-search-inline-codec-v1.sql",
+      "sha256": "61df15646a033de8e7ac66c3c50dc99216e38159a7f66d6fc4d6853b14457de0"
+    },
     "lifecycle_contracts": [
       {
         "path": "supabase/contracts/adaptive-search-lifecycle.request.schema.json",
@@ -196,11 +200,11 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
-      "sha256": "298dd32824389fc7b39aa98117e9da3ca01d4ff8561ddf26d4b9fd180407b785"
+      "sha256": "5632de11d39cd69e7d43bd2e184d28d0b967fd6676961234e844ee738441f0dd"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchHostedCodec.ts",
-      "sha256": "c7f0f130ab1c161ef3b68050133db436ef57351fd59373560e25c7c46a05ca04"
+      "sha256": "e6a09e6357afbcf7e62d8488bddd029b827f4af47a41ac984fd6afa4bbc30720"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchLifecycle.ts",
@@ -220,7 +224,7 @@
     },
     {
       "path": "src/features/meta-search/domain/searchPrompts.ts",
-      "sha256": "086d711f5dfb00478d7aa040bfe84cf3b8c50462634f5457f47f1028da0e1fb5"
+      "sha256": "01119b918f28d0cab0313a38bba889929a62dc5dfdf06292a4ccdaaf41bbc038"
     },
     {
       "path": "src/features/meta-search/searchTypes.ts",

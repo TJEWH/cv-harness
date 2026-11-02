@@ -1,16 +1,15 @@
 /** Trusted, dependency-free JavaScript copied verbatim into hosted instructions.
- * io.put/get are supplied by the host's documented persistent storage API.
+ * The caller keeps the raw response while decoding it in the same invocation.
  * This source never dispatches a request, evaluates returned text or validates an action contract.
  */
-export const ADAPTIVE_HOSTED_RESPONSE_CODEC_SOURCE = String.raw`function createCVResponseCodec(io) {
+export const ADAPTIVE_HOSTED_RESPONSE_CODEC_SOURCE = String.raw`function createCVResponseCodec() {
   const limit=2097152, object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v), own=(v,k)=>Object.hasOwn(v,k);
   const wrappers=['text','result','data','structuredContent','content'];
   const denial={approval_denied:'approval_denial',approval_rejected:'approval_denial',approval_required:'approval_denial',permission_denied:'permission_denial',insufficient_privilege:'permission_denial',access_denied:'permission_denial',unauthorized:'permission_denial',forbidden:'permission_denial','42501':'permission_denial',authorization_revoked:'permission_denial',safety_denied:'safety_denial',safety_blocked:'safety_denial',safety_block:'safety_denial',blocked_by_safety:'safety_denial',safety_policy_denied:'safety_denial'};
   const tag=Symbol(),bad=(code,category='local_processing')=>{throw {[tag]:true,code,category};};
-  const trace=()=>({path:[],reason:'capture',boundary_count:null,matching_pairs:null,json_error_position:null,serialized_response_bytes:null,raw_retained:false});
+  const trace=raw=>({path:[],reason:'serialization',boundary_count:null,matching_pairs:null,json_error_position:null,serialized_response_bytes:null,retention:'invocation_only',raw_available:raw!==undefined});
   const failure=(e,t)=>({ok:false,error:{category:e&&e[tag]?e.category:'local_processing',code:e&&e[tag]?e.code:'local_failure',diagnostics:t}});
-  const key=k=>{if(typeof k!=='string'||!/^[A-Za-z0-9_.:-]{1,240}$/.test(k))bad('capture_key_invalid');};
-  const bound=(s,t)=>{if(typeof s!=='string')bad('capture_missing');let n=0;for(const c of s){const p=c.codePointAt(0);n+=p<128?1:p<2048?2:p<65536?3:4;}t.serialized_response_bytes=n;if(n>limit)bad('response_oversized');};
+  const bound=(s,t)=>{if(typeof s!=='string')bad('response_missing');let n=0;for(const c of s){const p=c.codePointAt(0);n+=p<128?1:p<2048?2:p<65536?3:4;}t.serialized_response_bytes=n;if(n>limit)bad('response_oversized');};
   const position=(e,t)=>{const m=e instanceof SyntaxError?/\bat position (\d+)(?: \(line \d+ column \d+\))?$/.exec(e.message):null;t.json_error_position=m?Number(m[1]):null;};
   function parse(s,t) {
     t.reason='json';t.boundary_count=null;t.matching_pairs=null;t.json_error_position=null;
@@ -69,20 +68,10 @@ export const ADAPTIVE_HOSTED_RESPONSE_CODEC_SOURCE = String.raw`function createC
     return walk(raw);
   }
   return {
-    async capture(k,raw) {
-      const t=trace();try {
-        key(k);let s;try{s=JSON.stringify(raw);}catch{bad('capture_invalid');}bound(s,t);
-        let old;try{old=await io.get(k);}catch{bad('capture_unavailable');}
-        if(old!=null&&old!==s)bad('capture_conflict');
-        try{if(old==null)await io.put(k,s);if(await io.get(k)!==s)bad('capture_readback_failed');}catch(e){if(e&&e[tag])throw e;bad('capture_unavailable');}
-        t.raw_retained=true;return {ok:true};
-      }catch(e){return failure(e,t);}
-    },
-    async decode(k,column=null) {
-      const t=trace();try {
-        key(k);let s;try{s=await io.get(k);}catch{bad('capture_unavailable');}bound(s,t);t.raw_retained=true;
-        let raw;try{raw=JSON.parse(s);}catch(e){position(e,t);bad('capture_invalid');}
-        return {ok:true,value:decodeRaw(raw,column,t)};
+    decode(raw,column=null) {
+      const t=trace(raw);try {
+        let snapshot;try{snapshot=JSON.stringify(raw);}catch{bad('response_invalid');}bound(snapshot,t);
+        return {ok:true,value:decodeRaw(JSON.parse(snapshot),column,t)};
       }catch(e){return failure(e,t);}
     }
   };

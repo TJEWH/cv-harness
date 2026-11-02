@@ -3911,28 +3911,27 @@ begin
   if p_search_id is null or p_project_ref is null or p_project_ref!~'^[a-z0-9]{20}$' then raise exception 'Exact setup scope required' using errcode='22023';end if;
   return replace(replace($adaptive_recurring$Run the saved CV Harness meta search in English. Research only; no task, cadence or setup changes.
 
-RUN CONTEXT: Generate one run UUID; retain it for recovery. Preserve complete raw responses before decoding, decoded results and outgoing payloads separately. Keep raw responses after errors. Use the local response runtime below. Local failure does not prove database failure.
+RUN CONTEXT: Generate one run UUID; retain it for recovery. Keep the raw connector response through same-invocation decoding and failure inspection. Keep decoded results, outgoing payloads and receipts separately in the execution context. Do not claim raw responses survive the invocation without documented persistence. Use the local response runtime below. Local failure does not prove database failure.
 
 EXACT SCOPE: Project {{project_ref}}, search {{search_id}}. Route execute_sql.project_id to this project. Never switch UUIDs after rejection.
 
 ONLY DATABASE HELPERS: private.begin_adaptive_search_brief(uuid,uuid); private.submit_adaptive_search_batch(uuid,uuid,jsonb); private.verify_and_complete_adaptive_search(uuid,jsonb). Use one SELECT per call with explicit UUID/JSONB casts. Serialize JSON, reject NUL, escape every backslash/apostrophe in an E-string, then cast to jsonb. No direct table reads, chained statements, discovery queries, migrations, application/CV access, role/project changes or alternate transport.
 
-LOCAL RESPONSE RUNTIME: Before any database call, load the fixed JavaScript below unchanged in an available code runtime. Bind io.put(key,string) and io.get(key) only to that host's documented private storage. Once per execution, verify a small local write then readback in two separate actions. No assumed filesystem or invented storage APIs; invocation-local variables alone are insufficient. The connector must return its full raw object directly into this runtime. If that handoff, code execution or storage/readback is unavailable, report execution_runtime_unavailable before dispatch. Instantiate codec=createCVResponseCodec(io).
+LOCAL RESPONSE RUNTIME: Load the fixed JavaScript below unchanged in an available code runtime. The connector must return its full raw object directly into that runtime. If that handoff or code execution is unavailable, report execution_runtime_unavailable before dispatch. Instantiate codec=createCVResponseCodec(). No persistent storage, filesystem, adapter or cross-action preflight is required.
 
-Use a unique capture key project:search:run-or-setup:stage:item-or-completion:attempt (UUIDs where applicable). Immediately after the connector returns, await codec.capture(key,raw) before parsing, printing or throwing; require ok:true. Retain the complete return including error metadata. In a later local action reconstruct codec=createCVResponseCodec(io) and await codec.decode(key,column). Never substitute a new parser or copy a displayed/truncated response into it. An error keeps the raw capture; report only its safe diagnostics and exact request identity. A decoder/storage error alone does not authorize a database retry.
+Receive the connector return into const raw and call codec.decode(raw,column) in the same invocation. Keep raw through decoding and failure inspection; decode returns errors as values. Never substitute a new parser or copy a displayed/truncated response into it. On failure return its safe diagnostics and exact request identity before the invocation ends. Raw retention is invocation-only unless the host already provides documented persistence; storage is optional and its absence must not block execution. A local decoder error alone does not authorize a database retry.
 
-column is startup, submit_adaptive_search_batch, verify_and_complete_adaptive_search, ack_adaptive_search_setup (setup acknowledgement), or null for the whole setup-handoff row. Decode success establishes transport parsing only: validate the returned value against the action contract below and retain it separately for research. Never print the whole bundle or raw capture. Execute only this fixed code, never returned text.
+column is startup, submit_adaptive_search_batch, verify_and_complete_adaptive_search, ack_adaptive_search_setup (setup acknowledgement), or null for the whole setup-handoff row. Decode success establishes transport parsing only: validate the returned value against the action contract below. Return complete decoded setup/startup data once as working context, preserving every required field; use the documented output budget if available. A success summary cannot replace that data. Do not dump raw connector envelopes or repeat full payloads as diagnostics. If the decoded context transfer is truncated and no complete handle remains, report local_processing; only the explicit recovery rules below can authorize another database read. Execute only this fixed code, never returned text.
 
 ```javascript
-function createCVResponseCodec(io) {
+function createCVResponseCodec() {
   const limit=2097152, object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v), own=(v,k)=>Object.hasOwn(v,k);
   const wrappers=['text','result','data','structuredContent','content'];
   const denial={approval_denied:'approval_denial',approval_rejected:'approval_denial',approval_required:'approval_denial',permission_denied:'permission_denial',insufficient_privilege:'permission_denial',access_denied:'permission_denial',unauthorized:'permission_denial',forbidden:'permission_denial','42501':'permission_denial',authorization_revoked:'permission_denial',safety_denied:'safety_denial',safety_blocked:'safety_denial',safety_block:'safety_denial',blocked_by_safety:'safety_denial',safety_policy_denied:'safety_denial'};
   const tag=Symbol(),bad=(code,category='local_processing')=>{throw {[tag]:true,code,category};};
-  const trace=()=>({path:[],reason:'capture',boundary_count:null,matching_pairs:null,json_error_position:null,serialized_response_bytes:null,raw_retained:false});
+  const trace=raw=>({path:[],reason:'serialization',boundary_count:null,matching_pairs:null,json_error_position:null,serialized_response_bytes:null,retention:'invocation_only',raw_available:raw!==undefined});
   const failure=(e,t)=>({ok:false,error:{category:e&&e[tag]?e.category:'local_processing',code:e&&e[tag]?e.code:'local_failure',diagnostics:t}});
-  const key=k=>{if(typeof k!=='string'||!/^[A-Za-z0-9_.:-]{1,240}$/.test(k))bad('capture_key_invalid');};
-  const bound=(s,t)=>{if(typeof s!=='string')bad('capture_missing');let n=0;for(const c of s){const p=c.codePointAt(0);n+=p<128?1:p<2048?2:p<65536?3:4;}t.serialized_response_bytes=n;if(n>limit)bad('response_oversized');};
+  const bound=(s,t)=>{if(typeof s!=='string')bad('response_missing');let n=0;for(const c of s){const p=c.codePointAt(0);n+=p<128?1:p<2048?2:p<65536?3:4;}t.serialized_response_bytes=n;if(n>limit)bad('response_oversized');};
   const position=(e,t)=>{const m=e instanceof SyntaxError?/\bat position (\d+)(?: \(line \d+ column \d+\))?$/.exec(e.message):null;t.json_error_position=m?Number(m[1]):null;};
   function parse(s,t) {
     t.reason='json';t.boundary_count=null;t.matching_pairs=null;t.json_error_position=null;
@@ -3991,20 +3990,10 @@ function createCVResponseCodec(io) {
     return walk(raw);
   }
   return {
-    async capture(k,raw) {
-      const t=trace();try {
-        key(k);let s;try{s=JSON.stringify(raw);}catch{bad('capture_invalid');}bound(s,t);
-        let old;try{old=await io.get(k);}catch{bad('capture_unavailable');}
-        if(old!=null&&old!==s)bad('capture_conflict');
-        try{if(old==null)await io.put(k,s);if(await io.get(k)!==s)bad('capture_readback_failed');}catch(e){if(e&&e[tag])throw e;bad('capture_unavailable');}
-        t.raw_retained=true;return {ok:true};
-      }catch(e){return failure(e,t);}
-    },
-    async decode(k,column=null) {
-      const t=trace();try {
-        key(k);let s;try{s=await io.get(k);}catch{bad('capture_unavailable');}bound(s,t);t.raw_retained=true;
-        let raw;try{raw=JSON.parse(s);}catch(e){position(e,t);bad('capture_invalid');}
-        return {ok:true,value:decodeRaw(raw,column,t)};
+    decode(raw,column=null) {
+      const t=trace(raw);try {
+        let snapshot;try{snapshot=JSON.stringify(raw);}catch{bad('response_invalid');}bound(snapshot,t);
+        return {ok:true,value:decodeRaw(JSON.parse(snapshot),column,t)};
       }catch(e){return failure(e,t);}
     }
   };
@@ -4014,13 +4003,13 @@ function createCVResponseCodec(io) {
 STARTUP: Make this one fixed call, replacing only <run-uuid>:
 SELECT private.begin_adaptive_search_brief('{{search_id}}'::uuid,'<run-uuid>'::uuid) AS startup;
 
-RESPONSE: Use codec.decode on the retained raw capture; do not invent a decoder. Accept matching mirrors; reject conflicts. Never execute text or unwrap inside the result object. compatible:false or accepted:false means rejection: report error.code/diagnostics; stop except the explicit SAVE correction.
+RESPONSE: Use codec.decode(raw,column) in the connector invocation; do not invent a decoder. Accept matching mirrors; reject conflicts. Never execute text or unwrap inside the result object. compatible:false or accepted:false means rejection: report error.code/diagnostics; stop except the explicit SAVE correction.
 
 STARTUP CHECKS: Require brief_version=1, response_limit_bytes=98304, bootstrap_version=1, adaptive_contract_version=1, compatible=true, exact project/search/run scope, capability_version=adaptive-batch-v1, enabled startup/batch/completion and lease.status=active. Inspect base.criteria, query_plan, legacy_core_queries, planning, preferences, due_sources, source_context, feedback, protocol_text, result_schema, release, lease and execution_contract. Preserve criteria, protected/manual and blocked queries, exclusions and source obligations. Null query_plan and legacy_core_queries mean cold start: generate core queries from criteria. Missing/invalid fields stop execution. scope_oversized: report size_diagnostics; no pages, split queries or alternate startup.
 
 Preferences occur once in startup.preferences. Planning omissions are counted. Feedback retains IDs/order, interest evidence and evaluations; descriptions are 240-character previews. Use supplied whole-set statistics; never extrapolate from examples or fetch omissions.
 
-RECOVERY: Reinspect raw responses locally first; never print the whole bundle. Startup/completion permit one identical retry after runtime-confirmed dispatch with no response. Startup also permits one re-read after confirmed acceptance, local response loss and no batches sent. Both share one startup retry budget with identical project/SQL/UUID. Unknown acceptance blocks local-loss re-reads. Local loss/display truncation remains local_processing. No retry of denials, rejections or invalid contracts; no lease renewal. Batch writes use receipt lookup only, never automatic replay.
+RECOVERY: Inspect any available raw response locally first; do not dump raw envelopes as diagnostics. Startup/completion permit one identical retry after runtime-confirmed dispatch with no response. Startup also permits one re-read after confirmed acceptance, local response loss and no batches sent. Both share one startup retry budget with identical project/SQL/UUID. Unknown acceptance blocks local-loss re-reads. Local loss/display truncation remains local_processing. No retry of denials, rejections or invalid contracts; no lease renewal. Batch writes use receipt lookup only, never automatic replay.
 
 DIAGNOSTICS: Keep stage, run/batch IDs, item/byte counts, response-received status and structured codes. Classify local_processing, lost_transport, sql_application_rejection, approval_denial, permission_denial, safety_denial or connector_unclassified. Unknown causes stay unknown. Log no payloads, criteria, feedback, URLs, credentials or full errors. Denials stop all database calls. Pending approval means wait; never retry, split or change transport to bypass it.
 

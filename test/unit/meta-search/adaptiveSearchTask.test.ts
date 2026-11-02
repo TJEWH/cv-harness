@@ -74,10 +74,13 @@ test('manual and scheduled adaptive instructions use one bounded startup call wi
     ['begin_adaptive_search_brief', 'submit_adaptive_search_batch', 'verify_and_complete_adaptive_search']);
   assert.ok(value.length <= ADAPTIVE_RECURRING_PROMPT_MAX_CHARACTERS, 'budget includes the fixed executable codec, not additional research content');
   assert.ok(value.indexOf('RUN CONTEXT:') < value.indexOf('STARTUP:'), 'stable run identity is retained before startup');
-  assert.ok(value.includes('verify a small local write then readback in two separate actions'));
+  assert.ok(value.includes('No persistent storage, filesystem, adapter or cross-action preflight is required'));
+  assert.ok(!value.includes('io.put') && !value.includes('io.get'));
   assert.ok(value.includes('execution_runtime_unavailable before dispatch'));
   assert.ok(!value.includes('nonce'));
-  assert.ok(value.includes('never print the whole bundle'), 'local inspection must stay bounded after truncation');
+  assert.ok(value.includes('Return complete decoded setup/startup data once as working context'));
+  assert.ok(value.includes('Do not dump raw connector envelopes or repeat full payloads as diagnostics'));
+  assert.ok(!value.includes('never print the whole bundle'));
   assert.ok(value.includes('A fresh UUID replaces older active runs atomically'));
   assert.ok(value.includes('The same UUID retries only its own run'));
   assert.ok(value.includes('No abort/handoff needed'));
@@ -96,12 +99,15 @@ test('setup and every research execution carry the exact tested decoder before t
     assert.ok(prompt.includes(ADAPTIVE_HOSTED_RESPONSE_INSTRUCTION));
     assert.equal(prompt.split(ADAPTIVE_HOSTED_RESPONSE_CODEC_SOURCE).length, 2, 'the entire tested source is included exactly once');
     assert.ok(prompt.indexOf('LOCAL RESPONSE RUNTIME:') < prompt.search(/SELECT (?:private\.|handoff\.)/u));
-    assert.ok(prompt.includes('await codec.capture(key,raw) before parsing, printing or throwing'));
-    assert.ok(prompt.includes('In a later local action reconstruct codec=createCVResponseCodec(io)'));
+    assert.ok(prompt.includes('call codec.decode(raw,column) in the same invocation'));
+    assert.ok(prompt.includes('storage is optional and its absence must not block execution'));
+    assert.ok(prompt.includes('If the decoded context transfer is truncated and no complete handle remains, report local_processing'));
+    assert.ok(prompt.includes('before the invocation ends'));
+    assert.ok(!prompt.includes('createCVResponseCodec(io)'));
     assert.ok(prompt.includes('Never substitute a new parser'));
     assert.ok(prompt.includes('Decode success establishes transport parsing only'));
   }
-  assert.ok(setupPrompt.includes('Use codec.decode(key,null)'));
+  assert.ok(setupPrompt.includes('Use codec.decode(raw,null)'));
 });
 
 test('database setup and frontend generate the same reviewed adaptive recurring prompt', () => {
@@ -110,14 +116,14 @@ test('database setup and frontend generate the same reviewed adaptive recurring 
   assert.equal(template, ADAPTIVE_RECURRING_PROMPT_TEMPLATE);
 });
 
-test('hosted response handling preserves captures, recognizes outer text and bounds accepted-startup recovery', () => {
+test('hosted response handling inspects raw data in the invocation and bounds accepted-startup recovery', () => {
   const value = buildAdaptiveRecurringSearchPrompt(search, project);
-  const retention = value.indexOf('Preserve complete raw responses before decoding');
+  const retention = value.indexOf('Keep the raw connector response through same-invocation decoding');
   assert.ok(retention >= 0 && retention < value.indexOf('RESPONSE:'));
-  for (const instruction of ['Keep raw responses after errors', 'Use codec.decode on the retained raw capture',
+  for (const instruction of ['Do not claim raw responses survive the invocation without documented persistence', 'Use codec.decode(raw,column) in the connector invocation',
     'Accept matching mirrors; reject conflicts',
     'Never execute text or unwrap inside the result object', 'lease.status=active',
-    'Reinspect raw responses locally first', 'Startup/completion permit one identical retry after runtime-confirmed dispatch with no response',
+    'Inspect any available raw response locally first', 'Startup/completion permit one identical retry after runtime-confirmed dispatch with no response',
     'after confirmed acceptance, local response loss and no batches sent', 'share one startup retry budget',
     'identical project/SQL/UUID', 'Local loss/display truncation remains local_processing',
     'Unknown acceptance blocks local-loss re-reads', 'No retry of denials, rejections or invalid contracts',

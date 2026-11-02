@@ -3,7 +3,6 @@ import { before, test } from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { file, reset, sql } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral as json } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
-import { buildAdaptiveRecurringSearchPrompt } from '../../../src/features/meta-search/domain/adaptiveSearchTask';
 
 before(() => reset());
 const project = 'abcdefghijklmnopqrst';
@@ -16,7 +15,7 @@ const definition = (source: string) => {
   return match[0].replace('CREATE FUNCTION', 'CREATE OR REPLACE FUNCTION');
 };
 
-test('hosted codec upgrade preserves research and schedules while new setup hands off the exact tested executable prompt', () => {
+test('historical hosted codec upgrade preserves research and hands off its original storage-based prompt', () => {
   const owner = randomUUID(), search = randomUUID(), run = randomUUID(), oldSetup = randomUUID(), nextSetup = randomUUID();
   const current = sql(`select pg_get_functiondef('${signature}'::regprocedure);`) + ';';
   const properties = () => sql(`select to_jsonb(p)-'prosrc' from pg_proc p where p.oid='${signature}'::regprocedure;`);
@@ -63,9 +62,11 @@ test('hosted codec upgrade preserves research and schedules while new setup hand
     assert.equal(snapshot(), saved, 'Reading the same run rewrote pinned research');
     assert.equal(handoff(oldSetup).error.code, 'setup_stale', 'An old setup must not silently publish the old prose-only prompt');
 
-    const updated = handoff(nextSetup), expected = buildAdaptiveRecurringSearchPrompt(search, project);
+    const updated = handoff(nextSetup);
+    const expected = /\$adaptive_recurring\$([\s\S]*?)\$adaptive_recurring\$/u.exec(upgrade)![1]!
+      .replaceAll('{{search_id}}', search).replaceAll('{{project_ref}}', project);
     assert.equal(updated.compatible, true, JSON.stringify(updated));
-    assert.equal(updated.recurringPrompt, expected, 'The setup must carry exactly the frontend-tested prompt and codec source');
+    assert.equal(updated.recurringPrompt, expected, 'The historical setup must carry its immutable prompt and codec source');
     assert.equal(updated.recurring_prompt_hash, createHash('sha256').update(expected).digest('hex'));
     assert.deepEqual(updated.schedule, previous.schedule);
     assert.deepEqual(updated.target, previous.target);

@@ -34,13 +34,29 @@ test('96-KiB startup changes only the response bound and the matching recurring 
   assert.equal(installed.get(prompt), definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql'))
     .get(prompt)!.replace('response_limit_bytes=65536', `response_limit_bytes=${ADAPTIVE_BRIEF_MAX_BYTES}`));
   assert.equal(installed.get(brief), current.get(brief));
-  assert.equal(definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')).get(prompt), current.get(prompt));
+  assert.equal(definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql')).get(prompt), current.get(prompt));
   const instructions = buildAdaptiveRecurringSearchPrompt(scope.search_id, scope.project_ref);
   assert.ok(instructions.includes(`response_limit_bytes=${ADAPTIVE_BRIEF_MAX_BYTES}`));
   assert.ok(!instructions.includes('response_limit_bytes=65536'));
   const installation = upgrade.replace(functionDefinition, '').replace(/^--.*$/gmu, '');
   assert.doesNotMatch(installation, /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|PERFORM|ALTER|GRANT|REVOKE|DROP)\b/iu);
   assert.equal((installation.match(/Expected the reviewed 64-KiB startup predecessor/gu) ?? []).length, 2);
+});
+
+test('inline response codec upgrade replaces only the recurring formatter behind its exact historical guard', () => {
+  const upgrade = read('supabase/releases/adaptive-search-inline-codec-v1.sql');
+  const installed = definitions(upgrade), current = definitions(read('supabase/schemas/12_search_support.sql'));
+  const prompt = 'private.adaptive_search_recurring_prompt(p_search_id uuid, p_project_ref text) RETURNS text';
+  assert.deepEqual([...installed.keys()], [prompt]);
+  assert.equal(installed.get(prompt), current.get(prompt));
+  const predecessor = definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')).get(prompt)!;
+  const body = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(predecessor)![2]!;
+  assert.equal(createHash('md5').update(body).digest('hex'), 'f0f1107bfb90554396b1ab6f12944f9f');
+  const installation = upgrade.replace(functionDefinition, '').replace(/^--.*$/gmu, '');
+  assert.match(installation, /is distinct from 'f0f1107bfb90554396b1ab6f12944f9f'/u);
+  assert.doesNotMatch(installation, /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|PERFORM|ALTER|GRANT|REVOKE|DROP|CALL)\b/iu);
+  assert.match(installed.get(prompt)!, /LANGUAGE plpgsql IMMUTABLE\n\s+SET search_path TO ''/u);
+  assert.match(upgrade, /begin;[\s\S]*commit;\s*$/u);
 });
 
 test('targeted brief upgrade matches current definitions and grants no app-role access', () => {
@@ -55,7 +71,8 @@ test('targeted brief upgrade matches current definitions and grants no app-role 
     ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-startup-logging-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql'))]);
   assert.equal(installed.size, 3);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale brief upgrade: ${signature}`);
   assert.match(upgrade, /octet_length\(brief::text\)>65536/u);
@@ -77,7 +94,8 @@ test('automatic replacement upgrade installs the same current fences with a defe
     ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-startup-logging-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql'))]);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale replacement upgrade: ${signature}`);
   assert.match(upgrade, /ADD COLUMN superseded_by_run_id uuid/u);
   assert.match(upgrade, /FOREIGN KEY \(user_id,search_id,superseded_by_run_id\)[\s\S]*?REFERENCES public\.opportunity_search_runs\(user_id,search_id,id\) DEFERRABLE INITIALLY DEFERRED/u);
@@ -91,7 +109,8 @@ test('historical response-handling upgrade keeps its original contract before th
   const installed = definitions(upgrade), incremental = definitions(read('supabase/releases/adaptive-search-incremental-saves-v1.sql'));
   const later = new Map([...incremental, ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql'))]);
   const current = definitions(read('supabase/schemas/12_search_support.sql'));
   assert.equal(installed.size, 1);
   for (const [signature, body] of installed) {
@@ -114,7 +133,8 @@ test('incremental save upgrade replaces exactly three guarded functions without 
   const later = new Map([...definitions(read('supabase/releases/adaptive-search-batch-diagnostics-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql'))]);
   assert.deepEqual([...installed.keys()].sort(), [
     'private.adaptive_batch_error(p_code text) RETURNS jsonb',
     'private.adaptive_search_recurring_prompt(p_search_id uuid, p_project_ref text) RETURNS text',
