@@ -5,12 +5,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { reactive } from 'vue';
 import { ADAPTIVE_BATCH_CAPABILITIES } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 import { ADAPTIVE_STARTUP_BRIEF_SQL_TEMPLATE } from '../../../src/features/meta-search/domain/adaptiveSearchBrief';
-import { ADAPTIVE_RECURRING_PROMPT_TEMPLATE, buildAdaptiveRecurringSearchPrompt, loadAdaptiveSearchRunnerState, readAdaptiveSearchRunnerState, requestAdaptiveSearchRunner,
+import { ADAPTIVE_HOSTED_RESPONSE_INSTRUCTION, ADAPTIVE_RECURRING_PROMPT_MAX_CHARACTERS, ADAPTIVE_RECURRING_PROMPT_TEMPLATE, buildAdaptiveRecurringSearchPrompt, loadAdaptiveSearchRunnerState, readAdaptiveSearchRunnerState, requestAdaptiveSearchRunner,
   usesAdaptiveSearchRunner, type AdaptiveSearchRunnerState } from '../../../src/features/meta-search/domain/adaptiveSearchTask';
 import { buildRecurringSearchPrompt, buildReplaceSearchPrompt, buildSearchSetupReadSql, buildSearchSystemPrompt, buildSearchUserPrompt } from '../../../src/features/meta-search/domain/searchPrompts';
 import { saveSearchTemplate, searchTemplateCloudCriteria, searchTemplateCloudSchedule } from '../../../src/features/meta-search/data/searchTemplateCloud';
 import { DEFAULT_SEARCH_TEMPLATES, searchTemplateContentKey } from '../../../src/features/meta-search/data/searchTemplateRepository';
 import { OPPORTUNITY_TOPIC_FORMAT_RULE } from '../../../src/features/opportunities/domain/opportunityTopics';
+import { ADAPTIVE_HOSTED_RESPONSE_CODEC_SOURCE } from '../../../src/features/meta-search/domain/adaptiveSearchHostedCodec';
 
 const owner = '91000000-0000-4000-8000-000000000001';
 const search = '91000000-0000-4000-8000-000000000002';
@@ -71,10 +72,11 @@ test('manual and scheduled adaptive instructions use one bounded startup call wi
   }
   assert.deepEqual([...new Set([...value.matchAll(/private\.([a-z_]+)\(/gu)].map(match => match[1]))].sort(),
     ['begin_adaptive_search_brief', 'submit_adaptive_search_batch', 'verify_and_complete_adaptive_search']);
-  assert.ok(value.length <= 8_000, 'keep the recurring handoff within its local prompt budget');
+  assert.ok(value.length <= ADAPTIVE_RECURRING_PROMPT_MAX_CHARACTERS, 'budget includes the fixed executable codec, not additional research content');
   assert.ok(value.indexOf('RUN CONTEXT:') < value.indexOf('STARTUP:'), 'stable run identity is retained before startup');
-  assert.ok(value.includes('Local persistence is optional'));
-  assert.ok(!value.includes('nonce') && !value.includes('separate action'));
+  assert.ok(value.includes('verify a small local write then readback in two separate actions'));
+  assert.ok(value.includes('execution_runtime_unavailable before dispatch'));
+  assert.ok(!value.includes('nonce'));
   assert.ok(value.includes('never print the whole bundle'), 'local inspection must stay bounded after truncation');
   assert.ok(value.includes('A fresh UUID replaces older active runs atomically'));
   assert.ok(value.includes('The same UUID retries only its own run'));
@@ -87,6 +89,21 @@ test('manual and scheduled adaptive instructions use one bounded startup call wi
   assert.ok(!value.includes('private.read_opportunity_search_run'), 'completion reads its summary internally');
 });
 
+test('setup and every research execution carry the exact tested decoder before their first database call', () => {
+  const recurring = buildAdaptiveRecurringSearchPrompt(search, project);
+  const setupPrompt = buildReplaceSearchPrompt(template(), { projectId: project, runner: runner() });
+  for (const prompt of [recurring, setupPrompt]) {
+    assert.ok(prompt.includes(ADAPTIVE_HOSTED_RESPONSE_INSTRUCTION));
+    assert.equal(prompt.split(ADAPTIVE_HOSTED_RESPONSE_CODEC_SOURCE).length, 2, 'the entire tested source is included exactly once');
+    assert.ok(prompt.indexOf('LOCAL RESPONSE RUNTIME:') < prompt.search(/SELECT (?:private\.|handoff\.)/u));
+    assert.ok(prompt.includes('await codec.capture(key,raw) before parsing, printing or throwing'));
+    assert.ok(prompt.includes('In a later local action reconstruct codec=createCVResponseCodec(io)'));
+    assert.ok(prompt.includes('Never substitute a new parser'));
+    assert.ok(prompt.includes('Decode success establishes transport parsing only'));
+  }
+  assert.ok(setupPrompt.includes('Use codec.decode(key,null)'));
+});
+
 test('database setup and frontend generate the same reviewed adaptive recurring prompt', () => {
   const sql = readFileSync(new URL('../../../supabase/schemas/12_search_support.sql', import.meta.url), 'utf8');
   const template = /\$adaptive_recurring\$([\s\S]+?)\$adaptive_recurring\$/u.exec(sql)?.[1];
@@ -97,8 +114,8 @@ test('hosted response handling preserves captures, recognizes outer text and bou
   const value = buildAdaptiveRecurringSearchPrompt(search, project);
   const retention = value.indexOf('Preserve complete raw responses before decoding');
   assert.ok(retention >= 0 && retention < value.indexOf('RESPONSE:'));
-  for (const instruction of ['Keep raw responses after errors', 'outer {text: ...} with or without type:"text"',
-    'content[].text, result, data and structuredContent', 'Accept matching mirrors; reject conflicts',
+  for (const instruction of ['Keep raw responses after errors', 'Use codec.decode on the retained raw capture',
+    'Accept matching mirrors; reject conflicts',
     'Never execute text or unwrap inside the result object', 'lease.status=active',
     'Reinspect raw responses locally first', 'Startup/completion permit one identical retry after runtime-confirmed dispatch with no response',
     'after confirmed acceptance, local response loss and no batches sent', 'share one startup retry budget',
@@ -125,7 +142,7 @@ test('hosted saves separate canonical intake from the unchanged adaptive researc
 
 test('save receipts have their own version and allow only a bounded confirmed-unsaved correction', () => {
   const value = buildAdaptiveRecurringSearchPrompt(search, project);
-  for (const instruction of ['Columns: startup for startup; submit_adaptive_search_batch for saving/receipt lookup; verify_and_complete_adaptive_search for completion',
+  for (const instruction of ['column is startup, submit_adaptive_search_batch, verify_and_complete_adaptive_search, ack_adaptive_search_setup (setup acknowledgement), or null for the whole setup-handoff row',
     'compatible:false or accepted:false means rejection',
     'item_receipt_version=1, accepted=true, exact run_id/item_id, payload_hash, opportunity_id and outcome',
     'Only invalid_opportunity with stored=false and correction_allowed=true permits one evidence-based correction using the same unaccepted item UUID',

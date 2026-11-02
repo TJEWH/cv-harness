@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "476d9365aae1759de75bf13d0c1ac42c8ae46801bdcd1c3127e25ba3bf459aa0"
+      "sha256": "0e85ea9dbdcb24795a11d4f4c54d90b4ee360b61f42a9a68ec63535037b54118"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "c1c676d6b7b019085b864adefedf4a000d51aa7bd7339d261ca8297a0c8cb089"
+        "sha256": "71a2e8c20e55a110b8df7a8a21cbe1f9c424fba6f7c623fc0f99738afe98cb91"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -109,6 +109,10 @@
     "brief_limit_upgrade": {
       "path": "supabase/releases/adaptive-search-brief-limit-v1.sql",
       "sha256": "4c0bcdc5445bd772fb3f926fb440850c0922c92523625eb893a5efad64376130"
+    },
+    "hosted_codec_upgrade": {
+      "path": "supabase/releases/adaptive-search-hosted-codec-v1.sql",
+      "sha256": "66757fd65379688a8a93acb2c7bd351a62b5dfab079f9306d38d74b1ee6a38e4"
     },
     "lifecycle_contracts": [
       {
@@ -192,7 +196,11 @@
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchTask.ts",
-      "sha256": "00af13485cf884de56297c62cad588001ece0621388927cfc33a61949b1a9d9d"
+      "sha256": "298dd32824389fc7b39aa98117e9da3ca01d4ff8561ddf26d4b9fd180407b785"
+    },
+    {
+      "path": "src/features/meta-search/domain/adaptiveSearchHostedCodec.ts",
+      "sha256": "c7f0f130ab1c161ef3b68050133db436ef57351fd59373560e25c7c46a05ca04"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchLifecycle.ts",
@@ -212,7 +220,7 @@
     },
     {
       "path": "src/features/meta-search/domain/searchPrompts.ts",
-      "sha256": "24a4548f4c240b9d4709ac7c5bc124038e03d5670c4c86b7111a347d64c57b7c"
+      "sha256": "086d711f5dfb00478d7aa040bfe84cf3b8c50462634f5457f47f1028da0e1fb5"
     },
     {
       "path": "src/features/meta-search/searchTypes.ts",
