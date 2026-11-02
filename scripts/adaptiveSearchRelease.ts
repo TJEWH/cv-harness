@@ -38,6 +38,8 @@ export function buildAdaptiveSearchReleaseManifest() {
       inline_codec_upgrade: artifact('supabase/releases/adaptive-search-inline-codec-v1.sql'),
       current_saves_upgrade: artifact('supabase/releases/adaptive-search-current-saves-v1.sql'),
       deferred_receipts_upgrade: artifact('supabase/releases/adaptive-search-deferred-receipts-v1.sql'),
+      independent_saves_upgrade: artifact('supabase/releases/adaptive-search-independent-saves-v1.sql'),
+      save_receipt_contract: artifact('supabase/contracts/adaptive-search-save-receipt.schema.json'),
       lifecycle_contracts: ['supabase/contracts/adaptive-search-lifecycle.request.schema.json',
         'supabase/contracts/adaptive-search-lifecycle.response.schema.json'].map(artifact),
     },

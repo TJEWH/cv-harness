@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "6f9e0c6d4fdafc4bf088388bfc8ef9fb584371e44d494ec456f81245ad89a737"
+      "sha256": "fbfd856231b8fbeac5b3dae3d101b14b632fec6a780ea05e7e4f773ba36a65b7"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "cd3e1714553dec4b86551a3eea0bd5f8ec47b9da9cbde02b2366772ff96788b0"
+        "sha256": "b1aed30da2b2f5074edd0f380e58828fd5908940dafc2ee6510fa9253fef6c80"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -59,7 +59,7 @@
       },
       {
         "path": "supabase/schemas/60_security.sql",
-        "sha256": "bcf92ad1b34d9a11c743803ab2038c4a9b2a821d67d969a992b3d456344c3cbd"
+        "sha256": "02a3c075664c6b83953b3f56f3ac9056fec32a440c69edb0b45a4ad74139f364"
       },
       {
         "path": "supabase/schemas/70_reference_data.sql",
@@ -126,6 +126,14 @@
       "path": "supabase/releases/adaptive-search-deferred-receipts-v1.sql",
       "sha256": "6b36a97b4257fe2fcfd6028df855447c7bc5f28513c789b5deb544937bc1ac0a"
     },
+    "independent_saves_upgrade": {
+      "path": "supabase/releases/adaptive-search-independent-saves-v1.sql",
+      "sha256": "0dbc02259c97b7e018e24602dd539f32e393bf72cd6010a5d721803d56f49460"
+    },
+    "save_receipt_contract": {
+      "path": "supabase/contracts/adaptive-search-save-receipt.schema.json",
+      "sha256": "fe5cea7eec1651ac364e03e9fb3651905a152dcc0fe69306acef6e2061c32f74"
+    },
     "lifecycle_contracts": [
       {
         "path": "supabase/contracts/adaptive-search-lifecycle.request.schema.json",
@@ -182,7 +190,7 @@
   "runner_artifacts": [
     {
       "path": "src/features/meta-search/domain/adaptiveSearchProtocol.ts",
-      "sha256": "e038b73130add7c39c57022c9bdcfc1a0ab22bc8659c3d40c5467cbc2b006dfc"
+      "sha256": "87169db28c5557113d0a4547a89974832d29140d846bd1b62173a975d6675fde"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchBrief.ts",

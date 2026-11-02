@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Current adaptive opportunity save receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "adaptive_contract_version",
+    "item_receipt_version",
+    "accepted",
+    "saved",
+    "run_id",
+    "item_id",
+    "payload_hash",
+    "opportunity_id",
+    "outcome",
+    "canonical_outcome",
+    "conflict_code",
+    "accepted_roots",
+    "deferred_fields",
+    "discovery_id",
+    "verification_required",
+    "bookkeeping"
+  ],
+  "properties": {
+    "adaptive_contract_version": {
+      "const": 1
+    },
+    "item_receipt_version": {
+      "const": 1
+    },
+    "accepted": {
+      "const": true
+    },
+    "saved": {
+      "type": "boolean"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "item_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "payload_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "opportunity_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "saved",
+        "unresolved"
+      ]
+    },
+    "canonical_outcome": {
+      "enum": [
+        "new",
+        "updated",
+        "unchanged",
+        null
+      ]
+    },
+    "conflict_code": {
+      "enum": [
+        null,
+        "identity_conflict",
+        "insufficient_evidence",
+        "correction_deferred",
+        "scope_changed"
+      ]
+    },
+    "accepted_roots": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "accepted",
+          "rejected",
+          "unchanged",
+          "conflicting"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "type": "number",
+            "minimum": 0
+          },
+          "rejected": {
+            "type": "number",
+            "minimum": 0
+          },
+          "unchanged": {
+            "type": "number",
+            "minimum": 0
+          },
+          "conflicting": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "deferred_fields": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "contacts",
+          "supervisors",
+          "supervisor_research_focus",
+          "supervisor_top_papers",
+          "supervisor_reputation"
+        ]
+      }
+    },
+    "discovery_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "verification_required": {
+      "type": "boolean"
+    },
+    "bookkeeping": {
+      "$ref": "#/$defs/bookkeeping"
+    }
+  },
+  "$defs": {
+    "bookkeeping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "error_code"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "recorded",
+            "failed",
+            "deferred"
+          ]
+        },
+        "error_code": {
+          "enum": [
+            null,
+            "bookkeeping_failed",
+            "not_saved"
+          ]
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "status": {
+              "const": "recorded"
+            },
+            "error_code": {
+              "const": null
+            }
+          }
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "failed"
+            },
+            "error_code": {
+              "const": "bookkeeping_failed"
+            }
+          }
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "deferred"
+            },
+            "error_code": {
+              "const": "not_saved"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "anyOf": [
+    {
+      "properties": {
+        "saved": {
+          "const": true
+        },
+        "outcome": {
+          "const": "saved"
+        },
+        "opportunity_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "canonical_outcome": {
+          "enum": [
+            "new",
+            "updated",
+            "unchanged"
+          ]
+        },
+        "conflict_code": {
+          "type": "null"
+        },
+        "verification_required": {
+          "const": true
+        },
+        "bookkeeping": {
+          "properties": {
+            "status": {
+              "enum": [
+                "recorded",
+                "failed"
+              ]
+            }
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "bookkeeping": {
+              "properties": {
+                "status": {
+                  "const": "failed"
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "bookkeeping": {
+              "properties": {
+                "status": {
+                  "const": "recorded"
+                }
+              }
+            },
+            "discovery_id": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "properties": {
+        "saved": {
+          "const": false
+        },
+        "outcome": {
+          "const": "unresolved"
+        },
+        "opportunity_id": {
+          "type": "null"
+        },
+        "canonical_outcome": {
+          "type": "null"
+        },
+        "discovery_id": {
+          "type": "null"
+        },
+        "accepted_roots": {
+          "const": {}
+        },
+        "verification_required": {
+          "const": false
+        },
+        "bookkeeping": {
+          "properties": {
+            "status": {
+              "const": "deferred"
+            }
+          }
+        },
+        "conflict_code": {
+          "enum": [
+            "identity_conflict",
+            "insufficient_evidence",
+            "correction_deferred",
+            "scope_changed"
+          ]
+        }
+      }
+    }
+  ]
+}

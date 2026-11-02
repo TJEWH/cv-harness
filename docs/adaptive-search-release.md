@@ -65,6 +65,8 @@ The [startup logging upgrade](../supabase/releases/adaptive-search-startup-loggi
 
 The [deferred-receipt correction](../supabase/releases/adaptive-search-deferred-receipts-v1.sql) follows the current save-protocol upgrade. It clarifies saved versus unresolved receipts in the startup-loaded protocol and stops misclassifying unrelated check constraints as insufficient evidence. It changes neither the recurring task text nor the criteria, feedback, planning, schema or privileges. An already-updated task receives this clarification at its next startup without another setup paste.
 
+The [independent-save upgrade](../supabase/releases/adaptive-search-independent-saves-v1.sql) makes the established canonical writer and verifier authoritative. It isolates discovery/feedback tracking, enforces one closed JSON save-receipt/bookkeeping schema, and reconstructs missing tracking from saved facts. It preserves startup construction, criteria, feedback selection, query policy, the recurring task and the canonical opportunity schema. The existing four-helper task receives the updated save guidance at startup without another prompt paste. Installation replaces eight function bodies and adds two private server helpers; it writes no research data or schedules.
+
 ## Verification
 
 ```sh

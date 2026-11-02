@@ -113,8 +113,8 @@ test('current published protocol preserves adaptive research obligations and ind
     'needs_verification, unreachable, identity_ambiguous, deadline_uncertain, budget_exhausted, pagination_limit, dynamic_content or unsafe_reference',
     'Suggestions remain inert', 'Never fetch reviews or applications', 'requirements and availability allow only negative',
     'separate SELECT private.verify_adaptive_search_item', 'verified:true', 'changed_since_save', 'rolled_back',
-    'exact run/item IDs', 'opportunity_id must match the accepted receipt when available',
-    'if the save response is unavailable, retain the persisted opportunity_id returned by verification',
+    'exact run/item IDs', 'opportunity_id must match the save receipt when available',
+    'otherwise retain the persisted opportunity_id returned by verification',
     'accepted_roots', 'no rejected or conflicting leaves', 'Never treat the whole submitted object as accepted',
     'invalid_opportunity with stored:false and correction_allowed:true', 'one evidence-based correction',
     'Missing execution cannot establish complete research', 'cannot undo earlier committed saves',
@@ -124,17 +124,17 @@ test('current published protocol preserves adaptive research obligations and ind
   }
 });
 
-test('current receipt guidance distinguishes saved evidence from valid unresolved items and deferred verification', () => {
-  for (const required of ['then distinguish these two valid outcomes',
-    'outcome:saved requires a non-null opportunity_id UUID and verification_required:true',
-    'outcome:unresolved is a valid recorded deferral', 'opportunity_id, canonical_outcome and discovery_id are null',
+test('current receipt guidance makes canonical saving authoritative and bookkeeping independent', () => {
+  for (const required of ['explicit saved boolean', 'only saved:true means a canonical opportunity was written',
+    'closed save-receipt schema', 'bookkeeping is a separate closed object',
+    'A bookkeeping failure cannot undo a canonical save or invalidate its persistence proof',
+    'including bookkeeping.status:failed', 'idempotent bookkeeping repair using saved facts',
+    'outcome:unresolved is a recorded unsaved deferral', 'opportunity_id, canonical_outcome and discovery_id are null',
     'accepted_roots is {}, verification_required:false', 'insufficient_evidence, identity_conflict or correction_deferred',
-    'no opportunity was saved', 'Do not classify this receipt as invalid, verify it or resubmit it',
-    'item_id as candidate_id', 'reason:identity_ambiguous for identity_conflict, otherwise needs_verification',
-    'Continue saving other candidates', 'execution.complete:false and finish with status:failed',
+    'execution.complete:false and finish with status:failed',
     'status:deferred, verified:false and opportunity_id:null confirms a recorded unsaved item',
-    'continue other candidates without verifying or resubmitting it again',
-    'Any other missing, unverified or unavailable result stays uncertain']) {
+    'Any other missing, unverified or unavailable result stays uncertain',
+    'Verification checks the canonical opportunity, identity, receipt and merge audit independently of bookkeeping']) {
     assert.ok(ADAPTIVE_HOSTED_PROTOCOL_TEXT.includes(required), required);
   }
 });

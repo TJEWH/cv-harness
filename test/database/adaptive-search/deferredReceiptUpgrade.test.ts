@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { file, reset, sql } from '../../support/database/postgres';
 import { historicalFunctionDefinitions } from '../../support/database/historicalAdaptiveBatch';
-import { adaptiveJsonSqlLiteral as json, ADAPTIVE_HOSTED_PROTOCOL_TEXT } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
+import { adaptiveJsonSqlLiteral as json } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
 before(() => reset());
 const query = (statement: string) => JSON.parse(sql(statement));
@@ -19,6 +19,13 @@ test('deferred-receipt upgrade preserves existing unresolved items and research 
   const others = () => sql(`select md5(jsonb_agg(to_jsonb(p) order by p.oid)::text) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname in('private','public') and p.oid not in(select signature::regprocedure from jsonb_array_elements_text(${json(changed)}) s(signature));`);
   const expected = sources(), expectedProperties = properties();
+  const historical = historicalFunctionDefinitions('supabase/releases/adaptive-search-deferred-receipts-v1.sql');
+  for (const [name, definition] of historical) {
+    const signature = changed.find(value => value.startsWith(name + '('));
+    const body = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(definition)![2]!;
+    if (signature) expected[signature] = createHash('md5').update(body).digest('hex');
+  }
+  const historicalProtocol = /select \$adaptive_hosted\$([\s\S]*?)\$adaptive_hosted\$/u.exec(file('supabase/releases/adaptive-search-deferred-receipts-v1.sql'))![1]!;
   const snapshot = () => sql(`select jsonb_build_object(
     'run',(select to_jsonb(r) from public.opportunity_search_runs r where id='${run}'),
     'context',(select to_jsonb(c) from private.opportunity_search_adaptive_contexts c where run_id='${run}'),
@@ -69,7 +76,7 @@ test('deferred-receipt upgrade preserves existing unresolved items and research 
     assert.equal(snapshot(), before, 'Installation changed an existing run, receipt, schedule or pinned context');
     assert.equal(recurring(), savedPrompt, 'The recurring task instructions must not need another setup revision');
     const refreshed = startup();
-    assert.ok(refreshed.protocol_text.startsWith(ADAPTIVE_HOSTED_PROTOCOL_TEXT));
+    assert.ok(refreshed.protocol_text.startsWith(historicalProtocol));
     for (const key of ['scope', 'base', 'query_plan', 'legacy_core_queries', 'feedback', 'planning', 'preferences', 'result_schema',
       'source_context', 'due_sources', 'refresh', 'lease', 'capabilities', 'execution_contract']) {
       assert.deepEqual(refreshed[key], pinned[key], `Upgrade changed pinned ${key}`);

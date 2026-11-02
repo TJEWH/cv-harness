@@ -318,13 +318,14 @@ Normally finish with the actual query_plan. Instead, plan_hash may reuse the sup
 SAVE ONE OPPORTUNITY
 Call SELECT private.save_adaptive_search_item(run_uuid::uuid,item_uuid::uuid,opportunity_json::jsonb). Send one object satisfying startup.result_schema directly, with no wrapper, execution report, schema_version or extra metadata. Keep verified decision-relevant facts, research summaries, methods, funding, conditions and open questions. Omit unknown optional fields and raw page dumps. Use numeric 0.0–10.0 assessments with scale_min:0, scale_max:10 and evidence-based summaries; unknown scores are null. Interests do not establish qualifications. Never invent evidence or check times. Each sources[].supports value must name an evidenced canonical field or a JSON pointer rooted in one; use the exact field-name guidance supplied with this protocol.
 Each item is limited to 256 KiB; at most 320 items per run. Automatic people enrichment is deferred. A correction requires an exact safely known expected value and a reason; otherwise defer it, without fetching private snapshots. Stable item IDs identify immutable accepted payloads.
-First require adaptive_contract_version:1, item_receipt_version:1, accepted:true, matching run_id/item_id, payload_hash, accepted_roots and outcome, then distinguish these two valid outcomes. outcome:saved requires a non-null opportunity_id UUID and verification_required:true. accepted_roots reports accepted, rejected, unchanged and conflicting leaf counts for each canonical root, without field values; independently verify this saved item next.
-outcome:unresolved is a valid recorded deferral: opportunity_id, canonical_outcome and discovery_id are null, accepted_roots is {}, verification_required:false, and conflict_code is insufficient_evidence, identity_conflict or correction_deferred. accepted:true means the deferred run item was recorded; no opportunity was saved. Do not classify this receipt as invalid, verify it or resubmit it. Add it to execution.backlog using its item_id as candidate_id and reason:identity_ambiguous for identity_conflict, otherwise needs_verification. Continue saving other candidates. While an item remains unresolved, use execution.complete:false and finish with status:failed, preserving verified partial progress.
+Receipts are server-generated JSON validated against the current closed save-receipt schema. Require adaptive_contract_version:1, item_receipt_version:1, accepted:true, exact run_id/item_id, payload_hash and the explicit saved boolean. accepted:true acknowledges item intake; only saved:true means a canonical opportunity was written. For saved:true require outcome:saved, a non-null opportunity_id UUID, verification_required:true and accepted_roots. The server derives these from the canonical receipt. accepted_roots reports accepted, rejected, unchanged and conflicting leaf counts for each canonical root, without field values.
+bookkeeping is a separate closed object: {"status":"recorded","error_code":null}, {"status":"failed","error_code":"bookkeeping_failed"}, or, for an unsaved deferral, {"status":"deferred","error_code":"not_saved"}. A bookkeeping failure cannot undo a canonical save or invalidate its persistence proof. Continue to the normal verification call when saved:true, including bookkeeping.status:failed. The server attempts idempotent bookkeeping repair using saved facts; never submit a bookkeeping envelope, copy assessments or make another discovery/read call.
+For saved:false, outcome:unresolved is a recorded unsaved deferral: opportunity_id, canonical_outcome and discovery_id are null, accepted_roots is {}, verification_required:false, and conflict_code identifies insufficient_evidence, identity_conflict or correction_deferred. Do not count it as saved, verify it or resubmit it. Add its item_id to execution.backlog as candidate_id, using reason:identity_ambiguous for identity_conflict, otherwise needs_verification. Continue other candidates. While an item remains unresolved, use execution.complete:false and finish with status:failed, preserving verified partial progress.
 Only invalid_opportunity with stored:false and correction_allowed:true permits one evidence-based correction using the same unaccepted item UUID. A second invalid opportunity stays unresolved; continue other items. Other rejections stop. Never claim that a receipt alone proves persistence.
 
 VERIFY EACH SAVE
-After each accepted saved item, make a separate SELECT private.verify_adaptive_search_item(run_uuid::uuid,item_uuid::uuid). Require adaptive_contract_version:1, item_verification_version:1, compatible:true, exact run/item IDs and verified:true. The opportunity_id must match the accepted receipt when available; if the save response is unavailable, retain the persisted opportunity_id returned by verification. A changed_since_save or rolled_back result is not an unchanged verified save. Report submitted facts as saved only under roots with no rejected or conflicting leaves and with independent verification. Acknowledge partial or conflicted roots; their counts cannot identify which nested field was accepted. Never treat the whole submitted object as accepted.
-If a save was dispatched but its response is unavailable, with no rejection, denial, invalid contract or pending approval, use that same normal verification call once with the original run/item IDs. A verified result establishes persisted progress. A compatible result with exact run/item IDs, status:deferred, verified:false and opportunity_id:null confirms a recorded unsaved item: add it to the backlog with reason:needs_verification and continue other candidates without verifying or resubmitting it again. Any other missing, unverified or unavailable result stays uncertain: stop, preserve IDs and do not resend the save, change IDs or finish. After an explicit denial make no further database calls.
+After each saved:true item, make a separate SELECT private.verify_adaptive_search_item(run_uuid::uuid,item_uuid::uuid). Require adaptive_contract_version:1, item_verification_version:1, compatible:true, exact run/item IDs and verified:true. Verification checks the canonical opportunity, identity, receipt and merge audit independently of bookkeeping. The opportunity_id must match the save receipt when available; otherwise retain the persisted opportunity_id returned by verification. A changed_since_save or rolled_back result is not an unchanged verified save. Report submitted facts as saved only under roots with no rejected or conflicting leaves and with independent verification. Acknowledge partial or conflicted roots; their counts cannot identify which nested field was accepted. Never treat the whole submitted object as accepted. Report bookkeeping.status:failed separately without discarding verified catalogue saves.
+If a save was dispatched but its response is unavailable, with no rejection, denial, invalid contract or pending approval, use that same normal verification call once with the original run/item IDs. A verified result establishes persisted progress even if bookkeeping failed. A compatible result with exact run/item IDs, status:deferred, verified:false and opportunity_id:null confirms a recorded unsaved item: add it to the backlog with reason:needs_verification and continue other candidates without verifying or resubmitting it again. Any other missing, unverified or unavailable result stays uncertain: stop, preserve IDs and do not resend the save, change IDs or finish. After an explicit denial make no further database calls.
 
 ACTUAL EXECUTION REPORT
 Keep the actual checks and unresolved candidates throughout research. execution has checks (required array, at most 128), optional backlog (at most 64) and optional complete (boolean). Query checks require check_id (distinct UUID), kind:query, query_id from the actual plan, attempted_at (actual ISO timestamp) and status. Optional text_hash must match the query; optional source_registry_id must be that query's authorized target. Direct source checks require check_id, kind:source, source_registry_id copied from the authorized context, attempted_at and status; omit query_id and text_hash. Record every due source separately, even when it yielded zero opportunities.
@@ -1254,62 +1255,33 @@ CREATE FUNCTION private.opportunity_search_adaptive_current_verification(p_run_i
     LANGUAGE plpgsql
     SET search_path TO ''
     AS $$
-declare item record;receipt record;audit record;proof jsonb;discovery_proof jsonb;status text;verified boolean;changed boolean;rolled boolean;
-  items jsonb:='[]';saved_count integer:=0;verified_count integer:=0;missing_count integer:=0;changed_count integer:=0;rolled_count integer:=0;unresolved_count integer:=0;
+declare item record;proof jsonb;status text;items jsonb:='[]';saved_count integer:=0;verified_count integer:=0;
+  missing_count integer:=0;changed_count integer:=0;rolled_count integer:=0;unresolved_count integer:=0;bookkeeping_failed integer:=0;
 begin
   perform private.guard_search_run_not_aborted(p_run_id);
-  if current_user<>'postgres' then raise exception 'Management verification access is required' using errcode='42501';end if;
-  -- Serialize canonical writers and approved rollback, then hold each live row
-  -- against direct concurrent updates until the final persisted summary read.
-  perform pg_advisory_xact_lock(hashtextextended('opportunity-search-catalogue-v1',0));
-  for item in select i.batch_id,i.item_id,i.opportunity_id,i.outcome,i.discovery_id from private.opportunity_search_adaptive_items i
-    join public.opportunity_search_runs r on r.id=i.run_id and r.user_id=p_user_id
-    left join private.opportunity_search_adaptive_batches b on b.run_id=i.run_id and b.batch_id=i.batch_id
-    where i.run_id=p_run_id and(i.batch_id is null or b.user_id=p_user_id and b.search_id=r.search_id) order by i.batch_id,i.item_id loop
-    verified:=false;changed:=false;rolled:=false;status:='verification_failed';
-    if item.outcome='unresolved' then status:='deferred';unresolved_count:=unresolved_count+1;
-    else
-      saved_count:=saved_count+1;
-      select r.opportunity_id,r.user_id,r.verified_at into receipt from public.opportunity_search_receipts r where r.run_id=p_run_id and r.item_id=item.item_id for update;
-      if not found or receipt.user_id<>p_user_id or receipt.opportunity_id is distinct from item.opportunity_id then status:='missing_receipt';missing_count:=missing_count+1;
-      else
-        select a.opportunity_id,a.rolled_back_at into audit from private.opportunity_search_merge_audit a where a.run_id=p_run_id and a.item_id=item.item_id;
-        if not found or audit.opportunity_id is distinct from item.opportunity_id then status:='missing_audit';missing_count:=missing_count+1;
-        elsif audit.rolled_back_at is not null then status:='rolled_back';rolled:=true;rolled_count:=rolled_count+1;
-        else
-          perform 1 from public.opportunities o where o.id=item.opportunity_id for share;
-          if not found then status:='missing_opportunity';missing_count:=missing_count+1;
-          else
-            begin
-              -- The broad legacy result stays in this local variable only.
-              proof:=private.verify_opportunity_search_result(p_run_id,item.item_id);
-              changed:=coalesce((proof->>'changed_since_save')::boolean,true);
-              rolled:=coalesce((proof->>'rolled_back')::boolean,false);
-              if rolled then status:='rolled_back';rolled_count:=rolled_count+1;
-              elsif changed then status:='changed_since_save';changed_count:=changed_count+1;
-              elsif proof->'verified'='true'::jsonb then
-                if item.discovery_id is not null then
-                  discovery_proof:=private.verify_opportunity_search_discovery(p_run_id,item.item_id);
-                  if discovery_proof->'verified' is distinct from 'true'::jsonb then status:='verification_failed';
-                  else status:='verified';verified:=true;end if;
-                else status:='verification_failed';end if;
-              end if;
-            exception
-              when insufficient_privilege then raise;
-              when check_violation or unique_violation then status:='identity_conflict';
-              when no_data_found then status:='missing_receipt';missing_count:=missing_count+1;
-              when others then status:='verification_failed';
-            end;
-          end if;
-        end if;
-      end if;
-      if verified then verified_count:=verified_count+1;end if;
-    end if;
-    items:=items||jsonb_build_array(jsonb_build_object('batch_id',item.batch_id,'item_id',item.item_id,'opportunity_id',item.opportunity_id,
-      'status',status,'verified',verified,'changed_since_save',changed,'rolled_back',rolled));
+  if current_user<>'postgres' or not exists(select 1 from public.opportunity_search_runs where id=p_run_id and user_id=p_user_id) then
+    raise exception 'Management verification access required' using errcode='42501';end if;
+  for item in
+    select i.batch_id,i.item_id,i.outcome from private.opportunity_search_adaptive_items i
+      join public.opportunity_search_runs r on r.id=i.run_id and r.user_id=p_user_id
+      left join private.opportunity_search_adaptive_batches b on b.run_id=i.run_id and b.batch_id=i.batch_id
+      where i.run_id=p_run_id and(i.batch_id is null or b.user_id=p_user_id and b.search_id=r.search_id)
+    union all select null,r.item_id,'saved' from public.opportunity_search_receipts r where r.run_id=p_run_id and r.user_id=p_user_id
+      and not exists(select 1 from private.opportunity_search_adaptive_items i where i.run_id=r.run_id and i.item_id=r.item_id)
+    order by batch_id,item_id loop
+    proof:=private.verify_adaptive_search_item(p_run_id,item.item_id);status:=proof->>'status';
+    if status='deferred' then unresolved_count:=unresolved_count+1;else saved_count:=saved_count+1;end if;
+    if proof->'verified'='true'::jsonb then verified_count:=verified_count+1;end if;
+    if status in('missing_receipt','missing_audit','missing_opportunity') then missing_count:=missing_count+1;end if;
+    if status='changed_since_save' then changed_count:=changed_count+1;end if;
+    if status='rolled_back' then rolled_count:=rolled_count+1;end if;
+    if proof#>>'{bookkeeping,status}'='failed' then bookkeeping_failed:=bookkeeping_failed+1;end if;
+    items:=items||jsonb_build_array(jsonb_build_object('batch_id',item.batch_id,'item_id',item.item_id,'opportunity_id',proof->'opportunity_id',
+      'status',status,'verified',proof->'verified','changed_since_save',proof->'changed_since_save','rolled_back',proof->'rolled_back','bookkeeping',proof->'bookkeeping'));
   end loop;
   return jsonb_build_object('all_saved_items_verified',saved_count=verified_count,'saved_items',saved_count,'verified_items',verified_count,
-    'missing_items',missing_count,'changed_since_save_items',changed_count,'rolled_back_items',rolled_count,'unresolved_items',unresolved_count,'items',items);
+    'missing_items',missing_count,'changed_since_save_items',changed_count,'rolled_back_items',rolled_count,'unresolved_items',unresolved_count,
+    'bookkeeping_failed_items',bookkeeping_failed,'items',items);
 end;
 $$;
 
@@ -1368,11 +1340,15 @@ CREATE FUNCTION private.opportunity_search_adaptive_manifest(p_run_id uuid) RETU
     SET search_path TO ''
     AS $$
   with batches as(select batch_id,payload_hash,plan_hash,item_ids from private.opportunity_search_adaptive_batches where run_id=p_run_id),
+  standalone_items as(select item_id,payload_hash from private.opportunity_search_adaptive_items where run_id=p_run_id and batch_id is null
+    union all select r.item_id,encode(sha256(convert_to(r.payload::text,'UTF8')),'hex') from public.opportunity_search_receipts r where r.run_id=p_run_id
+      and not exists(select 1 from private.opportunity_search_adaptive_items i where i.run_id=r.run_id and i.item_id=r.item_id)),
   standalone as(select jsonb_agg(jsonb_build_object('item_id',item_id,'payload_hash',payload_hash) order by item_id) body
-    from private.opportunity_search_adaptive_items where run_id=p_run_id and batch_id is null),
+    from standalone_items),
   data as(select coalesce(jsonb_agg(jsonb_build_object('batch_id',batch_id,'payload_hash',payload_hash,'plan_hash',plan_hash,'item_ids',to_jsonb(item_ids)) order by batch_id),'[]') body from batches)
   select jsonb_build_object('batch_ids',(select coalesce(jsonb_agg(batch_id order by batch_id),'[]') from batches),
-    'item_ids',(select coalesce(jsonb_agg(item_id order by item_id),'[]') from private.opportunity_search_adaptive_items where run_id=p_run_id),
+    'item_ids',(select coalesce(jsonb_agg(item_id order by item_id),'[]') from(select item_id from private.opportunity_search_adaptive_items where run_id=p_run_id
+      union select item_id from public.opportunity_search_receipts where run_id=p_run_id) all_items),
     -- Preserve historical batch-only hashes exactly. Standalone evidence is
     -- included only when present, in the same server-derived immutable manifest.
     'manifest_hash',encode(sha256(convert_to((data.body||case when standalone.body is null then '[]'::jsonb
@@ -2830,7 +2806,16 @@ begin
       'recommendation_eligible',existing.recommendation_eligible,'recommendation_policy_violation',existing.recommendation_policy_violation,'delivery_status','unknown');
   end if;
   select * into run from public.opportunity_search_runs where id=p_run_id for update;
-  if not found or run.status<>'running' then raise exception 'An active search run is required' using errcode='22023';end if;
+  if not found then raise exception 'An active search run is required' using errcode='22023';end if;
+  if run.status<>'running' then
+    -- Server-derived repair can restore bookkeeping for an already saved item.
+    -- It cannot add research claims or bypass current adaptive authorization.
+    if p_payload<>'{}'::jsonb or run.status not in('complete','failed')
+      or not exists(select 1 from private.opportunity_search_adaptive_contexts where run_id=p_run_id) then
+      raise exception 'An active search run is required' using errcode='22023';end if;
+    perform private.require_adaptive_search_scope(p_run_id,false);
+    perform private.guard_search_run_not_aborted(p_run_id);
+  end if;
   select * into existing from public.opportunity_search_discoveries where run_id=p_run_id and item_id=p_item_id;
   if found then
     if existing.payload_hash<>fingerprint then raise exception 'Discovery identity already has different attribution' using errcode='40001';end if;
@@ -3325,20 +3310,87 @@ begin
 end;
 $$;
 
+-- private.adaptive_search_save_receipt_schema()
+CREATE FUNCTION private.adaptive_search_save_receipt_schema() RETURNS jsonb
+    LANGUAGE sql IMMUTABLE
+    SET search_path TO ''
+    AS $schema$ SELECT $json${"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Current adaptive opportunity save receipt","type":"object","additionalProperties":false,"required":["adaptive_contract_version","item_receipt_version","accepted","saved","run_id","item_id","payload_hash","opportunity_id","outcome","canonical_outcome","conflict_code","accepted_roots","deferred_fields","discovery_id","verification_required","bookkeeping"],"properties":{"adaptive_contract_version":{"const":1},"item_receipt_version":{"const":1},"accepted":{"const":true},"saved":{"type":"boolean"},"run_id":{"type":"string","pattern":"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},"item_id":{"type":"string","pattern":"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},"payload_hash":{"type":"string","pattern":"^[0-9a-f]{64}$"},"opportunity_id":{"anyOf":[{"type":"string","pattern":"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},{"type":"null"}]},"outcome":{"enum":["saved","unresolved"]},"canonical_outcome":{"enum":["new","updated","unchanged",null]},"conflict_code":{"enum":[null,"identity_conflict","insufficient_evidence","correction_deferred","scope_changed"]},"accepted_roots":{"type":"object","additionalProperties":{"type":"object","required":["accepted","rejected","unchanged","conflicting"],"additionalProperties":false,"properties":{"accepted":{"type":"number","minimum":0},"rejected":{"type":"number","minimum":0},"unchanged":{"type":"number","minimum":0},"conflicting":{"type":"number","minimum":0}}}},"deferred_fields":{"type":"array","items":{"enum":["contacts","supervisors","supervisor_research_focus","supervisor_top_papers","supervisor_reputation"]}},"discovery_id":{"anyOf":[{"type":"string","pattern":"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},{"type":"null"}]},"verification_required":{"type":"boolean"},"bookkeeping":{"$ref":"#/$defs/bookkeeping"}},"$defs":{"bookkeeping":{"type":"object","additionalProperties":false,"required":["status","error_code"],"properties":{"status":{"enum":["recorded","failed","deferred"]},"error_code":{"enum":[null,"bookkeeping_failed","not_saved"]}},"anyOf":[{"properties":{"status":{"const":"recorded"},"error_code":{"const":null}}},{"properties":{"status":{"const":"failed"},"error_code":{"const":"bookkeeping_failed"}}},{"properties":{"status":{"const":"deferred"},"error_code":{"const":"not_saved"}}}]}},"anyOf":[{"properties":{"saved":{"const":true},"outcome":{"const":"saved"},"opportunity_id":{"type":"string","pattern":"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},"canonical_outcome":{"enum":["new","updated","unchanged"]},"conflict_code":{"type":"null"},"verification_required":{"const":true},"bookkeeping":{"properties":{"status":{"enum":["recorded","failed"]}}}},"anyOf":[{"properties":{"bookkeeping":{"properties":{"status":{"const":"failed"}}}}},{"properties":{"bookkeeping":{"properties":{"status":{"const":"recorded"}}},"discovery_id":{"type":"string","pattern":"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"}}}]},{"properties":{"saved":{"const":false},"outcome":{"const":"unresolved"},"opportunity_id":{"type":"null"},"canonical_outcome":{"type":"null"},"discovery_id":{"type":"null"},"accepted_roots":{"const":{}},"verification_required":{"const":false},"bookkeeping":{"properties":{"status":{"const":"deferred"}}},"conflict_code":{"enum":["identity_conflict","insufficient_evidence","correction_deferred","scope_changed"]}}}]}$json$::jsonb $schema$;
+
+-- private.record_adaptive_item_bookkeeping(uuid, uuid, text, text[])
+CREATE FUNCTION private.record_adaptive_item_bookkeeping(p_run_id uuid, p_item_id uuid, p_payload_hash text DEFAULT NULL, p_deferred_fields text[] DEFAULT '{}'::text[]) RETURNS jsonb
+    LANGUAGE plpgsql
+    SET search_path TO ''
+    AS $$
+declare scope jsonb;canonical public.opportunity_search_receipts;discovery jsonb;result jsonb;schema jsonb;stage text:='canonical_receipt';
+begin
+  -- All facts come from the committed canonical receipt. No client-built
+  -- attribution, timestamps, prediction copies or bookkeeping envelopes.
+  begin
+    scope:=private.require_adaptive_search_scope(p_run_id,false);
+    perform private.guard_search_run_not_aborted(p_run_id);
+    select * into canonical from public.opportunity_search_receipts
+      where run_id=p_run_id and item_id=p_item_id and user_id=(scope->>'user_id')::uuid;
+    if not found then raise exception 'Canonical receipt required' using errcode='23514';end if;
+    if not exists(select 1 from private.opportunity_search_adaptive_items where run_id=p_run_id and item_id=p_item_id)
+      or not exists(select 1 from public.opportunity_search_discoveries where run_id=p_run_id and item_id=p_item_id) then
+      stage:='discovery_write';
+      discovery:=private.record_opportunity_search_discovery(p_run_id,p_item_id,'{}'::jsonb);
+      stage:='item_write';
+      insert into private.opportunity_search_adaptive_items(run_id,item_id,batch_id,payload_hash,opportunity_id,outcome,canonical_outcome,accepted_roots,deferred_fields,discovery_id)
+        values(p_run_id,p_item_id,null,coalesce(p_payload_hash,encode(sha256(convert_to(canonical.payload::text,'UTF8')),'hex')),
+          canonical.opportunity_id,'saved',canonical.result->>'outcome',private.adaptive_accepted_roots(p_run_id,p_item_id),p_deferred_fields,(discovery->>'discovery_id')::uuid)
+        on conflict(run_id,item_id) do nothing;
+    end if;
+    if canonical.verified_at is not null then
+      stage:='discovery_verification';
+      discovery:=private.verify_opportunity_search_discovery(p_run_id,p_item_id);
+      if discovery->'verified' is distinct from 'true'::jsonb then raise exception 'Bookkeeping verification failed' using errcode='23514';end if;
+    end if;
+    if not exists(select 1 from private.opportunity_search_adaptive_items i join public.opportunity_search_discoveries d
+      on d.run_id=i.run_id and d.item_id=i.item_id and d.discovery_id=i.discovery_id
+      where i.run_id=p_run_id and i.item_id=p_item_id and i.outcome='saved' and i.opportunity_id=canonical.opportunity_id
+        and d.opportunity_id=canonical.opportunity_id and d.user_id=canonical.user_id) then
+      raise exception 'Bookkeeping is incomplete' using errcode='23514';end if;
+    result:='{"status":"recorded","error_code":null}'::jsonb;
+  exception when insufficient_privilege then raise;
+    when others then
+      raise log 'CV Harness adaptive bookkeeping: run_id=% item_id=% stage=% sqlstate=%',p_run_id,p_item_id,stage,SQLSTATE;
+      result:='{"status":"failed","error_code":"bookkeeping_failed"}'::jsonb;
+  end;
+  schema:=private.adaptive_search_save_receipt_schema();
+  if not private.opportunity_payload_schema_valid(result,schema#>'{$defs,bookkeeping}',schema) then
+    raise exception 'Invalid server bookkeeping receipt' using errcode='23514';end if;
+  return result;
+end;
+$$;
+
 -- private.adaptive_item_receipt(uuid, uuid)
 CREATE FUNCTION private.adaptive_item_receipt(p_run_id uuid, p_item_id uuid) RETURNS jsonb
     LANGUAGE plpgsql STABLE
     SET search_path TO ''
     AS $$
-declare item private.opportunity_search_adaptive_items;
+declare item private.opportunity_search_adaptive_items;canonical public.opportunity_search_receipts;result jsonb;bookkeeping jsonb;discovery_uuid uuid;
 begin
   if current_user<>'postgres' then raise exception 'Management receipt access required' using errcode='42501';end if;
   select * into item from private.opportunity_search_adaptive_items where run_id=p_run_id and item_id=p_item_id and batch_id is null;
-  if not found then return null;end if;
-  return jsonb_build_object('adaptive_contract_version',1,'item_receipt_version',1,'accepted',true,'run_id',p_run_id,'item_id',p_item_id,
-    'payload_hash',item.payload_hash,'opportunity_id',item.opportunity_id,'outcome',item.outcome,'canonical_outcome',item.canonical_outcome,
-    'conflict_code',item.conflict_code,'accepted_roots',private.adaptive_accepted_roots(p_run_id,p_item_id),'deferred_fields',to_jsonb(item.deferred_fields),'discovery_id',item.discovery_id,
-    'verification_required',item.outcome='saved');
+  select * into canonical from public.opportunity_search_receipts where run_id=p_run_id and item_id=p_item_id;
+  if canonical.run_id is null and item.run_id is null then return null;end if;
+  if canonical.run_id is not null then
+    select discovery_id into discovery_uuid from public.opportunity_search_discoveries
+      where run_id=p_run_id and item_id=p_item_id and user_id=canonical.user_id and opportunity_id=canonical.opportunity_id;
+    bookkeeping:=case when item.outcome='saved' and item.opportunity_id=canonical.opportunity_id and item.discovery_id=discovery_uuid
+      then '{"status":"recorded","error_code":null}'::jsonb else '{"status":"failed","error_code":"bookkeeping_failed"}'::jsonb end;
+  else bookkeeping:='{"status":"deferred","error_code":"not_saved"}'::jsonb;end if;
+  result:=jsonb_build_object('adaptive_contract_version',1,'item_receipt_version',1,'accepted',true,'saved',canonical.run_id is not null,
+    'run_id',p_run_id,'item_id',p_item_id,'payload_hash',case when canonical.run_id is not null then encode(sha256(convert_to(canonical.payload::text,'UTF8')),'hex') else item.payload_hash end,
+    'opportunity_id',canonical.opportunity_id,'outcome',case when canonical.run_id is not null then 'saved' else 'unresolved' end,
+    'canonical_outcome',canonical.result->>'outcome','conflict_code',case when canonical.run_id is null then item.conflict_code else null end,
+    'accepted_roots',case when canonical.run_id is not null then private.adaptive_accepted_roots(p_run_id,p_item_id) else '{}'::jsonb end,
+    'deferred_fields',to_jsonb(coalesce(item.deferred_fields,'{}'::text[])),'discovery_id',discovery_uuid,
+    'verification_required',canonical.run_id is not null,'bookkeeping',bookkeeping);
+  if not private.opportunity_search_schema_valid(result,private.adaptive_search_save_receipt_schema()) then
+    raise exception 'Invalid server save receipt' using errcode='23514';end if;
+  return result;
 end;
 $$;
 
@@ -3347,10 +3399,10 @@ CREATE FUNCTION private.save_adaptive_search_item(p_run_id uuid, p_item_id uuid,
     LANGUAGE plpgsql
     SET search_path TO ''
     AS $_$
-declare scope jsonb;prior private.opportunity_search_adaptive_items;fingerprint text;effective jsonb;receipt jsonb;discovery jsonb;
-  deferred text[]:='{}';correction jsonb;corrections jsonb:='[]';field text;root text;conflict text;roots jsonb:='{}';
+declare scope jsonb;prior private.opportunity_search_adaptive_items;fingerprint text;effective jsonb;receipt jsonb;canonical public.opportunity_search_receipts;
+  deferred text[]:='{}';correction jsonb;corrections jsonb:='[]';field text;root text;conflict text;
   stage text:='scope';code text;state text;path text;reason text;safe_diagnostics jsonb;result jsonb;schema jsonb;source record;support record;
-  write_stage text;write_message text;diagnostic_context text;diagnostic_location text[];diagnostic_function_hash text;
+  write_message text;diagnostic_context text;diagnostic_location text[];diagnostic_function_hash text;
 begin
   begin
     scope:=private.require_adaptive_search_scope(p_run_id,false);
@@ -3361,15 +3413,20 @@ begin
     fingerprint:=encode(sha256(convert_to(p_opportunity::text,'UTF8')),'hex');
     if exists(select 1 from private.opportunity_search_adaptive_batches where run_id=p_run_id and batch_id=p_item_id) then
       raise exception 'Item identity belongs to a batch' using errcode='40001';end if;
+    select * into canonical from public.opportunity_search_receipts where run_id=p_run_id and item_id=p_item_id;
+    if canonical.run_id is not null and canonical.user_id<>(scope->>'user_id')::uuid then
+      raise exception 'Canonical receipt owner differs' using errcode='42501';end if;
     select * into prior from private.opportunity_search_adaptive_items where run_id=p_run_id and item_id=p_item_id;
     if found then
       if prior.batch_id is not null or prior.payload_hash<>fingerprint then raise exception 'Item identity has different contents' using errcode='40001';end if;
       return private.adaptive_item_receipt(p_run_id,p_item_id);
     end if;
-    if exists(select 1 from public.opportunity_search_receipts where run_id=p_run_id and item_id=p_item_id) then
-      raise exception 'Item receipt belongs to another submission' using errcode='40001';end if;
-    stage:='lease';perform private.require_adaptive_search_scope(p_run_id,true);
-    if(select count(*) from private.opportunity_search_adaptive_items where run_id=p_run_id)>=320 then
+    if not exists(select 1 from public.opportunity_search_receipts where run_id=p_run_id and item_id=p_item_id) then
+      stage:='lease';perform private.require_adaptive_search_scope(p_run_id,true);
+    end if;
+    if not exists(select 1 from public.opportunity_search_receipts where run_id=p_run_id and item_id=p_item_id)
+      and(select count(*) from(select item_id from private.opportunity_search_adaptive_items where run_id=p_run_id
+        union select item_id from public.opportunity_search_receipts where run_id=p_run_id) accepted_items)>=320 then
       raise exception 'Run item limit exceeded' using errcode='54000';end if;
     stage:='canonical_validation';
     perform private.validate_opportunity_search_result(p_opportunity);
@@ -3389,31 +3446,35 @@ begin
     end loop;
     effective:=effective-'merge_control';
     if jsonb_array_length(corrections)>0 then effective:=effective||jsonb_build_object('merge_control',jsonb_build_object('corrections',corrections));end if;
+    -- Existing canonical intake is immutable even when its optional item row
+    -- is missing. Never reinterpret a changed replay as a new deferral.
+    if canonical.run_id is not null then
+      if conflict is not null or effective is distinct from canonical.payload then
+        raise exception 'Saved item identity has different contents' using errcode='40001';end if;
+      -- An exact replay is a receipt read. Normal verification alone repairs
+      -- missing tracking using the canonical hash, including after completion.
+      return private.adaptive_item_receipt(p_run_id,p_item_id);
+    end if;
     stage:='item_write';
     if conflict is null then
       begin
-        write_stage:='canonical_write';
         receipt:=private.submit_opportunity_search_result(p_run_id,p_item_id,effective);
-        -- No execution path or discovery timestamp is invented to save facts.
-        write_stage:='discovery_write';
-        discovery:=private.record_opportunity_search_discovery(p_run_id,p_item_id,'{}'::jsonb);
-        write_stage:='receipt';
-        roots:=private.adaptive_accepted_roots(p_run_id,p_item_id);
-      exception when unique_violation or serialization_failure then conflict:='identity_conflict';receipt:=null;discovery:=null;
+        -- Canonical persistence has no dependency on adaptive bookkeeping.
+      exception when unique_violation or serialization_failure then conflict:='identity_conflict';receipt:=null;
         when check_violation then
           get stacked diagnostics write_message=MESSAGE_TEXT;
           -- Only the canonical writer's explicit new-record evidence rejection
           -- is unresolved research. Other constraints are save failures.
-          if write_stage='canonical_write' and write_message='Identity and title need accepted official evidence for a new record.' then
-            conflict:='insufficient_evidence';receipt:=null;discovery:=null;
+          if write_message='Identity and title need accepted official evidence for a new record.' then
+            conflict:='insufficient_evidence';receipt:=null;
           else raise;end if;
       end;
     end if;
     stage:='item_write';
-    insert into private.opportunity_search_adaptive_items(run_id,item_id,batch_id,payload_hash,opportunity_id,outcome,canonical_outcome,conflict_code,accepted_roots,deferred_fields,discovery_id)
-      values(p_run_id,p_item_id,null,fingerprint,(receipt->>'opportunity_id')::uuid,case when conflict is null then 'saved' else 'unresolved' end,
-        receipt->>'outcome',conflict,roots,deferred,(discovery->>'discovery_id')::uuid);
-    return private.adaptive_item_receipt(p_run_id,p_item_id);
+    if conflict is not null then
+      insert into private.opportunity_search_adaptive_items(run_id,item_id,batch_id,payload_hash,outcome,conflict_code,deferred_fields)
+        values(p_run_id,p_item_id,null,fingerprint,'unresolved',conflict,deferred);
+    end if;
   exception when insufficient_privilege then code:='authorization_revoked';state:=SQLSTATE;
     when object_not_in_prerequisite_state then
       code:=case when stage='abort' then 'run_aborted' when(scope->>'lease_expires_at')::timestamptz<=clock_timestamp() then 'lease_expired' else 'inactive_run' end;state:=SQLSTATE;
@@ -3421,9 +3482,21 @@ begin
     when program_limit_exceeded then code:='scope_oversized';state:=SQLSTATE;
     when deadlock_detected then raise;
     when others then
-      state:=SQLSTATE;code:=case when stage='canonical_validation' and SQLSTATE='22023' then 'invalid_opportunity' else 'save_failed' end;
+      state:=SQLSTATE;code:=case when canonical.run_id is not null then 'idempotency_conflict'
+        when stage='canonical_validation' and SQLSTATE='22023' then 'invalid_opportunity' else 'save_failed' end;
       get stacked diagnostics diagnostic_context=PG_EXCEPTION_CONTEXT;
   end;
+  if code is null then
+    if receipt is not null then
+      -- A nested failure rolls back only bookkeeping, preserving the canonical
+      -- write and its original assessment/evidence for later reconciliation.
+      begin
+        perform private.record_adaptive_item_bookkeeping(p_run_id,p_item_id,fingerprint,deferred);
+      exception when others then null; -- The canonical receipt remains authoritative.
+      end;
+    end if;
+    return private.adaptive_item_receipt(p_run_id,p_item_id);
+  end if;
   -- This block runs only after the whole intake subtransaction rolled back.
   -- Return fixed diagnostic labels and schema paths, never submitted values or SQL.
   safe_diagnostics:=jsonb_build_object('stage',stage,'sqlstate',state);
@@ -3462,7 +3535,7 @@ begin
     exception when others then null;end;
   end if;
   result:=jsonb_build_object('adaptive_contract_version',1,'item_receipt_version',1,'accepted',false,'run_id',p_run_id,'item_id',p_item_id,
-    'stored',case when code='invalid_opportunity' then false else null end,'correction_allowed',code='invalid_opportunity',
+    'stored',case when canonical.run_id is not null then true when code='invalid_opportunity' then false else null end,'correction_allowed',code='invalid_opportunity',
     'error',jsonb_build_object('code',code,'retryable',false),'diagnostics',safe_diagnostics);
   if scope is not null and code in('invalid_opportunity','save_failed','scope_oversized') then
     begin
@@ -3964,21 +4037,24 @@ CREATE FUNCTION private.verify_adaptive_search_item(p_run_id uuid, p_item_id uui
     LANGUAGE plpgsql
     SET search_path TO ''
     AS $$
-declare scope jsonb;item private.opportunity_search_adaptive_items;receipt public.opportunity_search_receipts;
-  audit private.opportunity_search_merge_audit;proof jsonb;discovery jsonb;status text:='verification_failed';
+declare scope jsonb;item private.opportunity_search_adaptive_items;receipt public.opportunity_search_receipts;bookkeeping jsonb;
+  audit private.opportunity_search_merge_audit;proof jsonb;status text:='verification_failed';
   verified boolean:=false;changed boolean:=false;rolled boolean:=false;
 begin
   scope:=private.require_adaptive_search_scope(p_run_id,false);
   perform private.guard_search_run_not_aborted(p_run_id);
   select * into item from private.opportunity_search_adaptive_items where run_id=p_run_id and item_id=p_item_id;
-  if not found then return private.opportunity_search_adaptive_completion_error('invalid_payload');end if;
+  select * into receipt from public.opportunity_search_receipts where run_id=p_run_id and item_id=p_item_id and user_id=(scope->>'user_id')::uuid;
+  if item.run_id is null and receipt.run_id is null then
+    return private.opportunity_search_adaptive_completion_error('invalid_payload');end if;
   if item.batch_id is not null and not exists(select 1 from private.opportunity_search_adaptive_batches
     where run_id=p_run_id and batch_id=item.batch_id and user_id=(scope->>'user_id')::uuid and search_id=(scope->>'search_id')::uuid) then
     return private.opportunity_search_adaptive_completion_error('manifest_mismatch');end if;
   perform pg_advisory_xact_lock(hashtextextended('opportunity-search-catalogue-v1',0));
-  if item.outcome='unresolved' then status:='deferred';
+  if item.outcome='unresolved' and receipt.run_id is null then status:='deferred';
   else
     select * into receipt from public.opportunity_search_receipts where run_id=p_run_id and item_id=p_item_id for update;
+    if receipt.run_id is not null then item.opportunity_id:=receipt.opportunity_id;end if;
     select * into audit from private.opportunity_search_merge_audit where run_id=p_run_id and item_id=p_item_id;
     if receipt.run_id is null or receipt.user_id<>(scope->>'user_id')::uuid or receipt.opportunity_id is distinct from item.opportunity_id then status:='missing_receipt';
     elsif audit.run_id is null or audit.opportunity_id is distinct from item.opportunity_id then status:='missing_audit';
@@ -3992,9 +4068,7 @@ begin
           changed:=coalesce((proof->>'changed_since_save')::boolean,true);rolled:=coalesce((proof->>'rolled_back')::boolean,false);
           if rolled then status:='rolled_back';
           elsif changed then status:='changed_since_save';
-          elsif proof->'verified'='true'::jsonb and item.discovery_id is not null then
-            discovery:=private.verify_opportunity_search_discovery(p_run_id,p_item_id);
-            if discovery->'verified'='true'::jsonb then status:='verified';verified:=true;end if;
+          elsif proof->'verified'='true'::jsonb then status:='verified';verified:=true;
           end if;
         exception when insufficient_privilege then raise;
           when check_violation or unique_violation then status:='identity_conflict';
@@ -4004,8 +4078,15 @@ begin
       end if;
     end if;
   end if;
+  bookkeeping:='{"status":"deferred","error_code":"not_saved"}'::jsonb;
+  if receipt.run_id is not null or item.outcome is distinct from 'unresolved' then
+    begin
+      bookkeeping:=private.record_adaptive_item_bookkeeping(p_run_id,p_item_id);
+    exception when others then bookkeeping:='{"status":"failed","error_code":"bookkeeping_failed"}'::jsonb;
+    end;
+  end if;
   return jsonb_build_object('adaptive_contract_version',1,'item_verification_version',1,'compatible',true,'run_id',p_run_id,
-    'item_id',p_item_id,'opportunity_id',item.opportunity_id,'status',status,'verified',verified,'changed_since_save',changed,'rolled_back',rolled);
+    'item_id',p_item_id,'opportunity_id',item.opportunity_id,'status',status,'verified',verified,'changed_since_save',changed,'rolled_back',rolled,'bookkeeping',bookkeeping);
 exception when insufficient_privilege then return private.opportunity_search_adaptive_completion_error('authorization_revoked');
   when object_not_in_prerequisite_state then return private.opportunity_search_adaptive_completion_error('run_aborted');
 end;
@@ -4072,14 +4153,9 @@ begin
     raise exception 'Completion manifest changed' using errcode='PZ004';end if;
   batch_count:=jsonb_array_length(manifest->'batch_ids');item_count:=jsonb_array_length(manifest->'item_ids');
   if batch_count>32 or item_count>320 then raise exception 'Completion scope exceeds envelope' using errcode='54000';end if;
-  -- Neither an orphan canonical write nor a missing adaptive item can disappear
-  -- behind a client-supplied manifest subset.
-  select count(*) into orphan_count from public.opportunity_search_receipts r where r.run_id=p_run_id and not exists(
-    select 1 from private.opportunity_search_adaptive_items i
-      join public.opportunity_search_runs owner_run on owner_run.id=i.run_id and owner_run.user_id=r.user_id
-      left join private.opportunity_search_adaptive_batches b on b.run_id=i.run_id and b.batch_id=i.batch_id
-      where i.run_id=r.run_id and i.item_id=r.item_id and i.opportunity_id=r.opportunity_id and i.outcome='saved'
-        and(i.batch_id is null or b.user_id=r.user_id and b.search_id=owner_run.search_id));
+  -- Canonical receipts are authoritative even if optional tracking failed.
+  -- Historical batch membership must still remain internally consistent.
+  select count(*) into orphan_count from public.opportunity_search_receipts r where r.run_id=p_run_id and r.user_id<>owner_id;
   orphan_count:=orphan_count+(select count(*) from private.opportunity_search_adaptive_batches b where b.run_id=p_run_id and(
     b.user_id<>owner_id or b.search_id<>search_id_value or exists(select 1 from unnest(b.item_ids) submitted(item_id) where not exists(
       select 1 from private.opportunity_search_adaptive_items i where i.run_id=b.run_id and i.batch_id=b.batch_id and i.item_id=submitted.item_id))));
@@ -4155,7 +4231,7 @@ begin
     if persisted_status not in('complete','failed') or persisted_run_summary is null then raise exception 'Persisted terminal summary unavailable' using errcode='23514';end if;
     historical:=jsonb_build_object('status',persisted_status,'incomplete',persisted_status<>'complete' or state<>'complete','batch_count',batch_count,'item_count',item_count,
       'saved_items',(verification->>'saved_items')::integer,'verified_at_completion',(verification->>'verified_items')::integer,
-      'unresolved_items',unresolved_count,'coverage',coverage,'lease_expired',expired,'source_retention_deferred',retention_deferred,'delivery_status','unknown');
+      'unresolved_items',unresolved_count,'bookkeeping_failed_items',coalesce((verification->>'bookkeeping_failed_items')::integer,0),'coverage',coverage,'lease_expired',expired,'source_retention_deferred',retention_deferred,'delivery_status','unknown');
     insert into private.opportunity_search_adaptive_completions(run_id,completion_id,user_id,search_id,payload_hash,manifest_hash,historical_summary)
       values(p_run_id,completion_uuid,owner_id,search_id_value,fingerprint,manifest->>'manifest_hash',historical);
   end if;

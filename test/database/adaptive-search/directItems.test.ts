@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { reset, sql } from '../../support/database/postgres';
+import { file, reset, sql } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
 before(() => reset());
@@ -78,6 +78,8 @@ function assertSaved(value: any, f: Fixture, item: string) {
   assert.equal(value.item_id, item);
   assert.equal(value.verification_required, true);
   assert.equal(value.outcome, 'saved');
+  assert.equal(value.saved, true);
+  assert.equal(sql(`select private.opportunity_search_schema_valid(${json(value)},private.adaptive_search_save_receipt_schema());`), 't');
   assert.match(value.payload_hash, /^[a-f0-9]{64}$/u);
   assert.ok(Buffer.byteLength(JSON.stringify(value)) <= 4096, 'Save acknowledgements must stay bounded and exclude canonical snapshots');
   assert.doesNotMatch(JSON.stringify(value), /Synthetic acoustic|example\.invalid|before_snapshot|normalized_payload|current_snapshot/u);
@@ -267,16 +269,18 @@ test('zero-result research completes through the same final coverage path withou
   } finally { f.cleanup(); }
 });
 
-test('server-derived completion cannot silently omit an orphan canonical receipt', () => {
+test('server-derived completion includes canonical receipts even when adaptive tracking is missing', () => {
   const f = fixture(), item = randomUUID();
   try {
     assertSaved(f.save(item), f, item);
     sql(`delete from private.opportunity_search_adaptive_items where run_id='${f.run}' and item_id='${item}';`);
     const result = f.finish();
-    assert.equal(result.compatible, false);
-    assert.equal(result.error.code, 'manifest_mismatch');
+    assert.equal(result.compatible, true, JSON.stringify(result));
+    assert.equal(result.current_verification.saved_items, 1);
+    assert.equal(result.current_verification.verified_items, 1);
+    assert.equal(result.current_verification.items[0].item_id, item);
     assert.equal(savedCount(f), 1);
-    assert.equal(sql(`select status from public.opportunity_search_runs where id='${f.run}';`), 'running');
+    assert.equal(sql(`select status from public.opportunity_search_runs where id='${f.run}';`), 'failed', 'Missing research coverage remains incomplete');
   } finally { f.cleanup(); }
 });
 
@@ -444,6 +448,8 @@ function assertUnresolved(value: any, f: Fixture, item: string, conflict: string
   assert.equal(value.run_id, f.run);
   assert.equal(value.item_id, item);
   assert.equal(value.outcome, 'unresolved');
+  assert.equal(value.saved, false);
+  assert.deepEqual(value.bookkeeping, { status: 'deferred', error_code: 'not_saved' });
   assert.equal(value.conflict_code, conflict);
   assert.equal(value.opportunity_id, null);
   assert.equal(value.discovery_id, null);
@@ -493,7 +499,8 @@ for (const conflict of ['insufficient_evidence', 'identity_conflict', 'correctio
       assert.deepEqual(f.storedReceipt(unresolved), receipt);
       assert.equal(catalogue(), before);
       assert.deepEqual(f.verify(unresolved), { adaptive_contract_version: 1, item_verification_version: 1, compatible: true,
-        run_id: f.run, item_id: unresolved, opportunity_id: null, status: 'deferred', verified: false, changed_since_save: false, rolled_back: false });
+        run_id: f.run, item_id: unresolved, opportunity_id: null, status: 'deferred', verified: false, changed_since_save: false, rolled_back: false,
+        bookkeeping: { status: 'deferred', error_code: 'not_saved' } });
 
       const goodReceipt = f.save(saved, f.opportunity(2));
       assertSaved(goodReceipt, f, saved);
@@ -527,7 +534,8 @@ test('a missing unresolved save response verifies as a known deferred item witho
     sql(f.saveSql(item, payload));
     const proof = f.verify(item);
     assert.deepEqual(proof, { adaptive_contract_version: 1, item_verification_version: 1, compatible: true,
-      run_id: f.run, item_id: item, opportunity_id: null, status: 'deferred', verified: false, changed_since_save: false, rolled_back: false });
+      run_id: f.run, item_id: item, opportunity_id: null, status: 'deferred', verified: false, changed_since_save: false, rolled_back: false,
+        bookkeeping: { status: 'deferred', error_code: 'not_saved' } });
     assert.equal(savedCount(f), 0);
     assert.equal(sql(`select count(*) from public.opportunities where opportunity_key='${payload.opportunity_key}';`), '0');
     assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_items where run_id='${f.run}' and item_id='${item}';`), '1');
@@ -571,4 +579,206 @@ test('an unrelated canonical check violation is a diagnosed save failure, never 
     assert.deepEqual(f.storedReceipt(saved), prior);
     assert.equal(f.verify(saved).verified, true, 'The rejected candidate cannot undo an independently committed save');
   } finally { f.cleanup(); }
+});
+
+
+function functionBody(signature: string) { return sql(`select pg_get_functiondef('${signature}'::regprocedure);`); }
+const failedBookkeeping = { status: 'failed', error_code: 'bookkeeping_failed' };
+
+for (const failure of ['discovery_write', 'item_write', 'discovery_verification', 'bookkeeping_deadlock'] as const) {
+  test(`canonical saving and verification survive ${failure}; bookkeeping repairs after terminal completion`, () => {
+    const f = fixture(), item = randomUUID();
+    const signature = failure === 'discovery_verification'
+      ? 'private.verify_opportunity_search_discovery(uuid,uuid)' : 'private.record_opportunity_search_discovery(uuid,uuid,jsonb)';
+    const original = functionBody(signature);
+    const assessment = { score: 8.2, scale_min: 0, scale_max: 10, summary: 'Synthetic verified acoustic prediction.' };
+    const opportunity = { ...f.opportunity(), personal_fit: assessment };
+    opportunity.sources[0]!.supports.push('personal_fit');
+    const breakBookkeeping = () => {
+      if (failure === 'item_write') {
+        sql(`create function private.synthetic_reject_item() returns trigger language plpgsql as $$
+          begin raise exception 'PRIVATE_BOOKKEEPING_CANARY' using errcode='23514';end $$;
+          create trigger synthetic_reject_item before insert on private.opportunity_search_adaptive_items
+            for each row execute function private.synthetic_reject_item();`);
+      } else {
+        const name = failure === 'discovery_verification' ? 'verify_opportunity_search_discovery(p_run_id uuid,p_item_id uuid)'
+          : "record_opportunity_search_discovery(p_run_id uuid,p_item_id uuid,p_payload jsonb default '{}'::jsonb)";
+        sql(`create or replace function private.${name} returns jsonb language plpgsql set search_path='' as $$
+          begin raise exception 'PRIVATE_BOOKKEEPING_CANARY' using errcode='${failure === 'bookkeeping_deadlock' ? '40P01' : '23514'}';end $$;`);
+      }
+    };
+    const restore = () => {
+      if (failure === 'item_write') sql('drop trigger if exists synthetic_reject_item on private.opportunity_search_adaptive_items;drop function if exists private.synthetic_reject_item();');
+      else sql(original);
+    };
+    try {
+      breakBookkeeping();
+      const saved = f.save(item, opportunity);
+      assertSaved(saved, f, item);
+      assert.equal(savedCount(f), 1, 'Optional bookkeeping rolled back the canonical save');
+      if (failure !== 'discovery_verification') {
+        assert.deepEqual(saved.bookkeeping, failedBookkeeping);
+        assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_items where run_id='${f.run}';`), '0');
+        assert.equal(sql(`select count(*) from public.opportunity_search_discoveries where run_id='${f.run}';`), '0', 'A failed bookkeeping transaction partially wrote tracking');
+      }
+      // Separate action: no write replay, no adapter row prerequisite.
+      const proof = f.verify(item);
+      assert.equal(proof.verified, true, JSON.stringify(proof));
+      assert.equal(proof.opportunity_id, saved.opportunity_id);
+      assert.deepEqual(proof.bookkeeping, failedBookkeeping);
+      assert.doesNotMatch(JSON.stringify(saved) + JSON.stringify(proof), /PRIVATE_BOOKKEEPING_CANARY|example.invalid|Synthetic verified/);
+      const finish = { completion_id: randomUUID(), status: 'complete', ...f.coverage() };
+      const completed = f.complete(finish);
+      assert.equal(completed.compatible, true, JSON.stringify(completed));
+      assert.equal(completed.historical_summary.status, 'complete', 'Bookkeeping failure became failed research despite complete actual coverage');
+      assert.equal(completed.current_verification.saved_items, 1);
+      assert.equal(completed.current_verification.verified_items, 1);
+      assert.equal(completed.historical_summary.bookkeeping_failed_items, 1);
+      assert.equal(completed.current_verification.bookkeeping_failed_items, 1);
+      const manifest = completed.manifest_hash;
+      restore();
+      const recovered = f.verify(item);
+      assert.equal(recovered.verified, true);
+      assert.deepEqual(recovered.bookkeeping, { status: 'recorded', error_code: null });
+      assert.equal(sql(`select count(*) from public.opportunity_search_discoveries where run_id='${f.run}' and item_id='${item}';`), '1');
+      assert.deepEqual(query(`select original_assessment from public.opportunity_search_discoveries where run_id='${f.run}' and item_id='${item}';`), assessment);
+      const repeated = f.complete(finish);
+      assert.equal(repeated.manifest_hash, manifest, 'Repairing bookkeeping changed the accepted completion identity');
+      assert.deepEqual(repeated.historical_summary, completed.historical_summary, 'Repair rewrote historical completion');
+      assert.equal(repeated.current_verification.bookkeeping_failed_items, 0);
+      assert.equal(savedCount(f), 1);
+    } finally { restore();f.cleanup(); }
+  });
+}
+
+test('the server enforces one closed JSON save/bookkeeping schema and rejects inconsistent success claims', () => {
+  const f = fixture(), item = randomUUID();
+  try {
+    const schema = query('select private.adaptive_search_save_receipt_schema();');
+    assert.deepEqual(schema, JSON.parse(file('supabase/contracts/adaptive-search-save-receipt.schema.json')));
+    const saved = f.save(item); assertSaved(saved, f, item);
+    for (const mutate of [
+      (v: any) => { delete v.saved; },
+      (v: any) => { v.saved = 'true'; },
+      (v: any) => { v.opportunity_id = null; },
+      (v: any) => { v.discovery_id = null; },
+      (v: any) => { v.deferred_fields = ['private_field']; },
+      (v: any) => { v.unknown_receipt_field = 'private'; },
+      (v: any) => { v.bookkeeping.status = 'maybe'; },
+      (v: any) => { v.bookkeeping.error_code = 'untrusted arbitrary text'; },
+      (v: any) => { v.bookkeeping = { status: 'recorded', error_code: 'bookkeeping_failed' }; },
+      (v: any) => { v.bookkeeping = { status: 'failed', error_code: null }; },
+      (v: any) => { v.bookkeeping.payload = { private: true }; },
+    ]) {
+      const invalid = structuredClone(saved);mutate(invalid);
+      assert.equal(sql(`select private.opportunity_search_schema_valid(${json(invalid)},private.adaptive_search_save_receipt_schema());`), 'f');
+    }
+    const payload = f.opportunity(1);payload.sources[0]!.supports = ['official_url'];
+    const unresolved = f.save(randomUUID(), payload);
+    assert.equal(unresolved.saved, false);
+    assert.equal(sql(`select private.opportunity_search_schema_valid(${json(unresolved)},private.adaptive_search_save_receipt_schema());`), 't');
+    unresolved.conflict_code = null;
+    assert.equal(sql(`select private.opportunity_search_schema_valid(${json(unresolved)},private.adaptive_search_save_receipt_schema());`), 'f');
+    assert.equal(f.verify(item).verified, true);
+  } finally { f.cleanup(); }
+});
+
+
+test('the run limit counts canonical receipts without tracking and still permits exact saved-item reconciliation', () => {
+  const f = fixture(), item = randomUUID();
+  try {
+    assertSaved(f.save(item), f, item);
+    // Populate the remaining capacity with synthetic receipt identities. Tracking
+    // is deliberately absent; the cap must follow persisted canonical intake.
+    sql(`insert into public.opportunity_search_receipts(run_id,item_id,user_id,opportunity_id,payload,result)
+      select r.run_id,gen_random_uuid(),r.user_id,r.opportunity_id,r.payload,r.result
+      from public.opportunity_search_receipts r cross join generate_series(1,319) n where r.run_id='${f.run}' and r.item_id='${item}';
+      delete from private.opportunity_search_adaptive_items where run_id='${f.run}';`);
+    assert.equal(savedCount(f), 320);
+    const rejected = f.save(randomUUID(), f.opportunity(1));
+    assert.equal(rejected.accepted, false);
+    assert.equal(rejected.error.code, 'scope_oversized');
+    assert.equal(savedCount(f), 320, 'A tracking failure bypassed the run item bound');
+    assertSaved(f.save(item), f, item);
+    assert.equal(f.verify(item).verified, true);
+    assert.equal(savedCount(f), 320, 'An exact existing identity created another canonical receipt');
+  } finally { f.cleanup(); }
+});
+
+
+for (const mutation of ['changed_fact', 'unsafe_correction', 'invalid_payload'] as const) {
+  test(`a ${mutation} replay cannot downgrade an already saved item when tracking is missing`, () => {
+    const f = fixture(), item = randomUUID();
+    try {
+      const payload = f.opportunity(), saved = f.save(item, payload);assertSaved(saved, f, item);
+      sql(`delete from private.opportunity_search_adaptive_items where run_id='${f.run}' and item_id='${item}';`);
+      const before = sql(`select jsonb_build_object('receipt',(select to_jsonb(r) from public.opportunity_search_receipts r where run_id='${f.run}' and item_id='${item}'),
+        'catalogue',(select to_jsonb(o) from public.opportunities o where id='${saved.opportunity_id}'));`);
+      const changed: any = { ...payload };
+      if (mutation === 'changed_fact') changed.title = 'Synthetic changed replay';
+      if (mutation === 'unsafe_correction') changed.merge_control = { corrections: [{ path: '/title',
+        expected: 'private.person@example.invalid', reason: 'Synthetic changed replay' }] };
+      if (mutation === 'invalid_payload') changed.private_extension = 'PRIVATE_REPLAY_CANARY';
+      const rejected = f.save(item, changed);
+      assert.equal(rejected.accepted, false);
+      assert.equal(rejected.error.code, 'idempotency_conflict', JSON.stringify(rejected));
+      assert.equal(rejected.stored, true, 'A saved identity must never be described as confirmed unsaved');
+      assert.equal(rejected.correction_allowed, false);
+      assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_items where run_id='${f.run}';`), '0');
+      assert.equal(sql(`select jsonb_build_object('receipt',(select to_jsonb(r) from public.opportunity_search_receipts r where run_id='${f.run}' and item_id='${item}'),
+        'catalogue',(select to_jsonb(o) from public.opportunities o where id='${saved.opportunity_id}'));`), before);
+      assert.equal(savedCount(f), 1);
+      assert.equal(f.verify(item).verified, true);
+    } finally { f.cleanup(); }
+  });
+}
+
+test('inconsistent optional tracking cannot override canonical persistence or completion counts', () => {
+  const f = fixture(), item = randomUUID();
+  try {
+    const saved = f.save(item);assertSaved(saved, f, item);
+    sql(`delete from private.opportunity_search_adaptive_items where run_id='${f.run}' and item_id='${item}';
+      insert into private.opportunity_search_adaptive_items(run_id,item_id,payload_hash,outcome,conflict_code)
+        values('${f.run}','${item}','${saved.payload_hash}','unresolved','insufficient_evidence');`);
+    const proof = f.verify(item);
+    assert.equal(proof.verified, true, JSON.stringify(proof));
+    assert.equal(proof.opportunity_id, saved.opportunity_id);
+    assert.equal(proof.bookkeeping.status, 'failed');
+    const completed = f.complete({ completion_id: randomUUID(), status: 'complete', ...f.coverage() });
+    assert.equal(completed.compatible, true, JSON.stringify(completed));
+    assert.equal(completed.current_verification.saved_items, 1);
+    assert.equal(completed.current_verification.verified_items, 1);
+    assert.equal(completed.current_verification.unresolved_items, 0);
+    assert.equal(completed.historical_summary.status, 'complete');
+    assert.equal(completed.historical_summary.bookkeeping_failed_items, 1);
+  } finally { f.cleanup(); }
+});
+
+
+test('an exact save reconciliation of a transformed payload cannot change a terminal manifest', () => {
+  const f = fixture(), item = randomUUID();
+  const original = functionBody('private.record_opportunity_search_discovery(uuid,uuid,jsonb)');
+  try {
+    sql(`create or replace function private.record_opportunity_search_discovery(p_run_id uuid,p_item_id uuid,p_payload jsonb default '{}'::jsonb)
+      returns jsonb language plpgsql set search_path='' as $$begin raise exception 'Synthetic unavailable bookkeeping' using errcode='23514';end $$;`);
+    const payload = { ...f.opportunity(), contacts: [] };
+    const saved = f.save(item, payload);assertSaved(saved, f, item);
+    assert.equal(saved.bookkeeping.status, 'failed');
+    assert.notEqual(saved.payload_hash, sql(`select encode(sha256(convert_to(${json(payload)}::text,'UTF8')),'hex');`));
+    const report = { completion_id: randomUUID(), status: 'complete', ...f.coverage() };
+    const completed = f.complete(report);
+    assert.equal(completed.compatible, true, JSON.stringify(completed));
+    assert.equal(completed.current_verification.verified_items, 1);
+    sql(original);
+    const replay = f.save(item, payload);
+    assertSaved(replay, f, item);
+    assert.equal(replay.bookkeeping.status, 'failed');
+    assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_items where run_id='${f.run}';`), '0', 'An exact saved-item reconciliation performed a new bookkeeping write');
+    const repeated = f.complete(report);
+    assert.equal(repeated.compatible, true, JSON.stringify(repeated));
+    assert.equal(repeated.manifest_hash, completed.manifest_hash);
+    assert.deepEqual(repeated.historical_summary, completed.historical_summary);
+    assert.equal(repeated.current_verification.verified_items, 1);
+    assert.equal(repeated.current_verification.bookkeeping_failed_items, 0);
+  } finally { sql(original);f.cleanup(); }
 });

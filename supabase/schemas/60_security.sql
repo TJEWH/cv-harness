@@ -1507,3 +1507,7 @@ COMMENT ON COLUMN public.opportunity_search_runs.owner_cancel_operation_id IS 'P
 REVOKE ALL ON FUNCTION private.record_adaptive_search_coverage(uuid,uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role;
 REVOKE ALL ON FUNCTION private.finish_adaptive_search(uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role;
 REVOKE ALL ON FUNCTION private.adaptive_search_hosted_protocol_text() FROM PUBLIC,anon,authenticated,service_role;
+
+-- Server-only JSON receipt enforcement and derived bookkeeping.
+REVOKE ALL ON FUNCTION private.adaptive_search_save_receipt_schema() FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.record_adaptive_item_bookkeeping(uuid,uuid,text,text[]) FROM PUBLIC,anon,authenticated,service_role;
