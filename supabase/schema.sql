@@ -3919,11 +3919,13 @@ Normally finish with the actual query_plan. Instead, plan_hash may reuse the sup
 SAVE ONE OPPORTUNITY
 Call SELECT private.save_adaptive_search_item(run_uuid::uuid,item_uuid::uuid,opportunity_json::jsonb). Send one object satisfying startup.result_schema directly, with no wrapper, execution report, schema_version or extra metadata. Keep verified decision-relevant facts, research summaries, methods, funding, conditions and open questions. Omit unknown optional fields and raw page dumps. Use numeric 0.0–10.0 assessments with scale_min:0, scale_max:10 and evidence-based summaries; unknown scores are null. Interests do not establish qualifications. Never invent evidence or check times. Each sources[].supports value must name an evidenced canonical field or a JSON pointer rooted in one; use the exact field-name guidance supplied with this protocol.
 Each item is limited to 256 KiB; at most 320 items per run. Automatic people enrichment is deferred. A correction requires an exact safely known expected value and a reason; otherwise defer it, without fetching private snapshots. Stable item IDs identify immutable accepted payloads.
-Require adaptive_contract_version:1, item_receipt_version:1, accepted:true, matching run_id/item_id, payload_hash, opportunity_id, accepted_roots and outcome. accepted_roots reports accepted, rejected, unchanged and conflicting leaf counts for each canonical root, without field values. outcome:saved has verification_required:true. outcome:unresolved is deferred progress, not a saved opportunity; preserve it in the backlog. Only invalid_opportunity with stored:false and correction_allowed:true permits one evidence-based correction using the same unaccepted item UUID. A second invalid opportunity stays unresolved; continue other items. Other rejections stop. Never claim that a receipt alone proves persistence.
+First require adaptive_contract_version:1, item_receipt_version:1, accepted:true, matching run_id/item_id, payload_hash, accepted_roots and outcome, then distinguish these two valid outcomes. outcome:saved requires a non-null opportunity_id UUID and verification_required:true. accepted_roots reports accepted, rejected, unchanged and conflicting leaf counts for each canonical root, without field values; independently verify this saved item next.
+outcome:unresolved is a valid recorded deferral: opportunity_id, canonical_outcome and discovery_id are null, accepted_roots is {}, verification_required:false, and conflict_code is insufficient_evidence, identity_conflict or correction_deferred. accepted:true means the deferred run item was recorded; no opportunity was saved. Do not classify this receipt as invalid, verify it or resubmit it. Add it to execution.backlog using its item_id as candidate_id and reason:identity_ambiguous for identity_conflict, otherwise needs_verification. Continue saving other candidates. While an item remains unresolved, use execution.complete:false and finish with status:failed, preserving verified partial progress.
+Only invalid_opportunity with stored:false and correction_allowed:true permits one evidence-based correction using the same unaccepted item UUID. A second invalid opportunity stays unresolved; continue other items. Other rejections stop. Never claim that a receipt alone proves persistence.
 
 VERIFY EACH SAVE
 After each accepted saved item, make a separate SELECT private.verify_adaptive_search_item(run_uuid::uuid,item_uuid::uuid). Require adaptive_contract_version:1, item_verification_version:1, compatible:true, exact run/item IDs and verified:true. The opportunity_id must match the accepted receipt when available; if the save response is unavailable, retain the persisted opportunity_id returned by verification. A changed_since_save or rolled_back result is not an unchanged verified save. Report submitted facts as saved only under roots with no rejected or conflicting leaves and with independent verification. Acknowledge partial or conflicted roots; their counts cannot identify which nested field was accepted. Never treat the whole submitted object as accepted.
-If a save was dispatched but its response is unavailable, with no rejection, denial, invalid contract or pending approval, use that same normal verification call once with the original run/item IDs. A verified result establishes persisted progress. A missing, unverified or unavailable result stays uncertain: stop, preserve IDs and do not resend the save, change IDs or finish. After an explicit denial make no further database calls.
+If a save was dispatched but its response is unavailable, with no rejection, denial, invalid contract or pending approval, use that same normal verification call once with the original run/item IDs. A verified result establishes persisted progress. A compatible result with exact run/item IDs, status:deferred, verified:false and opportunity_id:null confirms a recorded unsaved item: add it to the backlog with reason:needs_verification and continue other candidates without verifying or resubmitting it again. Any other missing, unverified or unavailable result stays uncertain: stop, preserve IDs and do not resend the save, change IDs or finish. After an explicit denial make no further database calls.
 
 ACTUAL EXECUTION REPORT
 Keep the actual checks and unresolved candidates throughout research. execution has checks (required array, at most 128), optional backlog (at most 64) and optional complete (boolean). Query checks require check_id (distinct UUID), kind:query, query_id from the actual plan, attempted_at (actual ISO timestamp) and status. Optional text_hash must match the query; optional source_registry_id must be that query's authorized target. Direct source checks require check_id, kind:source, source_registry_id copied from the authorized context, attempted_at and status; omit query_id and text_hash. Record every due source separately, even when it yielded zero opportunities.
@@ -6948,7 +6950,8 @@ CREATE FUNCTION private.save_adaptive_search_item(p_run_id uuid, p_item_id uuid,
     AS $_$
 declare scope jsonb;prior private.opportunity_search_adaptive_items;fingerprint text;effective jsonb;receipt jsonb;discovery jsonb;
   deferred text[]:='{}';correction jsonb;corrections jsonb:='[]';field text;root text;conflict text;roots jsonb:='{}';
-  stage text:='scope';code text;state text;path text;reason text;diagnostics jsonb;result jsonb;schema jsonb;source record;support record;
+  stage text:='scope';code text;state text;path text;reason text;safe_diagnostics jsonb;result jsonb;schema jsonb;source record;support record;
+  write_stage text;write_message text;diagnostic_context text;diagnostic_location text[];diagnostic_function_hash text;
 begin
   begin
     scope:=private.require_adaptive_search_scope(p_run_id,false);
@@ -6990,12 +6993,21 @@ begin
     stage:='item_write';
     if conflict is null then
       begin
+        write_stage:='canonical_write';
         receipt:=private.submit_opportunity_search_result(p_run_id,p_item_id,effective);
         -- No execution path or discovery timestamp is invented to save facts.
+        write_stage:='discovery_write';
         discovery:=private.record_opportunity_search_discovery(p_run_id,p_item_id,'{}'::jsonb);
+        write_stage:='receipt';
         roots:=private.adaptive_accepted_roots(p_run_id,p_item_id);
       exception when unique_violation or serialization_failure then conflict:='identity_conflict';receipt:=null;discovery:=null;
-        when check_violation then conflict:='insufficient_evidence';receipt:=null;discovery:=null;
+        when check_violation then
+          get stacked diagnostics write_message=MESSAGE_TEXT;
+          -- Only the canonical writer's explicit new-record evidence rejection
+          -- is unresolved research. Other constraints are save failures.
+          if write_stage='canonical_write' and write_message='Identity and title need accepted official evidence for a new record.' then
+            conflict:='insufficient_evidence';receipt:=null;discovery:=null;
+          else raise;end if;
       end;
     end if;
     stage:='item_write';
@@ -7009,11 +7021,29 @@ begin
     when serialization_failure then code:='idempotency_conflict';state:=SQLSTATE;
     when program_limit_exceeded then code:='scope_oversized';state:=SQLSTATE;
     when deadlock_detected then raise;
-    when others then state:=SQLSTATE;code:=case when stage='canonical_validation' and SQLSTATE='22023' then 'invalid_opportunity' else 'save_failed' end;
+    when others then
+      state:=SQLSTATE;code:=case when stage='canonical_validation' and SQLSTATE='22023' then 'invalid_opportunity' else 'save_failed' end;
+      get stacked diagnostics diagnostic_context=PG_EXCEPTION_CONTEXT;
   end;
   -- This block runs only after the whole intake subtransaction rolled back.
   -- Return fixed diagnostic labels and schema paths, never submitted values or SQL.
-  diagnostics:=jsonb_build_object('stage',stage,'sqlstate',state);
+  safe_diagnostics:=jsonb_build_object('stage',stage,'sqlstate',state);
+  if code='save_failed' then
+    begin
+      -- Only a known function from the first stack line is eligible. Later lines
+      -- and the exception message can contain SQL or submitted values.
+      diagnostic_location:=regexp_match(diagnostic_context,'^PL/pgSQL function ((?:private|public)[.][a-z_][a-z0-9_]{0,100})[(][^()\r\n]*[)] line ([1-9][0-9]{0,5}) at ');
+      if diagnostic_location is not null then
+        select case when count(*)=1 then min(md5(p.prosrc)) end into diagnostic_function_hash
+          from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+          where n.nspname=split_part(diagnostic_location[1],'.',1) and p.proname=split_part(diagnostic_location[1],'.',2);
+        if diagnostic_function_hash is not null then
+          safe_diagnostics:=safe_diagnostics||jsonb_build_object('function',diagnostic_location[1],'line',diagnostic_location[2]::integer,'source_hash',diagnostic_function_hash);
+        end if;
+      end if;
+    exception when others then null; -- Diagnostics must not mask the rejection.
+    end;
+  end if;
   if code='invalid_opportunity' then
     begin
       schema:=private.opportunity_search_result_schema();
@@ -7029,19 +7059,19 @@ begin
           end loop;
         end loop;
       end if;
-      diagnostics:=diagnostics||jsonb_build_object('reason',reason)||case when path is not null then jsonb_build_object('field_path',left(path,512)) else '{}'::jsonb end;
+      safe_diagnostics:=safe_diagnostics||jsonb_build_object('reason',reason)||case when path is not null then jsonb_build_object('field_path',left(path,512)) else '{}'::jsonb end;
     exception when others then null;end;
   end if;
   result:=jsonb_build_object('adaptive_contract_version',1,'item_receipt_version',1,'accepted',false,'run_id',p_run_id,'item_id',p_item_id,
     'stored',case when code='invalid_opportunity' then false else null end,'correction_allowed',code='invalid_opportunity',
-    'error',jsonb_build_object('code',code,'retryable',false),'diagnostics',diagnostics);
+    'error',jsonb_build_object('code',code,'retryable',false),'diagnostics',safe_diagnostics);
   if scope is not null and code in('invalid_opportunity','save_failed','scope_oversized') then
     begin
       perform private.require_adaptive_search_scope(p_run_id,true);
       perform private.guard_search_run_not_aborted(p_run_id);
       update public.opportunity_search_runs set last_batch_rejection=jsonb_build_object('version',1,'batch_id',p_item_id,
         'recorded_at',clock_timestamp(),'code',case when code='scope_oversized' then code else 'invalid_batch' end,
-        'diagnostics',diagnostics-'reason') where id=p_run_id;
+        'diagnostics',safe_diagnostics-'reason') where id=p_run_id;
     exception when others then null;end;
   end if;
   return result;

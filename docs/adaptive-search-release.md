@@ -63,6 +63,8 @@ Earlier release files are immutable deployment history. They document lifecycle 
 
 The [startup logging upgrade](../supabase/releases/adaptive-search-startup-logging-v1.sql) remains relevant diagnostic history. [Startup logs](adaptive-search-brief.md#startup-logs) explains how to correlate a run UUID, distinguish a returned result from a commit, and inspect local decoder console records when that decoder actually executes.
 
+The [deferred-receipt correction](../supabase/releases/adaptive-search-deferred-receipts-v1.sql) follows the current save-protocol upgrade. It clarifies saved versus unresolved receipts in the startup-loaded protocol and stops misclassifying unrelated check constraints as insufficient evidence. It changes neither the recurring task text nor the criteria, feedback, planning, schema or privileges. An already-updated task receives this clarification at its next startup without another setup paste.
+
 ## Verification
 
 ```sh

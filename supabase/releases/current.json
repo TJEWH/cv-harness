@@ -6,7 +6,7 @@
   "database": {
     "installer": {
       "path": "supabase/schema.sql",
-      "sha256": "1487f34b30a1b8609465759798ae633d9ad19a036b609f04443fb915ac3a8450"
+      "sha256": "6f9e0c6d4fdafc4bf088388bfc8ef9fb584371e44d494ec456f81245ad89a737"
     },
     "module_manifest": {
       "path": "supabase/schemas/manifest.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "supabase/schemas/12_search_support.sql",
-        "sha256": "e47726c0b0cd697e67b9508303e8cdb62c3caa32f20edf5a535fc7f5a6c9d1e2"
+        "sha256": "cd3e1714553dec4b86551a3eea0bd5f8ec47b9da9cbde02b2366772ff96788b0"
       },
       {
         "path": "supabase/schemas/20_document_tables.sql",
@@ -122,6 +122,10 @@
       "path": "supabase/releases/adaptive-search-current-saves-v1.sql",
       "sha256": "b1c35bfee36c25f3bcddffbad46f57dbfbdfe3d05b8756c625a372570be71913"
     },
+    "deferred_receipts_upgrade": {
+      "path": "supabase/releases/adaptive-search-deferred-receipts-v1.sql",
+      "sha256": "6b36a97b4257fe2fcfd6028df855447c7bc5f28513c789b5deb544937bc1ac0a"
+    },
     "lifecycle_contracts": [
       {
         "path": "supabase/contracts/adaptive-search-lifecycle.request.schema.json",
@@ -178,7 +182,7 @@
   "runner_artifacts": [
     {
       "path": "src/features/meta-search/domain/adaptiveSearchProtocol.ts",
-      "sha256": "1f677aa314372eb4de01f7825af49747fe7cbec65f1c39d086296b30fc40294f"
+      "sha256": "e038b73130add7c39c57022c9bdcfc1a0ab22bc8659c3d40c5467cbc2b006dfc"
     },
     {
       "path": "src/features/meta-search/domain/adaptiveSearchBrief.ts",

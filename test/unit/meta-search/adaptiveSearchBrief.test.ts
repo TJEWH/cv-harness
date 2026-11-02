@@ -204,7 +204,8 @@ test('current saving upgrade replaces only guarded definitions and keeps private
   const installed = definitions(upgrade), current = definitions(read('supabase/schemas/12_search_support.sql'));
   assert.equal(installed.size, 12);
   for (const [signature, body] of installed) {
-    assert.equal(body, current.get(signature), `stale current save definition: ${signature}`);
+    const latest = definitions(read('supabase/releases/adaptive-search-deferred-receipts-v1.sql'));
+    assert.equal(latest.get(signature) ?? body, current.get(signature), `stale current save definition: ${signature}`);
     assert.match(body, /SET search_path TO ''/u);
   }
   const installation = upgrade.replace(functionDefinition, '').replace(/^--.*$/gmu, '');
@@ -219,6 +220,29 @@ test('current saving upgrade replaces only guarded definitions and keeps private
     assert.match(body, /retired_contract/u);
     assert.doesNotMatch(body, /(?:INSERT INTO|UPDATE public\.|private\.save_adaptive_search_item|private\.finish_adaptive_search)/u);
   }
+  assert.doesNotMatch(upgrade, /SECURITY DEFINER/u);
+  assert.match(upgrade, /begin;[\s\S]*commit;\s*$/u);
+});
+
+
+test('deferred receipt upgrade changes only current prose and save diagnostics behind exact predecessor guards', () => {
+  const upgrade = read('supabase/releases/adaptive-search-deferred-receipts-v1.sql');
+  const installed = definitions(upgrade), current = definitions(read('supabase/schemas/12_search_support.sql'));
+  const predecessors = new Map([...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-current-saves-v1.sql'))]);
+  assert.deepEqual([...installed.keys()].sort(), [
+    'private.adaptive_search_hosted_protocol_text() RETURNS text',
+    'private.save_adaptive_search_item(p_run_id uuid, p_item_id uuid, p_opportunity jsonb) RETURNS jsonb',
+  ]);
+  for (const [signature, body] of installed) {
+    assert.equal(body, current.get(signature));
+    const prior = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(predecessors.get(signature)!)![2]!;
+    assert.ok(upgrade.includes(createHash('md5').update(prior).digest('hex')));
+    assert.match(body, /SET search_path TO ''/u);
+  }
+  const installation = upgrade.replace(functionDefinition, '').replace(/^--.*$/gmu, '');
+  assert.equal((installation.match(/is distinct from '[a-f0-9]{32}'/gu) ?? []).length, 2);
+  assert.doesNotMatch(installation, /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|PERFORM|ALTER|GRANT|REVOKE|DROP|CALL)\b/iu);
   assert.doesNotMatch(upgrade, /SECURITY DEFINER/u);
   assert.match(upgrade, /begin;[\s\S]*commit;\s*$/u);
 });

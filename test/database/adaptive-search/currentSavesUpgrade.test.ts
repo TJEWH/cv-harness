@@ -3,7 +3,7 @@ import { before, test } from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { file, reset, sql } from '../../support/database/postgres';
 import { historicalFunctionDefinitions } from '../../support/database/historicalAdaptiveBatch';
-import { adaptiveJsonSqlLiteral as json, ADAPTIVE_HOSTED_PROTOCOL_TEXT } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
+import { adaptiveJsonSqlLiteral as json } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 import { buildAdaptiveRecurringSearchPrompt } from '../../../src/features/meta-search/domain/adaptiveSearchTask';
 
 before(() => reset());
@@ -46,6 +46,12 @@ test('current-save upgrade preserves historical saves and pinned research, retir
     'configuration',proconfig,'acl',proacl,'language',prolang,'volatility',provolatile)) from jsonb_array_elements_text(${json([...changed, ...added])}) s(signature)
     join pg_proc p on p.oid=to_regprocedure(signature);`);
   const expected = functionSources(), expectedProperties = properties();
+  // This immutable installer predates later protocol clarifications.
+  for (const [name, definition] of historicalFunctionDefinitions('supabase/releases/adaptive-search-current-saves-v1.sql')) {
+    const signature = [...changed, ...added].find(value => value.startsWith(name + '('));
+    const body = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(definition)![2]!;
+    if (signature) expected[signature] = createHash('md5').update(body).digest('hex');
+  }
   const others = () => sql(`select md5(jsonb_agg(to_jsonb(p) order by p.oid)::text) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname in('private','public') and p.oid not in(select to_regprocedure(signature) from jsonb_array_elements_text(${json([...changed, ...added])}) s(signature) where to_regprocedure(signature) is not null);`);
   const snapshot = () => sql(`select jsonb_build_object(
@@ -107,7 +113,7 @@ test('current-save upgrade preserves historical saves and pinned research, retir
     for (const key of ['base', 'query_plan', 'legacy_core_queries', 'feedback', 'planning', 'preferences', 'source_context', 'due_sources', 'refresh', 'lease', 'result_schema']) {
       assert.deepEqual(current[key], pinnedBeforeUpgrade[key], `Upgrade changed pinned ${key}`);
     }
-    assert.ok(current.protocol_text.startsWith(ADAPTIVE_HOSTED_PROTOCOL_TEXT));
+    assert.ok(current.protocol_text.startsWith(sql('select private.adaptive_search_hosted_protocol_text();')));
     assert.equal(snapshot(), saved, 'Reading current instructions changed historical evidence');
     assert.equal(query(`select private.read_adaptive_search_setup('${search}','${oldSetup}','${project}');`).error.code, 'setup_stale');
     const fresh = query(`select private.read_adaptive_search_setup('${search}','${nextSetup}','${project}');`);

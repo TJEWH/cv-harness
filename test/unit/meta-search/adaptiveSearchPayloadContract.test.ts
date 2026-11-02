@@ -124,6 +124,21 @@ test('current published protocol preserves adaptive research obligations and ind
   }
 });
 
+test('current receipt guidance distinguishes saved evidence from valid unresolved items and deferred verification', () => {
+  for (const required of ['then distinguish these two valid outcomes',
+    'outcome:saved requires a non-null opportunity_id UUID and verification_required:true',
+    'outcome:unresolved is a valid recorded deferral', 'opportunity_id, canonical_outcome and discovery_id are null',
+    'accepted_roots is {}, verification_required:false', 'insufficient_evidence, identity_conflict or correction_deferred',
+    'no opportunity was saved', 'Do not classify this receipt as invalid, verify it or resubmit it',
+    'item_id as candidate_id', 'reason:identity_ambiguous for identity_conflict, otherwise needs_verification',
+    'Continue saving other candidates', 'execution.complete:false and finish with status:failed',
+    'status:deferred, verified:false and opportunity_id:null confirms a recorded unsaved item',
+    'continue other candidates without verifying or resubmitting it again',
+    'Any other missing, unverified or unavailable result stays uncertain']) {
+    assert.ok(ADAPTIVE_HOSTED_PROTOCOL_TEXT.includes(required), required);
+  }
+});
+
 test('database publishes exactly the current outward protocol independently of historical pins', () => {
   const sql = readFileSync(new URL('../../../supabase/schemas/12_search_support.sql', import.meta.url), 'utf8');
   const text = /select \$adaptive_hosted\$([\s\S]+?)\$adaptive_hosted\$/u.exec(sql)?.[1];

@@ -435,3 +435,140 @@ for (const count of [1, 2]) test(`current execution saves and independently veri
     assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_batches where run_id='${f.run}' and cardinality(item_ids)>0;`), '0', 'No report row may contain opportunity writes');
   } finally { f.cleanup(); }
 });
+
+function assertUnresolved(value: any, f: Fixture, item: string, conflict: string) {
+  assert.equal(value.error, undefined, JSON.stringify(value));
+  assert.equal(value.adaptive_contract_version, 1);
+  assert.equal(value.item_receipt_version, 1);
+  assert.equal(value.accepted, true, 'An unresolved item is a retained disposition, not a failed or successful catalogue write');
+  assert.equal(value.run_id, f.run);
+  assert.equal(value.item_id, item);
+  assert.equal(value.outcome, 'unresolved');
+  assert.equal(value.conflict_code, conflict);
+  assert.equal(value.opportunity_id, null);
+  assert.equal(value.discovery_id, null);
+  assert.equal(value.canonical_outcome, null);
+  assert.equal(value.verification_required, false);
+  assert.deepEqual(value.accepted_roots, {});
+  assert.match(value.payload_hash, /^[a-f0-9]{64}$/u);
+  assert.ok(Buffer.byteLength(JSON.stringify(value)) <= 4096);
+  assert.doesNotMatch(JSON.stringify(value), /PRIVATE_UNSAFE_EXPECTED|private\.person|Synthetic acoustic|example\.invalid|snapshot|normalized_payload/u);
+}
+
+for (const conflict of ['insufficient_evidence', 'identity_conflict', 'correction_deferred'] as const) {
+  test(`${conflict} retains an immutable unresolved item and later independent saves survive incomplete finish`, () => {
+    const f = fixture(), unresolved = randomUUID(), saved = randomUUID();
+    const catalogue = () => sql(`select coalesce(jsonb_agg(to_jsonb(o) order by id),'[]') from public.opportunities o
+      where opportunity_key like 'standalone-${f.search}-%';`);
+    const seed = (index: number) => sql(`insert into public.opportunities(id,opportunity_key,title,official_url)
+      select '${randomUUID()}', p->>'opportunity_key',p->>'title',p->>'official_url' from (select ${json(f.opportunity(index))} p) data;`);
+    try {
+      const opportunity = f.opportunity();
+      let payload: unknown = opportunity;
+      if (conflict === 'insufficient_evidence') opportunity.sources[0]!.supports = ['official_url'];
+      if (conflict === 'identity_conflict') {
+        seed(0); seed(1);
+        // The stable key names one existing record while its official URL names another.
+        opportunity.official_url = f.opportunity(1).official_url;
+        opportunity.sources[0]!.url = opportunity.official_url;
+      }
+      if (conflict === 'correction_deferred') {
+        seed(0);
+        payload = { ...opportunity, title: 'Unapproved replacement', merge_control: { corrections: [{ path: '/title',
+          expected: 'PRIVATE_UNSAFE_EXPECTED private.person@example.invalid', reason: 'Synthetic correction' }] } };
+      }
+      assert.equal(sql(`select private.opportunity_search_schema_valid(${json(payload)},private.opportunity_search_result_schema());`), 't');
+      sql(`select private.validate_opportunity_search_result(${json(payload)});`);
+      const before = catalogue(), research = researchState(f);
+      const receipt = f.save(unresolved, payload);
+      assertUnresolved(receipt, f, unresolved, conflict);
+      assert.equal(catalogue(), before, 'An unresolved item must not partially insert or modify catalogue evidence');
+      assert.equal(researchState(f), research);
+      assert.equal(savedCount(f), 0);
+      assert.equal(sql(`select count(*) from private.opportunity_search_merge_audit where run_id='${f.run}' and item_id='${unresolved}';`), '0');
+      assert.equal(sql(`select count(*) from public.opportunity_search_discoveries where run_id='${f.run}' and item_id='${unresolved}';`), '0');
+      assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_items where run_id='${f.run}' and item_id='${unresolved}' and outcome='unresolved';`), '1');
+      assert.deepEqual(f.save(unresolved, payload), receipt, 'Exact retries retain the original unresolved disposition');
+      assert.equal(f.save(unresolved, f.opportunity(2)).error.code, 'idempotency_conflict', 'An accepted unresolved item cannot be replaced by a corrected candidate');
+      assert.deepEqual(f.storedReceipt(unresolved), receipt);
+      assert.equal(catalogue(), before);
+      assert.deepEqual(f.verify(unresolved), { adaptive_contract_version: 1, item_verification_version: 1, compatible: true,
+        run_id: f.run, item_id: unresolved, opportunity_id: null, status: 'deferred', verified: false, changed_since_save: false, rolled_back: false });
+
+      const goodReceipt = f.save(saved, f.opportunity(2));
+      assertSaved(goodReceipt, f, saved);
+      assert.equal(f.verify(saved).verified, true, 'An unresolved candidate must not prevent another independently evidenced save');
+      const coverage = f.coverage();
+      const payloadFinish = { completion_id: randomUUID(), status: conflict === 'insufficient_evidence' ? 'failed' : 'complete',
+        ...coverage, execution: { ...coverage.execution, complete: false,
+          backlog: [{ candidate_id: unresolved, reason: conflict === 'identity_conflict' ? 'identity_ambiguous' : 'needs_verification' }] } };
+      const finished = f.complete(payloadFinish);
+      assert.equal(finished.compatible, true, JSON.stringify(finished));
+      assert.equal(finished.persisted_summary_read, true);
+      assert.equal(finished.historical_summary.status, 'failed', 'A completion request cannot turn unresolved research into success');
+      assert.equal(finished.historical_summary.incomplete, true);
+      assert.equal(finished.historical_summary.unresolved_items, 1);
+      assert.equal(finished.current_verification.saved_items, 1);
+      assert.equal(finished.current_verification.verified_items, 1);
+      assert.equal(finished.current_verification.unresolved_items, 1);
+      assert.equal(savedCount(f), 1);
+      assert.equal(f.verify(saved).verified, true);
+      assert.deepEqual(f.storedReceipt(unresolved), receipt);
+      assert.deepEqual(f.complete(payloadFinish).historical_summary, finished.historical_summary);
+    } finally { f.cleanup(); }
+  });
+}
+
+test('a missing unresolved save response verifies as a known deferred item without a catalogue ID', () => {
+  const f = fixture(), item = randomUUID();
+  try {
+    const payload = f.opportunity(); payload.sources[0]!.supports = ['official_url'];
+    // Dispatch in one action and deliberately discard its received result.
+    sql(f.saveSql(item, payload));
+    const proof = f.verify(item);
+    assert.deepEqual(proof, { adaptive_contract_version: 1, item_verification_version: 1, compatible: true,
+      run_id: f.run, item_id: item, opportunity_id: null, status: 'deferred', verified: false, changed_since_save: false, rolled_back: false });
+    assert.equal(savedCount(f), 0);
+    assert.equal(sql(`select count(*) from public.opportunities where opportunity_key='${payload.opportunity_key}';`), '0');
+    assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_items where run_id='${f.run}' and item_id='${item}';`), '1');
+  } finally { f.cleanup(); }
+});
+
+test('an unrelated canonical check violation is a diagnosed save failure, never an unresolved evidence disposition', () => {
+  const f = fixture(), saved = randomUUID(), failed = randomUUID(), existing = randomUUID();
+  try {
+    const prior = f.save(saved); assertSaved(prior, f, saved);
+    const payload = { ...f.opportunity(1), title: 'PRIVATE_FAILURE_CANARY should never appear in diagnostics' };
+    // This deliberately malformed existing catalogue state has no merge provenance.
+    // The canonical merger rejects it with 23514; that is not missing public evidence.
+    sql(`insert into public.opportunities(id,opportunity_key,title,official_url)
+      select '${existing}',p->>'opportunity_key','Synthetic untracked original title',p->>'official_url'
+      from (select ${json(payload)} p) data;`);
+    const current = () => sql(`select to_jsonb(o) from public.opportunities o where id='${existing}';`);
+    const before = current(), research = researchState(f);
+    const result = f.save(failed, payload);
+    assert.equal(result.accepted, false);
+    assert.equal(result.error.code, 'save_failed', JSON.stringify(result));
+    assert.equal(result.stored, null, 'Unexpected canonical failures are not user-correctable validation rejections');
+    assert.equal(result.correction_allowed, false);
+    assert.equal(result.diagnostics.stage, 'item_write');
+    assert.equal(result.diagnostics.sqlstate, '23514');
+    assert.equal(result.diagnostics.function, 'private.opportunity_merge_plan');
+    assert.ok(Number.isInteger(result.diagnostics.line) && result.diagnostics.line > 0);
+    assert.match(result.diagnostics.source_hash, /^[a-f0-9]{32}$/u);
+    assert.doesNotMatch(JSON.stringify(result), /PRIVATE_FAILURE_CANARY|untracked original|example\.invalid|SELECT|INSERT|snapshot|normalized_payload/iu);
+    assert.equal(current(), before);
+    assert.equal(researchState(f), research);
+    assert.equal(savedCount(f), 1);
+    assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_items where run_id='${f.run}' and item_id='${failed}';`), '0');
+    assert.equal(sql(`select count(*) from private.opportunity_search_merge_audit where run_id='${f.run}' and item_id='${failed}';`), '0');
+    assert.equal(sql(`select count(*) from public.opportunity_search_discoveries where run_id='${f.run}' and item_id='${failed}';`), '0');
+    const diagnostic = query(`select last_batch_rejection from public.opportunity_search_runs where id='${f.run}';`);
+    assert.equal(diagnostic.batch_id, failed);
+    assert.deepEqual(diagnostic.diagnostics, result.diagnostics);
+    assert.ok(Buffer.byteLength(JSON.stringify(diagnostic)) <= 2048);
+    assert.doesNotMatch(JSON.stringify(diagnostic), /PRIVATE_FAILURE_CANARY|untracked original|example\.invalid|SELECT|INSERT/iu);
+    assert.deepEqual(f.storedReceipt(saved), prior);
+    assert.equal(f.verify(saved).verified, true, 'The rejected candidate cannot undo an independently committed save');
+  } finally { f.cleanup(); }
+});

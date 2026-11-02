@@ -37,6 +37,7 @@ export function buildAdaptiveSearchReleaseManifest() {
       hosted_codec_upgrade: artifact('supabase/releases/adaptive-search-hosted-codec-v1.sql'),
       inline_codec_upgrade: artifact('supabase/releases/adaptive-search-inline-codec-v1.sql'),
       current_saves_upgrade: artifact('supabase/releases/adaptive-search-current-saves-v1.sql'),
+      deferred_receipts_upgrade: artifact('supabase/releases/adaptive-search-deferred-receipts-v1.sql'),
       lifecycle_contracts: ['supabase/contracts/adaptive-search-lifecycle.request.schema.json',
         'supabase/contracts/adaptive-search-lifecycle.response.schema.json'].map(artifact),
     },
