@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { file, reset, sql } from '../../support/database/postgres';
 import { runConcurrentRollbackAckRegression } from '../../support/database/rollbackConcurrency';
 import { ADAPTIVE_RELEASE_MANIFEST, buildAdaptiveSearchReleaseManifest, checkAdaptiveSearchReleaseManifest } from '../../../scripts/adaptiveSearchRelease';
-import { buildAdaptiveSearchSqlCall, type AdaptiveBatchPayload } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
+import { buildHistoricalAdaptiveSearchSqlCall as buildAdaptiveSearchSqlCall, type AdaptiveBatchPayload } from '../../support/historicalAdaptiveSearchProtocol';
+import { installHistoricalAdaptiveBatchFixture } from '../../support/database/historicalAdaptiveBatch';
 
 const quote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
 
@@ -28,7 +29,8 @@ test('AF-11 explicit feature rollback requires a real task receipt and preserves
   sql(file('supabase/tests/opportunity_search_adaptive_rollback.sql'));
 });
 
-for (const batchCount of [1,2]) test(`AF-11 fully installed runner preserves ${2+batchCount}-call budget, actual exploration and unapproved submission-based suggestions`, () => {
+for (const batchCount of [1,2]) test(`historical AF-11 batch runner preserves ${2+batchCount}-call budget, actual exploration and unapproved submission-based suggestions`, () => {
+  installHistoricalAdaptiveBatchFixture({ brief: true });
   const owner=randomUUID(),search=randomUUID(),run=randomUUID(),core=randomUUID(),adaptive=randomUUID(),exploration=randomUUID();
   const batchIds=Array.from({length:batchCount},()=>randomUUID()),item=randomUUID(),completion=randomUUID();
   const checks=[randomUUID(),randomUUID(),randomUUID()],project='rrrrrrrrrrrrrrrrrrrr',scope={project_ref:project,search_id:search,run_id:run};
@@ -52,7 +54,7 @@ for (const batchCount of [1,2]) test(`AF-11 fully installed runner preserves ${2
     assert.equal(startup.feedback.counts.submission_fallback,1);
     assert.deepEqual(startup.source_retention,{requested:7,retained:7,omitted:0});
     assert.equal(startup.capabilities.capability_version,'adaptive-batch-v1');
-    assert.deepEqual(startup.execution_contract,buildAdaptiveSearchReleaseManifest().execution_contract);
+    assert.equal(startup.execution_contract.maximum_batch_opportunities,10);
     const now=new Date().toISOString(),url=`https://example.invalid/Research/${run}`,listing=`https://example.invalid/Jobs?fixture=${run}`;
     // Synthetic listing fixtures are empty: record one actual check input for
     // every due source, rather than claiming complete coverage from queries alone.
@@ -104,6 +106,7 @@ for (const batchCount of [1,2]) test(`AF-11 fully installed runner preserves ${2
     }
     assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_items where run_id=${quote(run)};`),'0');
     if(saved) assert.equal(sql(`select count(*) from public.opportunities where opportunity_key=${quote('af11-result-'+run)};`),'1','Account deletion removed canonical result.');
+    reset();
   }
 });
 

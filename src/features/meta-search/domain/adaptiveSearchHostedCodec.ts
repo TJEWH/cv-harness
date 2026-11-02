@@ -1,4 +1,4 @@
-/** Trusted, dependency-free JavaScript copied verbatim into hosted instructions.
+/** Optional dependency-free local decoder; historical hosted fixtures retain this source.
  * The caller keeps the raw response while decoding it in the same invocation.
  * This source never dispatches a request, evaluates returned text or validates an action contract.
  */

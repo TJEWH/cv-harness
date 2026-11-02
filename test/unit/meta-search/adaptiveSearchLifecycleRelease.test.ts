@@ -24,7 +24,8 @@ test('the versioned lifecycle upgrade contains the reviewed current fencing and 
     ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-current-saves-v1.sql'))]);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale upgrade definition: ${signature}`);
   for (const name of ['begin_adaptive_opportunity_search', 'begin_opportunity_search', 'complete_opportunity_search',
     'opportunity_search_adaptive_error', 'opportunity_search_adaptive_completion_error', 'verify_and_complete_adaptive_search',
@@ -35,7 +36,7 @@ test('the versioned lifecycle upgrade contains the reviewed current fencing and 
   assert.match(upgrade, /ADD COLUMN owner_cancel_operation_id uuid/u);
   assert.match(upgrade, /CREATE TABLE private\.opportunity_search_lifecycle_operations/u);
   assert.match(upgrade, /ENABLE ROW LEVEL SECURITY/u);
-  const security = read('supabase/schemas/60_security.sql').split('-- Lifecycle operations are private owner-authorized commands, never an executable research packet.\n')[1]!.trim();
+  const security = read('supabase/schemas/60_security.sql').split('-- Lifecycle operations are private owner-authorized commands, never an executable research packet.\n')[1]!.split('-- Current adaptive hosted helpers')[0]!.trim();
   assert.ok(upgrade.includes(security), 'upgrade ACLs must match the current lifecycle security module');
   assert.match(security, /REVOKE ALL ON FUNCTION public\.prepare_adaptive_search_lifecycle\(uuid,text,text,uuid\) FROM PUBLIC,anon,authenticated,service_role;/u);
   assert.match(upgrade, /Lifecycle installation already exists or is partial/u);

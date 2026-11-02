@@ -1,10 +1,11 @@
+import { resetHistoricalAdaptiveBatchFixture } from '../../support/database/historicalAdaptiveBatch';
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
-import { file, reset, sql, sqlAsync } from '../../support/database/postgres';
+import { file, sql, sqlAsync } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
-before(() => reset());
+before(() => resetHistoricalAdaptiveBatchFixture());
 
 const project = 'kkkkkkkkkkkkkkkkkkkk';
 const json = adaptiveJsonSqlLiteral;
@@ -433,7 +434,7 @@ test('targeted incremental-save upgrade preserves active research and exactly ma
     assert.deepEqual(helpers(), installed);
     assert.equal(snapshot(f), before);
   } finally {
-    try { f?.cleanup(); } finally { reset(); }
+    try { f?.cleanup(); } finally { resetHistoricalAdaptiveBatchFixture(); }
   }
 });
 
@@ -475,6 +476,6 @@ test('targeted diagnostics upgrade preserves existing state, installs its review
     assert.throws(() => sql(upgrade), /Expected the reviewed|already exists/iu);
     assert.equal(submitSource(), expectedSubmitHash, 'Historical diagnostics installation must match its immutable artifact');
   } finally {
-    try { f?.cleanup(); } finally { reset(); }
+    try { f?.cleanup(); } finally { resetHistoricalAdaptiveBatchFixture(); }
   }
 });

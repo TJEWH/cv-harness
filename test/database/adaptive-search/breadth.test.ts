@@ -1,10 +1,11 @@
+import { resetHistoricalAdaptiveBatchFixture } from '../../support/database/historicalAdaptiveBatch';
 import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createSearchBreadthPolicy } from '../../../src/features/meta-search/domain/adaptiveSearchPlanner';
-import { file, reset, sql, sqlAsync } from '../../support/database/postgres';
+import { file, sql, sqlAsync } from '../../support/database/postgres';
 
-before(() => reset());
+before(() => resetHistoricalAdaptiveBatchFixture());
 
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const json = (value: unknown) => `${quote(JSON.stringify(value))}::jsonb`;

@@ -3,7 +3,6 @@ import { before, test } from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { file, reset, sql } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral as json } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
-import { buildAdaptiveRecurringSearchPrompt } from '../../../src/features/meta-search/domain/adaptiveSearchTask';
 
 before(() => reset());
 const project = 'abcdefghijklmnopqrst';
@@ -65,9 +64,11 @@ test('inline codec upgrade removes mandatory host storage while preserving resea
     assert.equal(snapshot(), saved, 'Reading the same run rewrote pinned research');
     assert.equal(handoff(oldSetup).error.code, 'setup_stale', 'An old setup must not silently publish the mandatory-storage prompt');
 
-    const updated = handoff(nextSetup), expected = buildAdaptiveRecurringSearchPrompt(search, project);
+    const updated = handoff(nextSetup), expected = query(`select to_jsonb(private.adaptive_search_recurring_prompt('${search}','${project}'));`);
+    const historicalSource = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(definition(upgrade))![2]!;
+    assert.equal(sql(`select md5(prosrc) from pg_proc where oid='${signature}'::regprocedure;`), createHash('md5').update(historicalSource).digest('hex'));
     assert.equal(updated.compatible, true, JSON.stringify(updated));
-    assert.equal(updated.recurringPrompt, expected, 'The setup must carry exactly the frontend-tested prompt and codec source');
+    assert.equal(updated.recurringPrompt, expected, 'The historical setup must carry exactly its reviewed inline codec prompt');
     assert.ok(expected.includes('codec.decode(raw,column)'));
     assert.ok(!expected.includes('createCVResponseCodec(io)'));
     assert.ok(!expected.includes('codec.capture('));

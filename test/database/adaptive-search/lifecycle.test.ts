@@ -1,10 +1,11 @@
+import { resetHistoricalAdaptiveBatchFixture } from '../../support/database/historicalAdaptiveBatch';
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { file, reset, sql, sqlAsync } from '../../support/database/postgres';
+import { file, sql, sqlAsync } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
-before(() => reset());
+before(() => resetHistoricalAdaptiveBatchFixture());
 
 test('lifecycle contract preserves partial work, pins owner scope and fences stale workers', () => {
   sql(file('supabase/tests/opportunity_search_lifecycle.sql'));

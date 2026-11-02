@@ -1,36 +1,31 @@
 # Adaptive search with one startup response
 
-Manual and scheduled executions use the same saved recurring instructions. Each execution requests one bounded startup brief, researches the authorized scope, saves one opportunity per call through the existing batch helper, and requests separate completion verification. The normal database budget is **startup + N opportunity saves + completion with coverage = N + 2 calls**. Six opportunities require eight calls, one requires three, and an empty search requires two.
+Manual and scheduled executions follow the same current protocol: one startup brief, research, then **save and independently verify each opportunity**, followed by one final report. The normal database budget is **2 + 2N calls** for N opportunities. Saving never contains adaptive feedback, a query plan, execution checks or a batch envelope.
 
 ```text
-Scheduled time ────────────────┐
-Manual execution of task ─────┼─ saved recurring instructions
-                             │          │
-Direct execution prompt ──────┘          ▼
-                             one startup brief
-                                      │
-                                  research
-                                      │
-                              N canonical saves
-                                      │
-                           completion verification
+startup → research → save one opportunity → verify that opportunity
+                            ↑                         │
+                            └── next opportunity ─────┘
+                         → finish with actual research coverage
 ```
 
-The recurring prompt supplies one fixed startup statement:
+The startup statement remains:
 
 ```sql
 SELECT private.begin_adaptive_search_brief('<saved-search-uuid>'::uuid, '<stable-run-uuid>'::uuid) AS startup;
 ```
 
-Use the project bound to the saved search and retain the run UUID across a permitted identical retry. The brief helper uses the existing startup authorization, locking, pinned context and lease machinery. Batch intake and completion retain their existing helpers and independent persisted verification.
+The returned `protocol_text` is the sole current save, verification and completion contract. The saved task does not override it with another format. The four allowed helpers are `begin_adaptive_search_brief`, `save_adaptive_search_item`, `verify_adaptive_search_item` and `finish_adaptive_search`. The internal `adaptive-batch-v1` binding identifier is retained to avoid an unrelated task-binding migration; it does not authorize a batch payload.
 
-## Saving opportunities and coverage
+## Saving opportunities and reporting coverage
 
-The hosted runner sends one canonical opportunity directly to `private.submit_adaptive_search_batch(run_id,item_id,opportunity_json)`. Each opportunity keeps its stable item UUID, full canonical validation, verified decision-relevant facts and supporting evidence. Saving needs no query plan, checks or batch wrapper. Keep descriptive text concise and omit unknown optional fields and raw page scrapes. Do not copy the startup bundle, feedback or schema into a save payload.
+Call `private.save_adaptive_search_item(run_id,item_id,opportunity_json)` with one canonical opportunity, using a stable item UUID. The helper uses the established canonical writer, validation, identity matching and merge rules. It preserves adaptive authorization and privacy boundaries, records the assessment needed by feedback, and returns one compact item receipt. It accepts no batch wrapper or alternate payload version.
 
-Keep the actual plan, checks and pending candidates during research. Submit them once through the completion helper's version-2 `finish` action, using the existing first-batch report shape as `coverage` with `opportunities:[]`. Record every required source check honestly, including zero-result or blocked checks, and keep unresolved candidates in the backlog under stable IDs. The server derives the exact manifest and applies the existing coverage rules. An invalid coverage report cannot undo earlier committed opportunity saves.
+Next call `private.verify_adaptive_search_item(run_id,item_id)`. Only a matching persisted verification establishes that item as saved. If a dispatched save returned no usable response, the same verification call can establish its outcome without resending opportunity data. A rejection, denial or invalid contract does not authorize another access path or a replay. Earlier committed items survive a later invalid item or report.
 
-Accepted saves remain pending independent verification. Completion verifies persisted opportunities and actual coverage; the version-2 `verify_item` action can verify a saved item after a reporting failure without closing the run. Existing wrapped batches remain compatible. Report incomplete checks, unresolved candidates and verified partial saves honestly. Smaller save requests improve reviewability and preserve progress between calls; they do not guarantee that ChatGPT will omit an approval step. Never split or alter a blocked or denied request to avoid that approval.
+Keep the actual plan, checks and pending candidates during research. Finish once with `private.finish_adaptive_search(run_id,report_json)`, where the flat report contains `completion_id`, `status`, and the actual `query_plan`/`plan_hash`, `execution`, and optional evidence-backed suggestions. There is no `schema_version`, `action`, `coverage`, `opportunities`, `batch_ids` or client-built manifest. The server derives the saved-item manifest and independently verifies persisted results. Preserve the exact report on an identical permitted retry. Missing or incomplete coverage cannot become a successful research result.
+
+The old batch-saving and version-dispatch completion entrypoints reject calls with `retired_contract`. Historical receipts and audit data remain available, but no historical save format remains executable through those entrypoints. This is separate from the owner-authorized legacy-runner rollback lifecycle.
 
 ## Starting again replaces an active execution
 
@@ -44,7 +39,7 @@ Replacement and valid startup commit together. If the requested startup is rejec
 
 ## Contents and size limit
 
-The brief includes the complete batch/completion protocol and canonical opportunity schema. It preserves the saved criteria, query plan or valid null value, legacy core queries, all approved rules and preferences, blocked core queries, due sources and source context. Scope, version pins, capability flags, refresh state and lease information remain available.
+The brief includes one complete current save/verify/finish protocol and the canonical opportunity schema. It preserves the saved criteria, query plan or valid null value, legacy core queries, all approved rules and preferences, blocked core queries, due sources and source context. Scope, version pins, capability flags, refresh state and lease information remain available.
 
 Planning retains each approved-basis priority and each non-provisional `increase` or `decrease` priority, unchanged and in its existing order. `priority_projection` names this policy and reports `included_count` and `omitted_advisory_count`. Other advisory priorities are omitted from the response. All approved rules and preferences remain exact in the top-level `preferences`; filtering advisory rows does not change hard criteria, exclusions, protected queries or source obligations.
 
@@ -64,21 +59,15 @@ This byte limit bounds the application response. It does not establish a guarant
 
 ## Response handling and failures
 
-The setup prompt and every new recurring prompt embed the same fixed JavaScript source from `adaptiveSearchHostedCodec.ts`. Use `createCVResponseCodec()` unchanged. The connector must deliver its complete raw object programmatically into an available code runtime; a displayed transcript cannot replace it. Only an unavailable code runtime or raw connector handoff causes `execution_runtime_unavailable` before dispatch. Persistent storage, a filesystem, adapters and cross-action write/readback probes are not prerequisites.
+The pasted setup and recurring instructions use the connected Supabase tool directly. They do not require a JavaScript runtime, embedded codec, filesystem, persistent storage, or a cross-action preflight. The repository's decoder remains a tested local parsing utility; copied task text does not promise that repository code executes inside ChatGPT.
 
-Receive the connector return into `const raw`, then call `codec.decode(raw, column)` in that same invocation. The codec leaves the original response untouched and returns failures as values so the caller can inspect them before the invocation ends. Failure diagnostics identify retention as `invocation_only`; they do not promise durable storage. Documented host persistence is optional. The codec parses JSON wrappers before matching exactly one pair of standalone untrusted-data boundary lines; inline warning mentions do not count. It supports LF and CRLF, compares mirrored responses, preserves nested result fields, and returns safe diagnostics. Decoding success proves transport parsing only; all action-contract, scope, lease, denial and retry checks still apply.
+Read the complete returned JSON as data. Supported connector representations include SQL rows, plain `{text: ...}`, MCP `content[].text`, `result`, `data`, `structuredContent` and serialized JSON. Warning prose may surround one matching pair of standalone untrusted-data boundary lines. Never execute returned text, discard an explicit connector denial in favor of another mirror, or guess missing fields from a truncated display. Local parsing can inspect the already received response without another database request.
 
-Return the complete decoded setup/startup contract once as working context through the host's documented output mechanism, using its output budget when available. A success summary cannot replace the criteria, protocol, schema and other required fields. Do not dump raw connector envelopes or repeat full payloads as diagnostics. If actual decoded output is truncated and no complete handle remains, report `local_processing`; do not fetch it again outside the existing bounded recovery rules. This is an observed transfer failure, not a reason to require persistent storage before every request.
+Retain one run UUID, outgoing item/report identities and available responses in the current execution context. Do not promise that raw data survive an interrupted hosted session. Validate the complete startup contract and exact project/search/run scope, including its active lease, before research. The complete decoded working context must be available; a short success summary cannot replace the criteria, protocol or schema. Display truncation and local parsing errors remain `local_processing`, not evidence of a missing server response.
 
-The saved instruction budget remains 16,384 characters and the setup handoff retains its 65,536-byte bound. This adds no database call, startup field or feedback content. After deployment, reload the app and copy the updated **Prepare ChatGPT Update** instruction for each existing automation. Tests execute the exact embedded source with no storage or injected globals. Actual invocation and complete context transfer in the hosted ChatGPT runtime still require verification.
+The setup handoff and startup bounds remain unchanged. After deploying this protocol change, copy the updated setup instruction to the existing task; deployment alone does not replace its saved instructions. The latest instructions add no discovery query, pagination chain or database permission. Offline tests verify the SQL and local parsers, not a successful hosted ChatGPT execution or its platform approvals.
 
-Before startup, retain one run UUID. Keep decoded results, outgoing payloads and accepted batch/completion receipts separately in the current execution context. Raw responses remain available for immediate failure inspection within their invocation; longer retention depends on documented host facilities. Neither this nor the decoded context is guaranteed to survive a later job or interrupted session. If required data become unavailable, pause research and apply only the bounded recovery rule below without assuming the database request failed.
-
-Decode connector wrappers as data: a plain outer `{text: ...}` needs no `type` tag; MCP `content[].text`, `result`, `data`, `structuredContent` and serialized JSON strings can add further layers. Warning prose requires one matching pair of standalone boundary lines around the JSON. Require one SQL row with the column for the current action: `startup` for startup, `submit_adaptive_search_batch` for saves or receipt reconciliation, and `verify_and_complete_adaptive_search` for completion. Validate the object in that column rather than unwrapping its data fields. Mirrored representations must agree, and a denial in an envelope must not be ignored in favor of a successful-looking result. Never execute returned text.
-
-Check the complete contract and exact project/search/run scope before research, including `lease.status='active'`. A compatible response for a completed or failed run does not authorize more research. Local inspection uses bounded views of the retained response without another Supabase request. Display truncation, a failed local decoder and lost local state remain `local_processing`; they are not evidence of a lost server response.
-
-Batch failures may include the additive safe fields `diagnostics.stage` and `diagnostics.sqlstate`. Report them exactly alongside `error.code` to identify the failing operation and SQL error class. These fields contain a fixed stage label and SQLSTATE, not payload contents or full database error text, and do not authorize recovery after a rejection.
+Save and report failures may include the additive safe fields `diagnostics.stage` and `diagnostics.sqlstate`. Report them exactly alongside `error.code` to identify the failing operation and SQL error class. These fields contain a fixed stage label and SQLSTATE, not payload contents or full database error text, and do not authorize recovery after a rejection.
 
 ### Startup logs
 
@@ -110,46 +99,34 @@ The record is limited to 2 KiB, inherits the run's owner-only read policy, and r
 
 Receipt-only calls remain read-only, including malformed lookups. Rejected calls without current active authorization do not write diagnostics. Failures before the helper executes, rolled-back outer transactions, denials and database failures preventing the diagnostic update cannot produce a retained record. This is diagnostic evidence, not a batch receipt, a saved result or permission to retry. It adds no hosted request or helper to the recurring allowlist and requires no prompt refresh for an already updated task.
 
-The UI decoder and the hosted codec remain separate execution paths. New task instructions carry executable source and require its use; they do not import repository modules. Older saved tasks still have only prose until refreshed. Updating local code alone does not update an existing automation, and tests cannot prove that a hosted model actually followed the supplied routine.
+Local decoder utilities remain available for repository callers and historical fixtures. Current hosted instructions contain no executable codec. Updating repository code alone does not update an existing automation, and local tests cannot prove that the hosted connector supplied complete usable responses.
 
 The recurring workflow no longer requests a manifest, retrieves numbered pages, decodes Base64 chunks, or reconstructs five sections. Historical paging and checkpoint utilities remain for compatibility and offline recovery tests; the current recurring prompt does not use them.
 
-For startup or completion only, runtime evidence that the request was dispatched and no response arrived permits one identical retry. Batch writes are not automatically replayed. There is one additional, startup-only case: before any batch has been sent, a previously observed compatible startup for the exact project/search/run may be read again if its complete response was subsequently lost locally and cannot be recovered from the retained capture. Repeat the identical startup SQL and UUID at most once. This shares the startup's single retry budget with transport-loss recovery; the two conditions do not allow two retries.
+For startup or completion only, runtime evidence that the request was dispatched and no response arrived permits one identical retry. Opportunity writes are not automatically replayed. There is one additional, startup-only case: before any opportunity has been submitted, a previously observed compatible startup for the exact project/search/run may be read again if its complete response was subsequently lost locally and cannot be recovered from the retained capture. Repeat the identical startup SQL and UUID at most once. This shares the startup's single retry budget with transport-loss recovery; the two conditions do not allow two retries.
 
 Known startup acceptance is required for that local-loss recovery; receipt of an undecoded tool response or an HTTP success alone does not establish it. Unknown startup acceptance blocks a local-loss reread. A retained response that can be inspected locally must not be fetched again, and a malformed or rejected contract does not qualify. Revalidate the recovered contract, scope and active lease. The server rechecks authorization, release and privacy scope without renewing the lease; retries of an already-created run cannot supersede a newer execution.
 
-A missing or locally lost receipt for a dispatched batch submission has a separate, bounded reconciliation path. Inspect the retained response first. If the receipt is still unavailable, with no observed rejection, invalid contract or known pending/denied approval, make at most one payload-free call using the original run and batch UUIDs:
+A missing save response is reconciled through the ordinary independent verification call with the original run and item UUIDs. Never resend the opportunity to find out whether it saved. A missing item or unavailable verification remains unresolved and must not be reported as saved. Do not verify after a known rejection, denial, invalid contract or pending approval.
 
-```sql
-SELECT private.submit_adaptive_search_batch('<same-run-uuid>'::uuid, '<same-batch-uuid>'::uuid, NULL::jsonb);
-```
-
-SQL `NULL` selects receipt reconciliation; it does not submit an empty batch, replay the write or create a new batch. This uses the existing helper and is exceptional, not a follow-up after every successful save. An accepted receipt still requires independent completion verification. `batch_not_found` means stop and report that no receipt was found; it is neither proof of transport loss nor permission to resend, change IDs or invent a completion manifest.
-
-An explicit approval, permission or safety denial stops all further database calls. Pending approval must be resolved through the original approval flow. Neither recovery path applies after a denial, observed rejection or invalid contract. These are narrow startup and receipt safeguards, not a general retry policy for `local_processing` or completion. Keep known UUIDs and report the observed outcome; do not switch helpers, projects, roles or transport, or split a blocked write into new requests.
-
-An interrupted attempt does not establish that the database run ended. Report the observed outcome and retain its identity. A later authorized new execution deliberately replaces an active run through startup itself; it does not require reconciling the old run first. The separate [execution lifecycle controls](adaptive-search-lifecycle.md) remain available when the owner explicitly wants to stop a run without starting new research; they are not a routine recovery prerequisite. A tool denial does not authorize inventing another run UUID or invoking those controls.
+Historical deployment artifacts document earlier response handling, batch intake and completion contracts. They are immutable upgrade history, not additional formats supported by the current saving workflow.
 
 ## Updating existing schedules
 
 Setup and execution remain separate. The setup prompt reads the scoped handoff, updates the exact bound automation through its task tool, and acknowledges the successful update in Supabase. It does not perform research as part of setup.
 
-1. Install any missing upgrades in order: [lifecycle](../supabase/releases/adaptive-search-lifecycle-v1.sql), [brief](../supabase/releases/adaptive-search-brief-v1.sql), [supersession](../supabase/releases/adaptive-search-supersession-v1.sql), [response handling](../supabase/releases/adaptive-search-response-handling-v1.sql), [incremental saves](../supabase/releases/adaptive-search-incremental-saves-v1.sql), then [batch diagnostics](../supabase/releases/adaptive-search-batch-diagnostics-v1.sql). Review and deploy under deployment authorization; each requires its preceding baseline. The fresh `schema.sql` installer is not an upgrade script.
+1. Deploy the guarded [current save-protocol upgrade](../supabase/releases/adaptive-search-current-saves-v1.sql) from its reviewed inline-codec predecessor, together with the frontend changes. Its guards reject an unexpected installation; inspect an older baseline before choosing earlier upgrades. The fresh `schema.sql` installer is not an upgrade script.
 2. Copy the replacement setup prompt for each existing meta-search automation and paste it once into ChatGPT. Complete its task update and Supabase acknowledgement. Preserve that automation's saved cadence and binding.
 3. Use the updated task for manual execution or wait for its next scheduled run. Both routes use the same startup brief.
 
 Copying before deployment can retrieve the older recurring prompt from the installed database. A local code change or frontend refresh alone does not update a saved automation. Tasks still using the historical page-by-page startup retain it until their prompt replacement succeeds. Tasks already calling `begin_adaptive_search_brief` receive the automatic replacement behavior from the deployed server.
 
-The response-handling upgrade changes the recurring-prompt function. The incremental-saves upgrade then updates that function, `adaptive_batch_error` and `submit_adaptive_search_batch`, adding receipt reconciliation to the existing helper. These upgrades add no helper and trigger no research. After deployment, one scoped refresh installs the current capture, decoding, incremental-save and recovery instructions in the existing ChatGPT task. Deployment alone does not update or acknowledge that task; preserve its binding and schedule.
+The current upgrade retires the previous batch and versioned completion helpers. Refresh the existing task before running it; an old saved prompt will be rejected rather than silently translated. Preserve its task binding and schedule.
 
 You do not paste a prompt before each scheduled occurrence. Changes to saved criteria or feedback enter through startup on the next execution, within the existing authorization and pinning rules. A separate automation needs its own scoped setup handoff; do not use one task's binding to update another.
 
 ## Verification boundary
 
-Repository tests should cover the single startup statement and matching SQL/frontend prompt, preservation of authoritative inputs and example selection, the UTF-8 response limit, transactional rollback on invalid or oversized replacement, same-UUID retries, concurrent new starts, stale-worker fencing, authorization and lease checks, and unchanged batch/completion verification. Management-only helper permissions must remain intact. Synthetic fixtures and the isolated test database provide evidence for those application contracts.
+Repository tests should cover the single startup statement and matching SQL/frontend prompt, preservation of authoritative inputs and example selection, the UTF-8 response limit, transactional rollback on invalid or oversized replacement, same-UUID retries, concurrent new starts, stale-worker fencing, authorization and lease checks, direct canonical saving, independent verification and flat completion. Management-only helper permissions must remain intact. Synthetic fixtures and the isolated test database provide evidence for those application contracts.
 
 Installing the database upgrade does not itself execute a search, replace a saved task prompt or change its schedule. Supersession occurs only when an authorized new startup is requested. Production configuration, connector output handling, unattended execution and the reason for a ChatGPT safety denial require separate evidence. Passing offline tests does not establish that a future request will pass a platform safety check.
-
-## Independent saving after research
-
-The [standalone-save workflow](adaptive-search-release.md#runner-and-setup) leaves this startup brief and its research context unchanged. New saved task instructions override only the historical save/receipt/completion shapes: submit one canonical opportunity directly, then report actual coverage in one final call whose manifest is assembled by the server. Existing wrapped batches remain compatible. After deployment, refresh the existing task once through its setup handoff; do not change its binding or schedule.

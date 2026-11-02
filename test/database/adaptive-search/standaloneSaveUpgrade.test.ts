@@ -1,10 +1,11 @@
+import { resetHistoricalAdaptiveBatchFixture } from '../../support/database/historicalAdaptiveBatch';
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { file, reset, sql } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
-before(() => reset());
+before(() => resetHistoricalAdaptiveBatchFixture());
 
 const json = adaptiveJsonSqlLiteral;
 const query = (statement: string) => JSON.parse(sql(statement));
@@ -42,10 +43,13 @@ test('targeted standalone-save upgrade preserves a pinned run, its old batch and
   const expectedSources = sources([...changed, ...added]);
   const expectedProperties = properties();
   const upgrade = file('supabase/releases/adaptive-search-standalone-saves-v1.sql');
-  // This historical save upgrade still advertises the original brief bound.
-  // The later brief-limit upgrade independently checks the 96-KiB requirement.
-  const historicalPrompt = definitions(upgrade).find(match => match[1]!.startsWith('private.adaptive_search_recurring_prompt('))!;
-  expectedSources['private.adaptive_search_recurring_prompt(uuid,text)'] = createHash('md5').update(historicalPrompt[3]!).digest('hex');
+  // Compare this immutable historical upgrade with its own reviewed bodies,
+  // not the later direct-only execution contract installed by reset().
+  for (const definition of definitions(upgrade)) {
+    const name = definition[1]!.split('(')[0]!;
+    const signature = [...changed, ...added].find(value => value.startsWith(name + '('));
+    if (signature) expectedSources[signature] = createHash('md5').update(definition[3]!).digest('hex');
+  }
   const predecessor = file('test/fixtures/meta-search/standalone-saves-predecessor.sql');
   const snapshot = () => sql(`select jsonb_build_object(
     'run',(select to_jsonb(r) from public.opportunity_search_runs r where id='${run}'),
@@ -66,7 +70,15 @@ test('targeted standalone-save upgrade preserves a pinned run, its old batch and
     for (const hash of predecessorHashes) assert.ok(upgrade.includes(hash), `Missing predecessor deployment guard ${hash}`);
     assert.deepEqual(Object.values(sources(changed)).sort(), predecessorHashes.sort(), 'The fixture must reproduce the reviewed predecessor');
     const priorProperties = properties(), untouchedFunctions = otherFunctions();
-    assert.deepEqual(priorProperties, expectedProperties, 'Replacing function bodies must preserve their execution properties');
+    const comparable = (value: Record<string, any>) => {
+      const result = structuredClone(value);
+      for (const signature of ['private.submit_adaptive_search_batch(uuid,uuid,jsonb)', 'private.verify_and_complete_adaptive_search(uuid,jsonb)']) {
+        // Current retirement replaces PL/pgSQL writers with immutable SQL rejections.
+        delete result[signature].prolang; delete result[signature].provolatile;
+      }
+      return result;
+    };
+    assert.deepEqual(comparable(priorProperties), comparable(expectedProperties), 'Historical helper ownership, scope and ACLs changed');
     sql(`insert into auth.users(id) values('${owner}');
       insert into public.opportunity_search_templates(id,user_id,name,criteria,schedule)
         values('${search}','${owner}','Synthetic standalone upgrade','{"topicsAndMethods":"Synthetic acoustic sensing"}',

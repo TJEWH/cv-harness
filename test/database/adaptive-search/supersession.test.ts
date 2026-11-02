@@ -1,10 +1,11 @@
+import { resetHistoricalAdaptiveBatchFixture } from '../../support/database/historicalAdaptiveBatch';
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { file, reset, sql, sqlAsync } from '../../support/database/postgres';
+import { file, sql, sqlAsync } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
-before(() => reset());
+before(() => resetHistoricalAdaptiveBatchFixture());
 
 const project = 'ssssssssssssssssssss';
 const json = adaptiveJsonSqlLiteral;
@@ -430,6 +431,6 @@ test('targeted supersession upgrade preserves active state and installs its hist
     assertFenced(f);
     assert.deepEqual(query(f.batchSql()), receipt);
   } finally {
-    try { f?.cleanup(); } finally { reset(); }
+    try { f?.cleanup(); } finally { resetHistoricalAdaptiveBatchFixture(); }
   }
 });

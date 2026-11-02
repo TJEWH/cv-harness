@@ -1,9 +1,10 @@
+import { resetHistoricalAdaptiveBatchFixture } from '../../support/database/historicalAdaptiveBatch';
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { reset, sql } from '../../support/database/postgres';
+import { sql } from '../../support/database/postgres';
 
-before(() => reset());
+before(() => resetHistoricalAdaptiveBatchFixture());
 import { ADAPTIVE_BATCH_PROTOCOL_TEXT } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;

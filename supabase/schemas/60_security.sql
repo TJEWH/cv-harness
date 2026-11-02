@@ -1501,3 +1501,9 @@ GRANT EXECUTE ON FUNCTION public.apply_adaptive_search_lifecycle(uuid) TO authen
 GRANT EXECUTE ON FUNCTION public.read_adaptive_search_lifecycle(uuid) TO authenticated;
 COMMENT ON TABLE private.opportunity_search_lifecycle_operations IS 'Authenticated owner-prepared, immutable target binding for controlled abort and at most one reserved restart. No research payload or provider dispatch receipt.';
 COMMENT ON COLUMN public.opportunity_search_runs.owner_cancel_operation_id IS 'Permanent mutation fence and audit link for an owner-cancelled execution. Cancellation is represented as failed with partial coverage, never successful completion.';
+
+-- Current adaptive hosted helpers and their internal coverage implementation.
+-- These remain management-only; the task binding is not an application-role grant.
+REVOKE ALL ON FUNCTION private.record_adaptive_search_coverage(uuid,uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.finish_adaptive_search(uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION private.adaptive_search_hosted_protocol_text() FROM PUBLIC,anon,authenticated,service_role;

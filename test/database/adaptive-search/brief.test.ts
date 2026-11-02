@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { file, reset, sql } from '../../support/database/postgres';
-import { adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
+import { adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall, ADAPTIVE_HOSTED_PROTOCOL_TEXT, ADAPTIVE_HOSTED_CAPABILITIES, ADAPTIVE_HOSTED_EXECUTION_CONTRACT } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 import { ADAPTIVE_BRIEF_MAX_BYTES } from '../../../src/features/meta-search/domain/adaptiveSearchBrief';
 
 before(() => reset());
@@ -72,9 +72,11 @@ test('single startup response preserves the executable contract, 16 feedback exa
     assert.equal(brief.query_plan, null);
     assert.equal(brief.legacy_core_queries, null);
     const original = full(f); // Test oracle only; the runtime consumes the one brief above.
-    assert.ok(brief.protocol_text.startsWith(original.protocol_text + '\n\nEVIDENCE FIELD NAMES\n'));
+    assert.ok(brief.protocol_text.startsWith(ADAPTIVE_HOSTED_PROTOCOL_TEXT + '\n\nEVIDENCE FIELD NAMES\n'));
+    assert.deepEqual(brief.capabilities, ADAPTIVE_HOSTED_CAPABILITIES);
+    assert.deepEqual(brief.execution_contract, ADAPTIVE_HOSTED_EXECUTION_CONTRACT);
     for (const field of ['scope', 'release', 'base', 'result_schema', 'query_plan', 'legacy_core_queries',
-      'due_sources', 'source_context', 'preferences', 'refresh', 'lease', 'execution_contract']) {
+      'due_sources', 'source_context', 'preferences', 'refresh', 'lease']) {
       assert.deepEqual(brief[field], original[field], `${field} changed at the response boundary`);
     }
     assert.equal(brief.feedback.examples.length, 16);
@@ -260,37 +262,33 @@ test('brief preserves explicit startup rejection and remains inaccessible to app
   } finally { cleanup(f); }
 });
 
-test('single response startup feeds one batch and independent completion in three database calls', () => {
-  const f = fixture(), query = randomUUID(), batch = randomUUID(), completion = randomUUID();
+test('zero-result research needs one brief and one flat finish without a synthetic batch', () => {
+  const f = fixture(), query = randomUUID(), completion = randomUUID();
   const calls: string[] = [];
   const api = (statement: string) => { calls.push(statement); return JSON.parse(sql(statement)); };
   try {
-    const startup = api(`SELECT private.begin_adaptive_search_brief('${f.search}'::uuid,'${f.run}'::uuid) AS startup;`);
+    const startup = api(buildAdaptiveSearchSqlCall({ action: 'startup', scope: f.scope }).sql);
     assert.equal(startup.compatible, true, JSON.stringify(startup));
     const attempted = new Date().toISOString();
-    const receipt = api(buildAdaptiveSearchSqlCall({ action: 'batch', scope: f.scope, batch_id: batch,
-      payload: { schema_version: 1, query_plan: { schema_version: 2,
-        queries: [{ query_id: query, query: 'synthetic acoustic sensing research', role: 'core', manual: false }] }, opportunities: [],
+    const result = api(buildAdaptiveSearchSqlCall({ action: 'finish', scope: f.scope,
+      payload: { completion_id: completion, status: 'complete', query_plan: { schema_version: 2,
+        queries: [{ query_id: query, query: 'synthetic acoustic sensing research', role: 'core', manual: false }] },
         execution: { checks: [{ check_id: randomUUID(), kind: 'query', query_id: query, attempted_at: attempted, status: 'complete', results_count: 0 },
           ...startup.due_sources.map((source: { registry_id: string }) => ({ check_id: randomUUID(), kind: 'source',
             source_registry_id: source.registry_id, attempted_at: attempted, status: 'complete', results_count: 0 }))], backlog: [], complete: true } } }).sql);
-    assert.equal(receipt.batch_schema_version, 1, JSON.stringify(receipt));
-    assert.equal(receipt.verification_required, true);
-    const result = api(buildAdaptiveSearchSqlCall({ action: 'complete', scope: f.scope,
-      payload: { schema_version: 1, completion_id: completion, batch_ids: [batch], manifest_hash: receipt.manifest_hash, status: 'complete' } }).sql);
-    assert.equal(calls.length, 3);
-    assert.ok(calls.every(statement => /^SELECT private\.(begin_adaptive_search_brief|submit_adaptive_search_batch|verify_and_complete_adaptive_search)\(/u.test(statement)));
+    assert.equal(calls.length, 2);
+    assert.ok(calls.every(statement => /^SELECT private\.(begin_adaptive_search_brief|finish_adaptive_search)\(/u.test(statement)));
     assert.equal(result.compatible, true, JSON.stringify(result));
     assert.equal(result.persisted_summary_read, true);
     assert.equal(result.historical_summary.status, 'complete');
     assert.equal(result.historical_summary.incomplete, false);
     assert.equal(result.current_verification.all_saved_items_verified, true);
-    assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_batches where run_id='${f.run}';`), '1');
+    assert.equal(sql(`select count(*) from private.opportunity_search_adaptive_batches where run_id='${f.run}' and cardinality(item_ids)>0;`), '0');
   } finally { cleanup(f); }
 });
 
 test('hosted evidence guidance exposes accepted fields and a corrected support name saves and verifies', () => {
-  const f = fixture(), query = randomUUID(), batch = randomUUID(), completion = randomUUID();
+  const f = fixture(), query = randomUUID(), item = randomUUID(), completion = randomUUID();
   try {
     const startup = begin(f);
     const fields: string[] = JSON.parse(startup.protocol_text.split('\n').at(-1));
@@ -307,17 +305,18 @@ test('hosted evidence guidance exposes accepted fields and a corrected support n
     assert.throws(() => sql(`select private.validate_opportunity_search_result(${json(opportunity)});`), /Unknown evidence field/u);
     opportunity.sources[0]!.supports = ['title', 'official_url'];
     assert.ok(opportunity.sources[0]!.supports.every(field => fields.includes(field)));
-    const receipt = JSON.parse(sql(buildAdaptiveSearchSqlCall({ action: 'batch', scope: f.scope, batch_id: batch,
-      payload: { schema_version: 1, query_plan: { schema_version: 2,
+    const receipt = JSON.parse(sql(buildAdaptiveSearchSqlCall({ action: 'save', scope: f.scope, item_id: item, payload: opportunity }).sql));
+    assert.equal(receipt.outcome, 'saved', JSON.stringify(receipt));
+    const proof = JSON.parse(sql(buildAdaptiveSearchSqlCall({ action: 'verify', scope: f.scope, item_id: item }).sql));
+    assert.equal(proof.verified, true, JSON.stringify(proof));
+    const result = JSON.parse(sql(buildAdaptiveSearchSqlCall({ action: 'finish', scope: f.scope,
+      payload: { completion_id: completion, status: 'complete', query_plan: { schema_version: 2,
         queries: [{ query_id: query, query: 'synthetic acoustic sensing research', role: 'core', manual: false }] },
-      opportunities: [{ item_id: randomUUID(), opportunity }], execution: { checks: [
-        { check_id: randomUUID(), kind: 'query', query_id: query, attempted_at: now, status: 'complete', results_count: 1 },
-        ...startup.due_sources.map((source: { registry_id: string }) => ({ check_id: randomUUID(), kind: 'source',
-          source_registry_id: source.registry_id, attempted_at: now, status: 'complete', results_count: 0 })),
-      ], backlog: [], complete: true } } }).sql));
-    assert.equal(receipt.items?.[0]?.outcome, 'saved', JSON.stringify(receipt));
-    const result = JSON.parse(sql(buildAdaptiveSearchSqlCall({ action: 'complete', scope: f.scope,
-      payload: { schema_version: 1, completion_id: completion, batch_ids: [batch], manifest_hash: receipt.manifest_hash, status: 'complete' } }).sql));
+        execution: { checks: [
+          { check_id: randomUUID(), kind: 'query', query_id: query, attempted_at: now, status: 'complete', results_count: 1 },
+          ...startup.due_sources.map((source: { registry_id: string }) => ({ check_id: randomUUID(), kind: 'source',
+            source_registry_id: source.registry_id, attempted_at: now, status: 'complete', results_count: 0 })),
+        ], backlog: [], complete: true } } }).sql));
     assert.equal(result.historical_summary.status, 'complete', JSON.stringify(result));
     assert.equal(result.current_verification.saved_items, 1);
     assert.equal(result.current_verification.all_saved_items_verified, true);

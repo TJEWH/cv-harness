@@ -1,10 +1,11 @@
+import { resetHistoricalAdaptiveBatchFixture } from '../../support/database/historicalAdaptiveBatch';
 import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { file, reset, sql } from '../../support/database/postgres';
+import { file, sql } from '../../support/database/postgres';
 
-before(() => reset());
-import { adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall, type AdaptiveBatchPayload } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
+before(() => resetHistoricalAdaptiveBatchFixture());
+import { adaptiveJsonSqlLiteral, buildHistoricalAdaptiveSearchSqlCall as buildAdaptiveSearchSqlCall, type AdaptiveBatchPayload } from '../../support/historicalAdaptiveSearchProtocol';
 
 test('AF-08 atomic intake preserves current canonical records and returns only safe pending-verification receipts', () => {
   sql(file('supabase/tests/opportunity_search_adaptive_batches.sql'));

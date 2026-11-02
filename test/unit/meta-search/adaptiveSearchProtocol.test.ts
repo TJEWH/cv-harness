@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   ADAPTIVE_BATCH_CAPABILITIES, ADAPTIVE_BATCH_EXECUTION_CONTRACT, ADAPTIVE_MAX_BATCH_BYTES, ADAPTIVE_MAX_OPPORTUNITY_BYTES,
-  ADAPTIVE_PROTOCOL_STARTUP_CAPABILITIES, adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall,
-  validateAdaptiveBatchEnvelope, validateAdaptiveCompletionEnvelope, type AdaptiveBatchPayload, type AdaptiveCompletionPayload,
+  ADAPTIVE_PROTOCOL_STARTUP_CAPABILITIES, ADAPTIVE_HOSTED_CAPABILITIES, ADAPTIVE_HOSTED_EXECUTION_CONTRACT, adaptiveJsonSqlLiteral, buildAdaptiveSearchSqlCall,
+  validateAdaptiveBatchEnvelope, validateAdaptiveCompletionEnvelope, validateAdaptiveOpportunityEnvelope, validateAdaptiveFinishEnvelope, type AdaptiveBatchPayload, type AdaptiveCompletionPayload,
 } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
 const id = (index: number) => `88000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
@@ -25,15 +25,31 @@ test('AF-08 reviewed capabilities enumerate only three helpers and explicit requ
   assert.equal(ADAPTIVE_BATCH_EXECUTION_CONTRACT.maximum_run_batches, 32);
 });
 
-test('AF-08 transport prepares one fixed helper call in the exact project without executing anything', () => {
+test('current calls use four focused helpers and never prepare historical write formats', () => {
   assert.deepEqual(buildAdaptiveSearchSqlCall({ action: 'startup', scope }), { project_ref: scope.project_ref,
     sql: `SELECT private.begin_adaptive_search_brief('${scope.search_id}'::uuid,'${scope.run_id}'::uuid) AS startup;` });
-  const batch = buildAdaptiveSearchSqlCall({ action: 'batch', scope, batch_id: id(5), payload: payload() });
-  assert.match(batch.sql, /^SELECT private\.submit_adaptive_search_batch\('/u);
-  assert.equal(batch.project_ref, scope.project_ref);
-  const last = buildAdaptiveSearchSqlCall({ action: 'complete', scope, payload: completion() });
-  assert.match(last.sql, /^SELECT private\.verify_and_complete_adaptive_search\('/u);
-  assert.throws(() => buildAdaptiveSearchSqlCall({ action: 'inspect', scope } as never), /Unsupported adaptive helper/u);
+  assert.deepEqual(buildAdaptiveSearchSqlCall({ action: 'save', scope, item_id: id(3), payload: opportunity }), {
+    project_ref: scope.project_ref,
+    sql: `SELECT private.save_adaptive_search_item('${scope.run_id}'::uuid, '${id(3)}'::uuid, ${adaptiveJsonSqlLiteral(opportunity)});`,
+  });
+  const finish = { completion_id: id(4), status: 'failed' as const };
+  assert.deepEqual(buildAdaptiveSearchSqlCall({ action: 'finish', scope, payload: finish }), {
+    project_ref: scope.project_ref,
+    sql: `SELECT private.finish_adaptive_search('${scope.run_id}'::uuid, ${adaptiveJsonSqlLiteral(finish)});`,
+  });
+  for (const action of ['inspect', 'batch', 'receipt', 'complete']) {
+    assert.throws(() => buildAdaptiveSearchSqlCall({ action, scope } as never), /Unsupported adaptive helper/u);
+  }
+  assert.deepEqual(ADAPTIVE_HOSTED_CAPABILITIES.allowed_helpers, [
+    'private.begin_adaptive_search_brief(uuid,uuid)', 'private.save_adaptive_search_item(uuid,uuid,jsonb)',
+    'private.verify_adaptive_search_item(uuid,uuid)', 'private.finish_adaptive_search(uuid,jsonb)',
+  ]);
+  assert.equal('batch' in ADAPTIVE_HOSTED_CAPABILITIES, false);
+  assert.equal(ADAPTIVE_HOSTED_CAPABILITIES.verification, true);
+  assert.equal(ADAPTIVE_HOSTED_EXECUTION_CONTRACT.maximum_run_items, 320);
+  for (const field of ['maximum_batch_opportunities', 'maximum_batch_bytes', 'maximum_run_batches']) {
+    assert.equal(field in ADAPTIVE_HOSTED_EXECUTION_CONTRACT, false);
+  }
 });
 
 test('AF-08 project, search and run identifiers cannot inject SQL or select a different helper', () => {
@@ -42,23 +58,50 @@ test('AF-08 project, search and run identifiers cannot inject SQL or select a di
   }
 });
 
-test('receipt recovery prepares one scoped SQL NULL lookup using the existing batch helper', () => {
-  const input = { action: 'receipt' as const, scope, batch_id: id(5) };
+test('normal verification also reconciles a missing save response without resending opportunity data', () => {
+  const input = { action: 'verify' as const, scope, item_id: id(5) };
   const expected = { project_ref: scope.project_ref,
-    sql: `SELECT private.submit_adaptive_search_batch('${scope.run_id}'::uuid, '${id(5)}'::uuid, NULL::jsonb);` };
+    sql: `SELECT private.verify_adaptive_search_item('${scope.run_id}'::uuid, '${id(5)}'::uuid);` };
   assert.deepEqual(buildAdaptiveSearchSqlCall(input), expected);
-  assert.deepEqual(buildAdaptiveSearchSqlCall(input), expected, 'recovery retains its original run and batch identity');
-  assert.deepEqual(buildAdaptiveSearchSqlCall({ ...input, batch_id: id(15).toUpperCase() }), {
-    ...expected, sql: `SELECT private.submit_adaptive_search_batch('${scope.run_id}'::uuid, '${id(15)}'::uuid, NULL::jsonb);`,
+  assert.deepEqual(buildAdaptiveSearchSqlCall(input), expected);
+  assert.deepEqual(buildAdaptiveSearchSqlCall({ ...input, item_id: id(15).toUpperCase() }), {
+    ...expected, sql: `SELECT private.verify_adaptive_search_item('${scope.run_id}'::uuid, '${id(15)}'::uuid);`,
   });
-  assert.notEqual(adaptiveJsonSqlLiteral(null), 'NULL::jsonb', 'JSON null must not select receipt mode');
-  assert.throws(() => buildAdaptiveSearchSqlCall({ action: 'batch', scope, batch_id: id(5), payload: null } as never));
   for (const patch of [{ project_ref: 'other-project' }, { search_id: "';select forbidden();--" }, { run_id: '' }]) {
     assert.throws(() => buildAdaptiveSearchSqlCall({ ...input, scope: { ...scope, ...patch } }));
   }
-  for (const batch_id of ['', '<batch-uuid>', `${id(5)}'); SELECT forbidden();--`]) {
-    assert.throws(() => buildAdaptiveSearchSqlCall({ ...input, batch_id }));
+  for (const item_id of ['', '<item-uuid>', `${id(5)}'); SELECT forbidden();--`]) {
+    assert.throws(() => buildAdaptiveSearchSqlCall({ ...input, item_id }));
   }
+});
+
+test('canonical saves reject mixed historical envelopes without coercing research data', () => {
+  validateAdaptiveOpportunityEnvelope(opportunity);
+  for (const invalid of [null, [opportunity], { opportunity }, { ...opportunity, schema_version: 1 },
+    { ...opportunity, execution: { checks: [] } }, { ...opportunity, opportunities: [] },
+    { ...opportunity, title: undefined }, { ...opportunity, sources: undefined }]) {
+    assert.throws(() => validateAdaptiveOpportunityEnvelope(invalid));
+  }
+  assert.throws(() => validateAdaptiveOpportunityEnvelope({ ...opportunity, research_summary: '界'.repeat(100000) }), /byte limit/u);
+});
+
+test('finish accepts one flat report, optional inert suggestions and no caller-selected save manifest', () => {
+  const report = { completion_id: id(4), status: 'complete', query_plan: { schema_version: 2, queries: [
+    { query_id: id(7), query: 'Synthetic acoustic sensing', role: 'core', manual: false },
+  ] }, execution: { checks: [], backlog: [], complete: false }, query_suggestions: [] };
+  validateAdaptiveFinishEnvelope(report);
+  validateAdaptiveFinishEnvelope({ completion_id: id(4), status: 'failed' });
+  validateAdaptiveFinishEnvelope({ completion_id: id(4), status: 'complete' }); // SQL independently records missing coverage as incomplete.
+  for (const incomplete of [{ query_plan: report.query_plan }, { plan_hash: 'a'.repeat(64) },
+    { preference_suggestions: [] }, { source_suggestions: [] }, { query_suggestions: [] }]) {
+    assert.throws(() => validateAdaptiveFinishEnvelope({ completion_id: id(4), status: 'failed', ...incomplete }), /flat adaptive finish contract/u);
+  }
+  for (const invalid of [{ ...report, schema_version: 2 }, { ...report, action: 'finish' }, { ...report, coverage: {} },
+    { ...report, opportunities: [] }, { ...report, batch_ids: [] }, { ...report, manifest_hash: 'a'.repeat(64) },
+    { ...report, completion_id: 'replacement' }, { ...report, status: 'success' },
+    { ...report, execution: { checks: [], unknown: true } }, { ...report, execution: { checks: Array(129).fill({}) } },
+    { ...report, execution: { checks: [], backlog: Array(65).fill({}) } },
+    { ...report, query_suggestions: Array(17).fill({}) }]) assert.throws(() => validateAdaptiveFinishEnvelope(invalid));
 });
 
 test('AF-08 SQL JSON literals escape apostrophes and backslashes after serialization', () => {
@@ -110,17 +153,6 @@ test('AF-08 completion uses a complete sorted manifest and a stable completion i
     { ...completion(), completion_id: 'guess' }, { ...completion(), status: 'empty-success' }, { ...completion(), tasks: ['replace'] }]) {
     assert.throws(() => validateAdaptiveCompletionEnvelope(invalid));
   }
-});
-
-test('AF-08 an interrupted startup can close the same run as failed before any batch was accepted', () => {
-  const failed: AdaptiveCompletionPayload = { ...completion(), batch_ids: [], status: 'failed' };
-  validateAdaptiveCompletionEnvelope(failed);
-  assert.deepEqual(buildAdaptiveSearchSqlCall({ action: 'complete', scope, payload: failed }), {
-    project_ref: scope.project_ref,
-    sql: `SELECT private.verify_and_complete_adaptive_search('${scope.run_id}'::uuid, ${adaptiveJsonSqlLiteral(failed)});`,
-  });
-  assert.throws(() => validateAdaptiveCompletionEnvelope({ ...failed, status: 'complete' }), /batch manifest/u);
-  assert.throws(() => validateAdaptiveCompletionEnvelope({ ...failed, completion_id: 'replacement' }), /stable UUID/u);
 });
 
 test('current payload guidance includes v2 evidence and reason restrictions while preserving the old full pin', async () => {

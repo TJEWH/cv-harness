@@ -1,10 +1,11 @@
+import { resetHistoricalAdaptiveBatchFixture } from '../../support/database/historicalAdaptiveBatch';
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { reset, sql } from '../../support/database/postgres';
+import { sql } from '../../support/database/postgres';
 import { adaptiveJsonSqlLiteral } from '../../../src/features/meta-search/domain/adaptiveSearchProtocol';
 
-before(() => reset());
+before(() => resetHistoricalAdaptiveBatchFixture());
 
 const project = 'iiiiiiiiiiiiiiiiiiii';
 const json = adaptiveJsonSqlLiteral;

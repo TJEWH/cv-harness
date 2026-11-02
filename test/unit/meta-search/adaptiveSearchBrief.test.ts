@@ -29,12 +29,13 @@ test('96-KiB startup changes only the response bound and the matching recurring 
   const prompt = 'private.adaptive_search_recurring_prompt(p_search_id uuid, p_project_ref text) RETURNS text';
   assert.equal(ADAPTIVE_BRIEF_MAX_BYTES, 96 * 1024);
   assert.deepEqual([...installed.keys()].sort(), [brief, prompt].sort());
-  assert.equal(current.get(brief), definitions(read('supabase/releases/adaptive-search-startup-logging-v1.sql'))
+  assert.equal(installed.get(brief), definitions(read('supabase/releases/adaptive-search-startup-logging-v1.sql'))
     .get(brief)!.replaceAll('65536', String(ADAPTIVE_BRIEF_MAX_BYTES)));
   assert.equal(installed.get(prompt), definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql'))
     .get(prompt)!.replace('response_limit_bytes=65536', `response_limit_bytes=${ADAPTIVE_BRIEF_MAX_BYTES}`));
-  assert.equal(installed.get(brief), current.get(brief));
-  assert.equal(definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql')).get(prompt), current.get(prompt));
+  const latest = definitions(read('supabase/releases/adaptive-search-current-saves-v1.sql'));
+  assert.equal(latest.get(brief), current.get(brief));
+  assert.equal(latest.get(prompt), current.get(prompt));
   const instructions = buildAdaptiveRecurringSearchPrompt(scope.search_id, scope.project_ref);
   assert.ok(instructions.includes(`response_limit_bytes=${ADAPTIVE_BRIEF_MAX_BYTES}`));
   assert.ok(!instructions.includes('response_limit_bytes=65536'));
@@ -48,7 +49,7 @@ test('inline response codec upgrade replaces only the recurring formatter behind
   const installed = definitions(upgrade), current = definitions(read('supabase/schemas/12_search_support.sql'));
   const prompt = 'private.adaptive_search_recurring_prompt(p_search_id uuid, p_project_ref text) RETURNS text';
   assert.deepEqual([...installed.keys()], [prompt]);
-  assert.equal(installed.get(prompt), current.get(prompt));
+  assert.notEqual(installed.get(prompt), current.get(prompt), 'the immutable codec installer predates direct connector instructions');
   const predecessor = definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')).get(prompt)!;
   const body = /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1;/u.exec(predecessor)![2]!;
   assert.equal(createHash('md5').update(body).digest('hex'), 'f0f1107bfb90554396b1ab6f12944f9f');
@@ -72,7 +73,8 @@ test('targeted brief upgrade matches current definitions and grants no app-role 
     ...definitions(read('supabase/releases/adaptive-search-startup-logging-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-current-saves-v1.sql'))]);
   assert.equal(installed.size, 3);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale brief upgrade: ${signature}`);
   assert.match(upgrade, /octet_length\(brief::text\)>65536/u);
@@ -95,7 +97,8 @@ test('automatic replacement upgrade installs the same current fences with a defe
     ...definitions(read('supabase/releases/adaptive-search-startup-logging-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-current-saves-v1.sql'))]);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature), `stale replacement upgrade: ${signature}`);
   assert.match(upgrade, /ADD COLUMN superseded_by_run_id uuid/u);
   assert.match(upgrade, /FOREIGN KEY \(user_id,search_id,superseded_by_run_id\)[\s\S]*?REFERENCES public\.opportunity_search_runs\(user_id,search_id,id\) DEFERRABLE INITIALLY DEFERRED/u);
@@ -110,7 +113,8 @@ test('historical response-handling upgrade keeps its original contract before th
   const later = new Map([...incremental, ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-current-saves-v1.sql'))]);
   const current = definitions(read('supabase/schemas/12_search_support.sql'));
   assert.equal(installed.size, 1);
   for (const [signature, body] of installed) {
@@ -134,7 +138,8 @@ test('incremental save upgrade replaces exactly three guarded functions without 
     ...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql')),
     ...definitions(read('supabase/releases/adaptive-search-hosted-codec-v1.sql')),
-    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql'))]);
+    ...definitions(read('supabase/releases/adaptive-search-inline-codec-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-current-saves-v1.sql'))]);
   assert.deepEqual([...installed.keys()].sort(), [
     'private.adaptive_batch_error(p_code text) RETURNS jsonb',
     'private.adaptive_search_recurring_prompt(p_search_id uuid, p_project_ref text) RETURNS text',
@@ -164,7 +169,8 @@ test('batch diagnostics upgrade adds bounded owner-scoped metadata without chang
     'private.opportunity_search_schema_error_path(v jsonb, s jsonb, root_schema jsonb, depth integer DEFAULT 0) RETURNS text',
     'private.submit_adaptive_search_batch(p_run_id uuid, p_batch_id uuid, p_payload jsonb) RETURNS jsonb',
   ]);
-  const later = definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql'));
+  const later = new Map([...definitions(read('supabase/releases/adaptive-search-standalone-saves-v1.sql')),
+    ...definitions(read('supabase/releases/adaptive-search-current-saves-v1.sql'))]);
   for (const [signature, body] of installed) assert.equal(later.get(signature) ?? body, current.get(signature));
   assert.match(upgrade, /ADD COLUMN last_batch_rejection jsonb/u);
   assert.match(upgrade, /octet_length\(last_batch_rejection::text\)<=2048/u);
@@ -181,7 +187,7 @@ test('evidence guidance upgrade changes only the bounded brief and preserves val
   const upgrade = read('supabase/releases/adaptive-search-evidence-fields-v1.sql');
   const installed = definitions(upgrade), current = definitions(read('supabase/schemas/12_search_support.sql'));
   assert.deepEqual([...installed.keys()], ['private.begin_adaptive_search_brief(p_search_id uuid, p_run_id uuid) RETURNS jsonb']);
-  for (const [signature, body] of installed) assert.equal(definitions(read('supabase/releases/adaptive-search-brief-limit-v1.sql')).get(signature) ?? body, current.get(signature));
+  for (const [signature, body] of installed) assert.equal(definitions(read('supabase/releases/adaptive-search-current-saves-v1.sql')).get(signature) ?? body, current.get(signature));
   assert.match(upgrade, /EVIDENCE FIELD NAMES/u);
   assert.match(upgrade, /jsonb_object_keys\(private\.opportunity_storage_schema\(\)->'properties'\)/u);
   assert.match(upgrade, /octet_length\(brief::text\)>65536/u);
@@ -189,5 +195,30 @@ test('evidence guidance upgrade changes only the bounded brief and preserves val
   const installation = upgrade.replace(functionDefinition, '').replace(/^--.*$/gmu, '');
   assert.doesNotMatch(installation, /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|PERFORM)\b/iu);
   assert.match(installation, /Expected the reviewed supersession brief predecessor/u);
+  assert.match(upgrade, /begin;[\s\S]*commit;\s*$/u);
+});
+
+
+test('current saving upgrade replaces only guarded definitions and keeps private helpers closed', () => {
+  const upgrade = read('supabase/releases/adaptive-search-current-saves-v1.sql');
+  const installed = definitions(upgrade), current = definitions(read('supabase/schemas/12_search_support.sql'));
+  assert.equal(installed.size, 12);
+  for (const [signature, body] of installed) {
+    assert.equal(body, current.get(signature), `stale current save definition: ${signature}`);
+    assert.match(body, /SET search_path TO ''/u);
+  }
+  const installation = upgrade.replace(functionDefinition, '').replace(/^--.*$/gmu, '');
+  assert.equal((installation.match(/is distinct from '[a-f0-9]{32}'/gu) ?? []).length, 9);
+  assert.equal((installation.match(/Current-saves installation already exists or is partial/gu) ?? []).length, 3);
+  assert.doesNotMatch(installation, /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|PERFORM|ALTER|GRANT|DROP|CALL)\b/iu);
+  for (const signature of ['record_adaptive_search_coverage(uuid,uuid,jsonb)', 'finish_adaptive_search(uuid,jsonb)', 'adaptive_search_hosted_protocol_text()']) {
+    assert.ok(upgrade.includes(`REVOKE ALL ON FUNCTION private.${signature} FROM PUBLIC,anon,authenticated,service_role;`));
+  }
+  for (const name of ['submit_adaptive_search_batch', 'verify_and_complete_adaptive_search']) {
+    const body = [...installed].find(([signature]) => signature.startsWith(`private.${name}(`))![1];
+    assert.match(body, /retired_contract/u);
+    assert.doesNotMatch(body, /(?:INSERT INTO|UPDATE public\.|private\.save_adaptive_search_item|private\.finish_adaptive_search)/u);
+  }
+  assert.doesNotMatch(upgrade, /SECURITY DEFINER/u);
   assert.match(upgrade, /begin;[\s\S]*commit;\s*$/u);
 });
